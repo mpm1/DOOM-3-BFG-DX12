@@ -223,7 +223,7 @@ void* idVertexBuffer::MapBuffer(bufferMapType_t mapType) const {
 
 	if (mapType == BM_READ || mapType == BM_WRITE) { // TODO: Can we make a read only one?
 		HRESULT hr = bufferObject->vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&buffer));
-		if (FAILED(bufferObject)) {
+		if (FAILED(hr)) {
 			common->Warning("Could not load vertex buffer.");
 			buffer = NULL;
 		}
@@ -475,7 +475,7 @@ void* idIndexBuffer::MapBuffer(bufferMapType_t mapType) const {
 
 	if (mapType == BM_READ || mapType == BM_WRITE) { // TODO: Can we make a read only one?
 		HRESULT hr = bufferObject->indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&buffer));
-		if (FAILED(bufferObject)) {
+		if (FAILED(hr)) {
 			common->Warning("Could not load index buffer.");
 			buffer = NULL;
 		}
@@ -697,7 +697,7 @@ float* idJointBuffer::MapBuffer(bufferMapType_t mapType) const {
 	assert(mapType == BM_WRITE);
 	assert(apiObject != NULL);
 
-	int numBytes = GetAllocedSize();
+	size_t numBytes = GetAllocedSize();
 
 	void* buffer = NULL;
 	D3D12_RANGE readRange = { 0, 0 };
@@ -705,7 +705,7 @@ float* idJointBuffer::MapBuffer(bufferMapType_t mapType) const {
 
 	if (mapType == BM_READ || mapType == BM_WRITE) { // TODO: Can we make a read only one?
 		HRESULT hr = bufferObject->jointBuffer->Map(0, &readRange, reinterpret_cast<void**>(&buffer));
-		if (FAILED(bufferObject)) {
+		if (FAILED(hr)) {
 			common->Warning("Could not load joint buffer.");
 			buffer = NULL;
 		}
