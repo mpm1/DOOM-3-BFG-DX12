@@ -30,6 +30,7 @@
 #define TEXTURE_REGISTER_COUNT 5
 #define MAX_DESCRIPTOR_COUNT 6 // 1 CBV and 5 Shader Resource View
 #define MAX_HEAP_OBJECT_COUNT 3000
+#define MAX_JOINT_HEAP_OBJECT_COUNT 256
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -71,8 +72,8 @@ struct DX12TextureBuffer
 
 struct DX12JointBuffer
 {
-	// TODO: Check if any of this is correct.
 	ComPtr<ID3D12Resource> jointBuffer;
+	D3D12_CONSTANT_BUFFER_VIEW_DESC jointBufferView;
 };
 
 // TODO: Start setting frame data to it's own object to make it easier to manage.
@@ -125,6 +126,7 @@ public:
 
 	DX12JointBuffer* AllocJointBuffer(DX12JointBuffer* buffer, UINT numBytes);
 	void FreeJointBuffer(DX12JointBuffer* buffer);
+	void SetJointBuffer(DX12JointBuffer* buffer);
 
 	// Textures
 	void SetActiveTextureRegister(UINT8 index);
@@ -189,6 +191,10 @@ private:
 	UINT8* m_constantBufferGPUAddress[FrameCount];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;
+
+	// Joint CBV Buffer
+	ComPtr<ID3D12DescriptorHeap> m_jointHeap[FrameCount];
+	UINT m_jointHeapIndex;
 
 	// Synchronization
 	UINT m_frameIndex;

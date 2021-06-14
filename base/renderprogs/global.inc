@@ -40,6 +40,11 @@ SamplerState GuiTextureSampler
     AddressV = Wrap;
 };
 
+struct JointConstants {
+	float4 matrices[404];
+};
+ConstantBuffer<JointConstants> matrices_ubo : register(b0, space1);
+
 struct SceneConstants {
 	float4 rpScreenCorrectionFactor;
 	float4 rpWindowCoord;

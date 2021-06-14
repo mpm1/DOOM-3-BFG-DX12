@@ -172,10 +172,10 @@ void DX12Renderer::Init(HWND hWnd) {
 void DX12Renderer::LoadPipeline(HWND hWnd) {
 #if defined(_DEBUG)
 	{
-		/*ComPtr<ID3D12Debug> debugController;
+		ComPtr<ID3D12Debug> debugController;
 		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
 			debugController->EnableDebugLayer();
-		}*/
+		}
 
 		/*ComPtr<ID3D12DeviceRemovedExtendedDataSettings> pDredSettings;
 		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pDredSettings)))) {
@@ -215,11 +215,19 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	{
 		// Describe and create the constant buffer view (CBV) descriptor for each frame
 		for (UINT frameIndex = 0; frameIndex < FrameCount; ++frameIndex) {
+			// Create the CBV Heap
 			D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
 			cbvHeapDesc.NumDescriptors = MAX_DESCRIPTOR_COUNT * MAX_HEAP_OBJECT_COUNT; 
 			cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 			cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 			ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap[frameIndex])));
+
+			// Create the Joint Heap
+			D3D12_DESCRIPTOR_HEAP_DESC jointHeapDesc = {};
+			jointHeapDesc.NumDescriptors = MAX_JOINT_HEAP_OBJECT_COUNT; // Only 1 descriptor for each joint object.
+			jointHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+			jointHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+			ThrowIfFailed(m_device->CreateDescriptorHeap(&jointHeapDesc, IID_PPV_ARGS(&m_jointHeap[frameIndex])));
 		}
 
 		m_cbvHeapIncrementor = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
@@ -254,12 +262,14 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 
 	// Create Frame Resources
 	{
-		for (UINT frameIndex = 0; frameIndex < FrameCount; ++frameIndex) {
-			// Create the buffer size.
-			UINT entrySize = (sizeof(m_constantBuffer) + 255) & ~255; // Size is required to be 256 byte aligned
-			UINT resourceAlignment = (1024 * 64) - 1; // Resource must be a multible of 64KB
-			UINT heapSize = ((entrySize * MAX_HEAP_OBJECT_COUNT) + resourceAlignment) & ~resourceAlignment;
+		// Create the buffer size.
+		constexpr UINT entrySize = (sizeof(m_constantBuffer) + 255) & ~255; // Size is required to be 256 byte aligned
+		constexpr UINT resourceAlignment = (1024 * 64) - 1; // Resource must be a multible of 64KB
+		constexpr UINT heapSize = ((entrySize * MAX_HEAP_OBJECT_COUNT) + resourceAlignment) & ~resourceAlignment;
 
+		WCHAR heapName[30];
+
+		for (UINT frameIndex = 0; frameIndex < FrameCount; ++frameIndex) {
 			// Create the Constant buffer heap for each frame
 			ThrowIfFailed(m_device->CreateCommittedResource(
 				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -270,9 +280,8 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 				IID_PPV_ARGS(&m_cbvUploadHeap[frameIndex])
 			));
 
-			WCHAR uploadHeapName[20];
-			wsprintfW(uploadHeapName, L"CBV Upload Heap %d", frameIndex);
-			m_cbvUploadHeap[frameIndex]->SetName(uploadHeapName);
+			wsprintfW(heapName, L"CBV Upload Heap %d", frameIndex);
+			m_cbvUploadHeap[frameIndex]->SetName(heapName);
 
 			// Create the constant buffer view for each object
 			UINT bufferLocation = m_cbvUploadHeap[frameIndex]->GetGPUVirtualAddress();
@@ -289,7 +298,6 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 				descriptorIndex += MAX_DESCRIPTOR_COUNT;
 			}
 
-			WCHAR heapName[20];
 			wsprintfW(heapName, L"CBV Heap %d", frameIndex);
 			m_cbvHeap[frameIndex]->SetName(heapName);
 
@@ -457,10 +465,11 @@ void DX12Renderer::LoadAssets() {
 		//rootParameters[0].InitAsConstantBufferView(0);
 
 		// Setup the descriptor table
-		CD3DX12_DESCRIPTOR_RANGE1 descriptorTableRanges[2];
+		CD3DX12_DESCRIPTOR_RANGE1 descriptorTableRanges[3];
 		descriptorTableRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 		descriptorTableRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 5, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 1/* m_cbvHeapIncrementor*/);
-		rootParameters[0].InitAsDescriptorTable(2, &descriptorTableRanges[0]);
+		descriptorTableRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
+		rootParameters[0].InitAsDescriptorTable(3, &descriptorTableRanges[0]);
 
 		CD3DX12_STATIC_SAMPLER_DESC staticSampler[1];
 		staticSampler[0].Init(0, D3D12_FILTER_ANISOTROPIC);
@@ -571,11 +580,28 @@ DX12JointBuffer* DX12Renderer::AllocJointBuffer(DX12JointBuffer* buffer, UINT nu
 		IID_PPV_ARGS(&buffer->jointBuffer)
 	));
 
+	buffer->jointBufferView.BufferLocation = buffer->jointBuffer->GetGPUVirtualAddress();
+	buffer->jointBufferView.SizeInBytes = numBytes;
+
+	// TODO: Add better name.
+	buffer->jointBuffer->SetName(L"Joint Buffer");
+
 	return buffer;
 }
 
 void DX12Renderer::FreeJointBuffer(DX12JointBuffer* buffer) {
 	buffer->jointBuffer->Release();
+}
+
+void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer) {
+	assert(m_jointHeapIndex < MAX_JOINT_HEAP_OBJECT_COUNT);
+
+	//TODO: Create a better way to set the joint data
+	CD3DX12_CPU_DESCRIPTOR_HANDLE jointHandle(m_jointHeap[m_frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_jointHeapIndex, m_cbvHeapIncrementor);
+	m_device->CreateConstantBufferView(&buffer->jointBufferView, jointHandle);
+
+	//TODO: Reset this to use joint heap index buffers for each object
+	//++m_jointHeapIndex;
 }
 
 void DX12Renderer::SignalNextFrame() {
@@ -627,7 +653,11 @@ void DX12Renderer::ResetCommandList(bool waitForBackBuffer) {
 	m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
 	// Setup the initial heap location
-	m_commandList->SetDescriptorHeaps(1, m_cbvHeap[m_frameIndex].GetAddressOf());
+	ID3D12DescriptorHeap* descriptorHeaps[2] = { 
+		m_cbvHeap[m_frameIndex].Get(), 
+		m_jointHeap[m_frameIndex].Get() 
+	};	
+	m_commandList->SetDescriptorHeaps(1, descriptorHeaps);
 }
 
 void DX12Renderer::ExecuteCommandList() {
@@ -653,6 +683,7 @@ void DX12Renderer::BeginDraw() {
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
 	m_cbvHeapIndex = 0;
+	m_jointHeapIndex = 0;
 	m_isDrawing = true;
 	ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
 
@@ -728,6 +759,10 @@ bool DX12Renderer::EndSurfaceSettings() {
 	// Define the Descriptor Table to use.
 	const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_cbvHeap[m_frameIndex]->GetGPUDescriptorHandleForHeapStart(), descriptorIndex, m_cbvHeapIncrementor);
 	m_commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
+
+	//TODO: FINGURE OUT THIS JOINT TABLE?????????????
+	const CD3DX12_GPU_DESCRIPTOR_HANDLE jointTableHandle(m_jointHeap[m_frameIndex]->GetGPUDescriptorHandleForHeapStart(), m_jointHeapIndex, m_cbvHeapIncrementor);
+	m_commandList->SetGraphicsRootDescriptorTable(1, jointTableHandle);
 
 	++m_cbvHeapIndex;
 

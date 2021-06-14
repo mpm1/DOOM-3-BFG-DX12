@@ -2465,10 +2465,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf) {
 		}
 		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
 
-		// TODO: Bind Joint buffer.
-
-		//const GLuint ubo = reinterpret_cast<GLuint>(jointBuffer.GetAPIObject());
-		//qglBindBufferRange(GL_UNIFORM_BUFFER, 0, ubo, jointBuffer.GetOffset(), jointBuffer.GetNumJoints() * sizeof(idJointMat));
+		dxRenderer.SetJointBuffer(reinterpret_cast<DX12JointBuffer*>(jointBuffer.GetAPIObject()));
 	}
 
 	const triIndex_t* test = (triIndex_t*)indexOffset;
