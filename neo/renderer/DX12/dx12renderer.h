@@ -10,6 +10,8 @@
 #include <dxcapi.h>
 #include <DirectXMath.h>
 
+#include "./dx12_RootSignature.h"
+
 // Will be automatically enabled with preprocessor symbols: USE_PIX, DBG, _DEBUG, PROFILE, or PROFILE_BUILD
 #include <pix3.h>
 
@@ -29,8 +31,8 @@
 // TODO: We will separate the CBV and materials into two separate heap objects. This will allow us to define objects positional properties differently from the material properties.
 #define TEXTURE_REGISTER_COUNT 5
 #define MAX_DESCRIPTOR_COUNT 6 // 1 CBV and 5 Shader Resource View
-#define MAX_HEAP_OBJECT_COUNT 3000
-#define MAX_JOINT_HEAP_OBJECT_COUNT 256
+#define MAX_OBJECT_COUNT 3000
+#define MAX_HEAP_INDEX_COUNT 65536
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -68,12 +70,6 @@ struct DX12TextureBuffer
 	D3D12_SHADER_RESOURCE_VIEW_DESC textureView;
 	D3D12_RESOURCE_STATES usageState;
 	const idStr* name;
-};
-
-struct DX12JointBuffer
-{
-	ComPtr<ID3D12Resource> jointBuffer;
-	D3D12_CONSTANT_BUFFER_VIEW_DESC jointBufferView;
 };
 
 // TODO: Start setting frame data to it's own object to make it easier to manage.
@@ -126,7 +122,7 @@ public:
 
 	DX12JointBuffer* AllocJointBuffer(DX12JointBuffer* buffer, UINT numBytes);
 	void FreeJointBuffer(DX12JointBuffer* buffer);
-	void SetJointBuffer(DX12JointBuffer* buffer);
+	void SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset);
 
 	// Textures
 	void SetActiveTextureRegister(UINT8 index);
@@ -187,14 +183,11 @@ private:
 	ComPtr<ID3D12Resource> m_cbvUploadHeap[FrameCount];
 	UINT m_cbvHeapIncrementor;
 	UINT m_cbvHeapIndex;
+	UINT m_objectIndex;
 	XMFLOAT4 m_constantBuffer[53];
 	UINT8* m_constantBufferGPUAddress[FrameCount];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;
-
-	// Joint CBV Buffer
-	ComPtr<ID3D12DescriptorHeap> m_jointHeap[FrameCount];
-	UINT m_jointHeapIndex;
 
 	// Synchronization
 	UINT m_frameIndex;

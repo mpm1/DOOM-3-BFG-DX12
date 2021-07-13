@@ -272,6 +272,7 @@
     <ClInclude Include="renderer\Color\ColorSpace.h" />
     <ClInclude Include="renderer\DX12\d3dx12.h" />
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
+    <ClInclude Include="renderer\DX12\dx12_RootSignature.h" />
     <ClInclude Include="renderer\DXT\DXTCodec.h" />
     <ClInclude Include="renderer\DXT\DXTCodec_local.h" />
     <ClInclude Include="renderer\Font.h" />
@@ -500,6 +501,7 @@
     <ClCompile Include="renderer\DX12\dx12_image.cpp" />
     <ClCompile Include="renderer\DX12\dx12_ImageLoad.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RenderProgs.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_RootSignature.cpp" />
     <ClCompile Include="renderer\DXT\DXTDecoder.cpp" />
     <ClCompile Include="renderer\DXT\DXTEncoder.cpp" />
     <ClCompile Include="renderer\DXT\DXTEncoder_SSE2.cpp" />
@@ -1076,7 +1078,7 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Retail|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Retail|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
@@ -1103,7 +1105,7 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">true</ExcludedFromBuild>
-      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Retail|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Retail|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>

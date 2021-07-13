@@ -552,6 +552,9 @@
     <ClInclude Include="renderer\GLFunction.h">
       <Filter>Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_RootSignature.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cm\CollisionModel_contacts.cpp">
@@ -1173,6 +1176,9 @@
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_RenderTools.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_RootSignature.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
   </ItemGroup>

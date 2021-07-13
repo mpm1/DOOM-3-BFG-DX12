@@ -2465,7 +2465,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf) {
 		}
 		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
 
-		dxRenderer.SetJointBuffer(reinterpret_cast<DX12JointBuffer*>(jointBuffer.GetAPIObject()));
+		dxRenderer.SetJointBuffer(reinterpret_cast<DX12JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset());
 	}
 
 	const triIndex_t* test = (triIndex_t*)indexOffset;
