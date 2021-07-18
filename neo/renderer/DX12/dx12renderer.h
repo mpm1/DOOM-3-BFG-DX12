@@ -1,24 +1,11 @@
 #ifndef __DX12_RENDERER_H__
 #define __DX12_RENDERER_H__
 
-#include <wrl.h>
-#include <initguid.h>
-#include "./d3dx12.h"
-#include <dxgi1_6.h>
-#include <DirectXMath.h>
-#include <debugapi.h>
-#include <dxcapi.h>
-#include <DirectXMath.h>
-
+#include "./dx12_global.h"
 #include "./dx12_RootSignature.h"
 
 // Will be automatically enabled with preprocessor symbols: USE_PIX, DBG, _DEBUG, PROFILE, or PROFILE_BUILD
 #include <pix3.h>
-
-#pragma comment (lib, "dxguid.lib")
-#pragma comment (lib, "d3d12.lib")
-#pragma comment (lib, "dxgi.lib")
-#pragma comment (lib, "dxcompiler.lib")
 
 // Use D3D clip space.
 #define CLIP_SPACE_D3D
@@ -28,49 +15,8 @@
 
 #define COMMAND_LIST_COUNT 5
 
-// TODO: We will separate the CBV and materials into two separate heap objects. This will allow us to define objects positional properties differently from the material properties.
-#define TEXTURE_REGISTER_COUNT 5
-#define MAX_DESCRIPTOR_COUNT 6 // 1 CBV and 5 Shader Resource View
-#define MAX_OBJECT_COUNT 3000
-#define MAX_HEAP_INDEX_COUNT 65536
-
 using namespace DirectX;
 using namespace Microsoft::WRL;
-
-const UINT FrameCount = 2;
-
-struct Vertex
-{
-	XMFLOAT4 position;
-	XMFLOAT4 colour;
-};
-
-struct DX12VertexBuffer
-{
-	ComPtr<ID3D12Resource> vertexBuffer;
-	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-};
-
-struct DX12IndexBuffer
-{
-	ComPtr<ID3D12Resource> indexBuffer;
-	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	UINT indexCount;
-};
-
-struct DX12CompiledShader
-{
-	byte* data;
-	size_t size;
-};
-
-struct DX12TextureBuffer
-{
-	ComPtr<ID3D12Resource> textureBuffer;
-	D3D12_SHADER_RESOURCE_VIEW_DESC textureView;
-	D3D12_RESOURCE_STATES usageState;
-	const idStr* name;
-};
 
 // TODO: Start setting frame data to it's own object to make it easier to manage.
 struct DX12FrameDataBuffer
@@ -166,26 +112,22 @@ private:
 	ComPtr<IDXGISwapChain3> m_swapChain;
 	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
 	UINT m_rtvDescriptorSize;
-	ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
-	ComPtr<ID3D12RootSignature> m_rootsSignature;
+	ComPtr<ID3D12Resource> m_renderTargets[DX12_FRAME_COUNT];
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
 	ComPtr<ID3D12Resource> m_depthBuffer;
+	DX12RootSignature* m_rootSignature;
 
 	// Command List
 	ComPtr<ID3D12CommandQueue> m_directCommandQueue;
 	ComPtr<ID3D12CommandQueue> m_copyCommandQueue;
-	ComPtr<ID3D12CommandAllocator> m_directCommandAllocator[FrameCount];
+	ComPtr<ID3D12CommandAllocator> m_directCommandAllocator[DX12_FRAME_COUNT];
 	ComPtr<ID3D12CommandAllocator> m_copyCommandAllocator;
 	ComPtr<ID3D12GraphicsCommandList> m_commandList;
 	ComPtr<ID3D12GraphicsCommandList> m_copyCommandList;
 
-	ComPtr<ID3D12DescriptorHeap> m_cbvHeap[FrameCount];
-	ComPtr<ID3D12Resource> m_cbvUploadHeap[FrameCount];
-	UINT m_cbvHeapIncrementor;
-	UINT m_cbvHeapIndex;
 	UINT m_objectIndex;
 	XMFLOAT4 m_constantBuffer[53];
-	UINT8* m_constantBufferGPUAddress[FrameCount];
+	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;
 
@@ -206,9 +148,6 @@ private:
 	// Device removal
 	HANDLE m_deviceRemovedHandle;
 	HANDLE m_removeDeviceEvent;
-
-	void ThrowIfFailed(HRESULT hr);
-	bool WarnIfFailed(HRESULT hr);
 
 	void LoadPipeline(HWND hWnd);
 	void LoadAssets();

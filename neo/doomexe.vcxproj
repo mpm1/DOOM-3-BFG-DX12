@@ -272,6 +272,7 @@
     <ClInclude Include="renderer\Color\ColorSpace.h" />
     <ClInclude Include="renderer\DX12\d3dx12.h" />
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
+    <ClInclude Include="renderer\DX12\dx12_global.h" />
     <ClInclude Include="renderer\DX12\dx12_RootSignature.h" />
     <ClInclude Include="renderer\DXT\DXTCodec.h" />
     <ClInclude Include="renderer\DXT\DXTCodec_local.h" />
@@ -488,6 +489,7 @@
     <ClCompile Include="renderer\DX12\dx12renderer.cpp" />
     <ClCompile Include="renderer\DX12\dx12_backend.cpp" />
     <ClCompile Include="renderer\DX12\dx12_BufferObject.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_global.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RenderTools.cpp" />
     <ClCompile Include="renderer\DX12\dx12_GLFunctions.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
@@ -892,10 +894,30 @@
     <None Include="..\base\renderprogs\environment_skinned.vertex" />
     <None Include="..\base\renderprogs\enviroSuit.pixel" />
     <None Include="..\base\renderprogs\enviroSuit.vertex" />
-    <None Include="..\base\renderprogs\fog.pixel" />
-    <None Include="..\base\renderprogs\fog.vertex" />
-    <None Include="..\base\renderprogs\fog_skinned.pixel" />
-    <None Include="..\base\renderprogs\fog_skinned.vertex" />
+    <FxCompile Include="..\base\renderprogs\fog.pixel">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.1</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog.vertex">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.1</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog_skinned.pixel">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.1</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog_skinned.vertex">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.1</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
+    </FxCompile>
     <None Include="..\base\renderprogs\fxaa.pixel" />
     <None Include="..\base\renderprogs\fxaa.vertex" />
     <None Include="..\base\renderprogs\global.inc" />
@@ -1152,8 +1174,18 @@
     <None Include="..\base\renderprogs\simpleshade.pixel" />
     <None Include="..\base\renderprogs\simpleshade.vertex" />
     <None Include="..\base\renderprogs\skinning.inc" />
-    <None Include="..\base\renderprogs\skybox.pixel" />
-    <None Include="..\base\renderprogs\skybox.vertex" />
+    <FxCompile Include="..\base\renderprogs\skybox.pixel">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.1</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\skybox.vertex">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.1</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
+    </FxCompile>
     <None Include="..\base\renderprogs\stereoDeGhost.pixel" />
     <None Include="..\base\renderprogs\stereoDeGhost.vertex" />
     <None Include="..\base\renderprogs\stereoInterlace.pixel" />
@@ -1244,8 +1276,18 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
     </FxCompile>
-    <None Include="..\base\renderprogs\texture_color_skinned.pixel" />
-    <None Include="..\base\renderprogs\texture_color_skinned.vertex" />
+    <FxCompile Include="..\base\renderprogs\texture_color_skinned.pixel">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.1</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\texture_color_skinned.vertex">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">5.1</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
+    </FxCompile>
     <None Include="..\base\renderprogs\texture_color_texgen.pixel" />
     <None Include="..\base\renderprogs\texture_color_texgen.vertex" />
     <None Include="..\base\renderprogs\wobblesky.pixel" />

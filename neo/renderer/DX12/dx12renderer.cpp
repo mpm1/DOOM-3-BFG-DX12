@@ -7,11 +7,6 @@
 DX12Renderer dxRenderer;
 extern idCommon* common;
 
-void FailMessage(LPCSTR message) {
-	OutputDebugString(message);
-	common->Error(message);
-}
-
 void __stdcall OnDeviceRemoved(PVOID context, BOOLEAN) {
 	ID3D12Device* removedDevice = (ID3D12Device*)context;
 	HRESULT removedReason = removedDevice->GetDeviceRemovedReason();
@@ -24,7 +19,7 @@ void __stdcall OnDeviceRemoved(PVOID context, BOOLEAN) {
 	pDred->GetPageFaultAllocationOutput1(&DredPageFaultOutput); //TODO: Validate result
 
 	_com_error err(removedReason);
-	FailMessage(err.ErrorMessage());
+	DX12FailMessage(err.ErrorMessage());
 }
 
 void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter) {
@@ -56,38 +51,13 @@ DX12Renderer::DX12Renderer() :
 	m_rtvDescriptorSize(0),
 	m_width(2),
 	m_height(2),
-	m_fullScreen(0)
+	m_fullScreen(0),
+	m_rootSignature(nullptr)
 {
 }
 
 DX12Renderer::~DX12Renderer() {
 	OnDestroy();
-}
-
-void DX12Renderer::ThrowIfFailed(HRESULT hr)
-{
-	if (FAILED(hr))
-	{
-		_com_error err(hr);
-
-		// Set a breakpoint on this line to catch DirectX API errors
-		FailMessage(err.ErrorMessage());
-
-		throw std::exception(err.ErrorMessage());
-	}
-}
-
-bool DX12Renderer::WarnIfFailed(HRESULT hr)
-{
-	if (FAILED(hr))
-	{
-		_com_error err(hr);
-		// Set a breakpoint on this line to catch DirectX API errors
-		common->Warning(err.ErrorMessage());
-		return false;
-	}
-
-	return true;
 }
 
 void DX12Renderer::Init(HWND hWnd) {
@@ -115,14 +85,14 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 #endif
 
 	ComPtr<IDXGIFactory4> factory;
-	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
+	DX12ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
 
 	// TODO: Try to enable a WARP adapter
 	{
 		ComPtr<IDXGIAdapter1> hardwareAdapter;
 		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
 
-		ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&m_device)));
+		DX12ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&m_device)));
 	}
 
 	// Describe and create the command queue
@@ -130,34 +100,18 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
-	ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_directCommandQueue)));
+	DX12ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_directCommandQueue)));
 
 	// Describe and create the copy command queue
 	D3D12_COMMAND_QUEUE_DESC copyQueueDesc = {};
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
 
-	ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_copyCommandQueue)));
-
-	// Create Descriptor Heaps
-	{
-		// Describe and create the constant buffer view (CBV) descriptor for each frame
-		for (UINT frameIndex = 0; frameIndex < FrameCount; ++frameIndex) {
-			// Create the CBV Heap
-			D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-			cbvHeapDesc.NumDescriptors = MAX_HEAP_INDEX_COUNT; 
-			cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-			cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-			ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap[frameIndex])));
-		}
-
-		m_cbvHeapIncrementor = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-
-	}
+	DX12ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_copyCommandQueue)));
 
 	// Describe and create the swap chain
 	DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
-	swapChainDesc.BufferCount = FrameCount;
+	swapChainDesc.BufferCount = DX12_FRAME_COUNT;
 	swapChainDesc.BufferDesc.Width = m_width;
 	swapChainDesc.BufferDesc.Height = m_height;
 	swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // TODO: Look into changing this for HDR
@@ -168,12 +122,12 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	swapChainDesc.Windowed = TRUE; //TODO: Change to option
 
 	ComPtr<IDXGISwapChain> swapChain;
-	ThrowIfFailed(factory->CreateSwapChain(m_directCommandQueue.Get(), &swapChainDesc, &swapChain));
+	DX12ThrowIfFailed(factory->CreateSwapChain(m_directCommandQueue.Get(), &swapChainDesc, &swapChain));
 
-	ThrowIfFailed(swapChain.As(&m_swapChain));
+	DX12ThrowIfFailed(swapChain.As(&m_swapChain));
 
 	// Remove ALT+ENTER functionality.
-	ThrowIfFailed(factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
+	DX12ThrowIfFailed(factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
@@ -182,52 +136,25 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	}
 
 	// Create Frame Resources
-	{
-		// Create the buffer size.
-		constexpr UINT entrySize = (sizeof(m_constantBuffer) + 255) & ~255; // Size is required to be 256 byte aligned
-		constexpr UINT resourceAlignment = (1024 * 64) - 1; // Resource must be a multible of 64KB
-		constexpr UINT heapSize = ((entrySize * MAX_OBJECT_COUNT) + resourceAlignment) & ~resourceAlignment;
+	ZeroMemory(&this->m_constantBuffer, sizeof(m_constantBuffer));
 
-		WCHAR heapName[30];
-
-		for (UINT frameIndex = 0; frameIndex < FrameCount; ++frameIndex) {
-			// Create the Constant buffer heap for each frame
-			ThrowIfFailed(m_device->CreateCommittedResource(
-				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-				D3D12_HEAP_FLAG_NONE,
-				&CD3DX12_RESOURCE_DESC::Buffer(heapSize), 
-				D3D12_RESOURCE_STATE_GENERIC_READ,
-				nullptr, // Currently not clear value needed
-				IID_PPV_ARGS(&m_cbvUploadHeap[frameIndex])
-			));
-
-			wsprintfW(heapName, L"CBV Upload Heap %d", frameIndex);
-			m_cbvUploadHeap[frameIndex]->SetName(heapName);
-
-			wsprintfW(heapName, L"CBV Heap %d", frameIndex);
-			m_cbvHeap[frameIndex]->SetName(heapName);
-
-			ZeroMemory(&m_constantBuffer, sizeof(m_constantBuffer));
-		}
-	}
-
-	// TODO: Turn into a loop for multiple frames
-	for (int frame = 0; frame < FrameCount; ++frame)  {
+	// Create the command allocators
+	for (int frame = 0; frame < DX12_FRAME_COUNT; ++frame)  {
 		WCHAR nameDest[25];
 		wsprintfW(nameDest, L"Main Command Allocator %d", frame);
 		
-		ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_directCommandAllocator[frame])));
+		DX12ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_directCommandAllocator[frame])));
 		m_directCommandAllocator[frame]->SetName(nameDest);
 	}
 
-	ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&m_copyCommandAllocator)));
+	DX12ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&m_copyCommandAllocator)));
 	m_copyCommandAllocator->SetName(L"Main Command Allocator");
 }
 
 bool DX12Renderer::CreateBackBuffer() {
 	// Describe and create a render target view (RTV) descriptor
 	D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-	rtvHeapDesc.NumDescriptors = FrameCount;
+	rtvHeapDesc.NumDescriptors = DX12_FRAME_COUNT;
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	if (FAILED(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)))) {
@@ -247,7 +174,7 @@ bool DX12Renderer::CreateBackBuffer() {
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
-	for (UINT frameIndex = 0; frameIndex < FrameCount; ++frameIndex) {
+	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
 		// Create RTV for each frame
 		if (FAILED(m_swapChain->GetBuffer(frameIndex, IID_PPV_ARGS(&m_renderTargets[frameIndex])))) {
 			return false;
@@ -299,9 +226,9 @@ void DX12Renderer::LoadPipelineState(D3D12_GRAPHICS_PIPELINE_STATE_DESC* psoDesc
 		featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
 	}
 
-	psoDesc->pRootSignature = m_rootsSignature.Get();
+	psoDesc->pRootSignature = m_rootSignature->GetRootSignature();
 
-	ThrowIfFailed(m_device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));	
+	DX12ThrowIfFailed(m_device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));	
 }
 
 void DX12Renderer::SetActivePipelineState(ID3D12PipelineState* pPipelineState) {
@@ -321,23 +248,23 @@ void DX12Renderer::Uniform4f(UINT index, const float* uniform) {
 void DX12Renderer::LoadAssets() {
 	// Create the synchronization objects
 	{
-		ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
+		DX12ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
 		m_fenceValue = 1;
 
-		ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_copyFence)));
+		DX12ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_copyFence)));
 		m_copyFenceValue = 1;
 
 		// Create an event handle to use for the frame synchronization
 		m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_fenceEvent == nullptr) {
-			ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+			DX12ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
 		}
 
 		// Attach event for device removal
 #if defined(_DEBUG)
 		m_removeDeviceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_removeDeviceEvent == nullptr) {
-			ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+			DX12ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
 		}
 		m_fence->SetEventOnCompletion(UINT64_MAX, m_removeDeviceEvent); // This is done because all fence values are set the to  UINT64_MAX value when the device is removed.
 
@@ -357,12 +284,12 @@ void DX12Renderer::LoadAssets() {
 	}
 
 	// Create Empty Root Signature
-	ThrowIfFailed(DX12CreateRootSignature(m_device.Get(), IID_PPV_ARGS(&m_rootsSignature)));
+	m_rootSignature = new DX12RootSignature(m_device.Get(), sizeof(m_constantBuffer));
 
 	// Create the Command Lists
 	{
-		ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_directCommandAllocator[m_frameIndex].Get(), NULL, IID_PPV_ARGS(&m_commandList)));
-		ThrowIfFailed(m_commandList->Close());
+		DX12ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_directCommandAllocator[m_frameIndex].Get(), NULL, IID_PPV_ARGS(&m_commandList)));
+		DX12ThrowIfFailed(m_commandList->Close());
 
 		WCHAR nameDest[16];
 		wsprintfW(nameDest, L"Command List %d", 0);
@@ -372,8 +299,8 @@ void DX12Renderer::LoadAssets() {
 
 	// Create the Copy Command Lists
 	{
-		ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, m_copyCommandAllocator.Get(), NULL, IID_PPV_ARGS(&m_copyCommandList)));
-		ThrowIfFailed(m_copyCommandList->Close());
+		DX12ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, m_copyCommandAllocator.Get(), NULL, IID_PPV_ARGS(&m_copyCommandList)));
+		DX12ThrowIfFailed(m_copyCommandList->Close());
 
 		WCHAR nameDest[20];
 		wsprintfW(nameDest, L"Copy Command List %d", 0);
@@ -390,7 +317,7 @@ void DX12Renderer::LoadAssets() {
 		const UINT bBytesPerRow = bWidth * 4;
 		const UINT64 textureUploadBufferSize = (((bBytesPerRow + 255) & ~256) * (bHeight - 1)) + bBytesPerRow;
 
-		ThrowIfFailed(m_device->CreateCommittedResource(
+		DX12ThrowIfFailed(m_device->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 			D3D12_HEAP_FLAG_NONE,
 			&CD3DX12_RESOURCE_DESC::Buffer(textureUploadBufferSize),
@@ -405,7 +332,7 @@ void DX12Renderer::LoadAssets() {
 }
 
 DX12VertexBuffer* DX12Renderer::AllocVertexBuffer(DX12VertexBuffer* buffer, UINT numBytes) {
-	ThrowIfFailed(m_device->CreateCommittedResource(
+	DX12ThrowIfFailed(m_device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(numBytes),
@@ -426,7 +353,7 @@ void DX12Renderer::FreeVertexBuffer(DX12VertexBuffer* buffer) {
 }
 
 DX12IndexBuffer* DX12Renderer::AllocIndexBuffer(DX12IndexBuffer* buffer, UINT numBytes) {
-	ThrowIfFailed(m_device->CreateCommittedResource(
+	DX12ThrowIfFailed(m_device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(numBytes),
@@ -447,12 +374,23 @@ void DX12Renderer::FreeIndexBuffer(DX12IndexBuffer* buffer) {
 }
 
 DX12JointBuffer* DX12Renderer::AllocJointBuffer(DX12JointBuffer* buffer, UINT numBytes) {
-	ThrowIfFailed(DX12AllocJointBuffer(
-		m_device.Get(),
-		buffer,
-		numBytes,
-		L"Joint Buffer"
+	// Create the buffer size.
+	constexpr UINT resourceAlignment = (1024 * 64) - 1; // Resource must be a multible of 64KB
+	constexpr UINT entrySize = ((sizeof(float) * 4 * 404) + 255) & ~255; // (Size of float4 * maxFloatAllowed) that's 256 byts aligned.
+	const UINT heapSize = (numBytes + resourceAlignment) & ~resourceAlignment;
+
+	// TODO: SET THIS FOR THE UPLOAD HEAP... THEN DO A SEPARATE JOINT HEAP JUST LIKE CBV
+	DX12ThrowIfFailed(m_device->CreateCommittedResource(
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+		D3D12_HEAP_FLAG_NONE,
+		&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
+		D3D12_RESOURCE_STATE_GENERIC_READ,
+		nullptr, // Currently not clear value needed
+		IID_PPV_ARGS(&buffer->jointBuffer)
 	));
+
+	buffer->jointBuffer->SetName(L"Joint Upload Heap");
+	buffer->entrySizeInBytes = entrySize;
 
 	return buffer;
 }
@@ -462,23 +400,11 @@ void DX12Renderer::FreeJointBuffer(DX12JointBuffer* buffer) {
 }
 
 void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset) {
-	assert(m_cbvHeapIndex < MAX_HEAP_INDEX_COUNT);
-
-	DX12SetJointDescriptorTable(
-		m_device.Get(),
-		m_commandList.Get(),
-		m_cbvHeap[m_frameIndex].Get(),
-		buffer,
-		jointOffset,
-		m_cbvHeapIndex,
-		m_cbvHeapIncrementor
-	);
-
-	++m_cbvHeapIndex;
+	m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, m_frameIndex, m_commandList.Get());
 }
 
 void DX12Renderer::SignalNextFrame() {
-	ThrowIfFailed(m_directCommandQueue->Signal(m_fence.Get(), m_fenceValue));
+	DX12ThrowIfFailed(m_directCommandQueue->Signal(m_fence.Get(), m_fenceValue));
 }
 
 void DX12Renderer::WaitForPreviousFrame() {
@@ -486,19 +412,19 @@ void DX12Renderer::WaitForPreviousFrame() {
 
 	// Wait for the previous frame to finish
 	if (m_fence->GetCompletedValue() < fence) {
-		ThrowIfFailed(m_fence->SetEventOnCompletion(fence, m_fenceEvent));
+		DX12ThrowIfFailed(m_fence->SetEventOnCompletion(fence, m_fenceEvent));
 		WaitForSingleObject(m_fenceEvent, INFINITE);
 	}
 }
 
 void DX12Renderer::WaitForCopyToComplete() {
 	const UINT64 fence = m_copyFenceValue;
-	ThrowIfFailed(m_copyCommandQueue->Signal(m_copyFence.Get(), fence));
+	DX12ThrowIfFailed(m_copyCommandQueue->Signal(m_copyFence.Get(), fence));
 	++m_copyFenceValue;
 
 	// Wait for the frame to finish
 	if (m_copyFence->GetCompletedValue() < fence) {
-		ThrowIfFailed(m_copyFence->SetEventOnCompletion(fence, m_copyFenceEvent));
+		DX12ThrowIfFailed(m_copyFence->SetEventOnCompletion(fence, m_copyFenceEvent));
 		WaitForSingleObject(m_copyFenceEvent, INFINITE);
 	}
 }
@@ -508,8 +434,8 @@ void DX12Renderer::ResetCommandList(bool waitForBackBuffer) {
 		return;
 	}
 
-	ThrowIfFailed(m_commandList->Reset(m_directCommandAllocator[m_frameIndex].Get(), m_activePipelineState));
-	m_commandList->SetGraphicsRootSignature(m_rootsSignature.Get());
+	DX12ThrowIfFailed(m_commandList->Reset(m_directCommandAllocator[m_frameIndex].Get(), m_activePipelineState));
+	m_commandList->SetGraphicsRootSignature(m_rootSignature->GetRootSignature());
 
 	if (waitForBackBuffer) {
 		// Indicate that we will be rendering to the back buffer
@@ -527,7 +453,7 @@ void DX12Renderer::ResetCommandList(bool waitForBackBuffer) {
 
 	// Setup the initial heap location
 	ID3D12DescriptorHeap* descriptorHeaps[1] = { 
-		m_cbvHeap[m_frameIndex].Get(),
+		m_rootSignature->GetCBVHeap(m_frameIndex),
 	};	
 	m_commandList->SetDescriptorHeaps(1, descriptorHeaps);
 }
@@ -538,7 +464,7 @@ void DX12Renderer::ExecuteCommandList() {
 	}
 
 	//TODO: Implement version for multiple command lists
-	WarnIfFailed(m_commandList->Close());
+	DX12WarnIfFailed(m_commandList->Close());
 
 	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
 	m_directCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
@@ -554,10 +480,11 @@ void DX12Renderer::BeginDraw() {
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
-	m_cbvHeapIndex = 0;
+	m_rootSignature->BeginFrame(m_frameIndex);
+	
 	m_objectIndex = -1;
 	m_isDrawing = true;
-	ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
+	DX12ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
 
 	ResetCommandList(true);
 }
@@ -599,40 +526,13 @@ bool DX12Renderer::EndSurfaceSettings() {
 		return false;
 	}
 	
-	// Copy the CBV value to the upload heap
-	UINT8* buffer;
-	const UINT bufferSize = ((sizeof(m_constantBuffer) + 255) & ~255);
-	UINT offset = bufferSize  * m_objectIndex; // Each entry is 256 byte aligned.
-	CD3DX12_RANGE readRange(offset, bufferSize);
-
-	ThrowIfFailed(m_cbvUploadHeap[m_frameIndex]->Map(0, &readRange, reinterpret_cast<void**>(&buffer)));
-	memcpy(&buffer[offset], &m_constantBuffer, sizeof(m_constantBuffer));
-	m_cbvUploadHeap[m_frameIndex]->Unmap(0, &readRange);
-
-	// Create the constant buffer view for the object
-	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvHeap[m_frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
-
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-	cbvDesc.BufferLocation = m_cbvUploadHeap[m_frameIndex]->GetGPUVirtualAddress() + offset;
-	cbvDesc.SizeInBytes = bufferSize;
-	m_device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
-
-	// Define the Descriptor Table to use.
-	const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_cbvHeap[m_frameIndex]->GetGPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
-	m_commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
-	++m_cbvHeapIndex;
+	m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, m_frameIndex, m_commandList.Get());
 
 	// Copy the Textures
 	DX12TextureBuffer* currentTexture;
 	for (UINT index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
-		//UINT descriptorIndex = (m_cbvHeapIndex << MAX_DESCRIPTOR_TWO_POWER) + 1 + index; // (Descriptor Table Location) + (CBV Location) + (Texture Register Offset)
 		SetTexturePixelShaderState(currentTexture);
-
-		CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_cbvHeap[m_frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
-		m_device->CreateShaderResourceView(currentTexture->textureBuffer.Get(), &currentTexture->textureView, textureHandle);
-
-		++m_cbvHeapIndex;
-		//m_copyCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentTexture->textureBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
+		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, m_frameIndex, m_commandList.Get());
 	}
 
 	return true;
@@ -644,7 +544,7 @@ bool DX12Renderer::IsScissorWindowValid() {
 
 void DX12Renderer::PresentBackbuffer() {
 	// Present the frame
-	ThrowIfFailed(m_swapChain->Present(1, 0));
+	DX12ThrowIfFailed(m_swapChain->Present(1, 0));
 	
 	SignalNextFrame();
 	WaitForPreviousFrame();
@@ -699,6 +599,11 @@ void DX12Renderer::OnDestroy() {
 	WaitForPreviousFrame();
 
 	CloseHandle(m_fenceEvent);
+
+	if (m_rootSignature != nullptr) {
+		delete m_rootSignature;
+	}
+
 	m_initialized = false;
 }
 
@@ -734,11 +639,11 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			}
 		}
 
-		for (int frameIndex = 0; frameIndex < FrameCount; ++frameIndex) {
+		for (int frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
 			m_renderTargets[frameIndex].Reset();
 		}
 
-		if (FAILED(m_swapChain->ResizeBuffers(FrameCount, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, NULL))) {
+		if (FAILED(m_swapChain->ResizeBuffers(DX12_FRAME_COUNT, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, NULL))) {
 			return false;
 		}
 
@@ -829,7 +734,7 @@ void DX12Renderer::SetActiveTextureRegister(UINT8 index) {
 
 DX12TextureBuffer* DX12Renderer::AllocTextureBuffer(DX12TextureBuffer* buffer, D3D12_RESOURCE_DESC* textureDesc, const idStr* name) {
 	// Create the buffer object.
-	if (!WarnIfFailed(m_device->CreateCommittedResource(
+	if (!DX12WarnIfFailed(m_device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		textureDesc,

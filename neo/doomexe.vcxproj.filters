@@ -555,6 +555,9 @@
     <ClInclude Include="renderer\DX12\dx12_RootSignature.h">
       <Filter>Renderer\DX12</Filter>
     </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_global.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cm\CollisionModel_contacts.cpp">
@@ -1181,6 +1184,9 @@
     <ClCompile Include="renderer\DX12\dx12_RootSignature.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_global.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="sys\win32\rc\res\doom.ico">
@@ -1261,18 +1267,6 @@
     <None Include="..\base\renderprogs\enviroSuit.vertex">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="..\base\renderprogs\fog.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\fog.vertex">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\fog_skinned.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\fog_skinned.vertex">
-      <Filter>Shaders</Filter>
-    </None>
     <None Include="..\base\renderprogs\fxaa.pixel">
       <Filter>Shaders</Filter>
     </None>
@@ -1348,12 +1342,6 @@
     <None Include="..\base\renderprogs\skinning.inc">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="..\base\renderprogs\skybox.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\skybox.vertex">
-      <Filter>Shaders</Filter>
-    </None>
     <None Include="..\base\renderprogs\stereoDeGhost.pixel">
       <Filter>Shaders</Filter>
     </None>
@@ -1370,12 +1358,6 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\base\renderprogs\stereoWarp.vertex">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\texture_color_skinned.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\texture_color_skinned.vertex">
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\base\renderprogs\texture_color_texgen.pixel">
@@ -1465,6 +1447,30 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\depth_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\texture_color_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\texture_color_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\skybox.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\skybox.pixel">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

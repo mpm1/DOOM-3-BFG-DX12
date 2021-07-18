@@ -28,18 +28,18 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "global.inc"
 
-uniform samplerCUBE samp0 : register(s0);
+uniform TextureCube<float4> samp0 : register(t0);
 
 struct PS_IN {
-	float4 position : VPOS;
+	float4 position : SV_POSITION;
 	float3 texcoord0 : TEXCOORD0_centroid;
 	float4 color : COLOR0;
 };
 
 struct PS_OUT {
-	float4 color : COLOR;
+	float4 color : SV_TARGET;
 };
 
 void main( PS_IN fragment, out PS_OUT result ) {
-	result.color = texCUBE( samp0, fragment.texcoord0 ) * fragment.color;
+	result.color = samp0.Sample( baseSampler, fragment.texcoord0.xyz ) * fragment.color;
 }
