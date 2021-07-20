@@ -2,7 +2,14 @@
 
 #include "../../idlib/precompiled.h"
 
+#include "../tr_local.h"
+
 #include <comdef.h>
+
+idCVar r_useRaytracedShadows("r_useRaytracedShadows", "1", CVAR_RENDERER | CVAR_BOOL, "use raytracing for shadows instead of stencil or baked shadows.");
+//TODO: Implement the other raytraced effects.
+idCVar r_useRaytracedReflections("r_useRaytracedReflections", "0", CVAR_RENDERER | CVAR_BOOL, "use raytracing for reflections instead of environment maps.");
+idCVar r_useGlobalIllumination("r_useGlobalIllumination", "0", CVAR_RENDERER | CVAR_BOOL, "use raytraced global illumination for ambient lighting.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
@@ -52,7 +59,8 @@ DX12Renderer::DX12Renderer() :
 	m_width(2),
 	m_height(2),
 	m_fullScreen(0),
-	m_rootSignature(nullptr)
+	m_rootSignature(nullptr),
+	m_raytracing(nullptr)
 {
 }
 
@@ -64,11 +72,16 @@ void DX12Renderer::Init(HWND hWnd) {
 	LoadPipeline(hWnd);
 	LoadAssets();
 
+	if (r_useRaytracedShadows.GetBool() || r_useRaytracedReflections.GetBool() || r_useGlobalIllumination.GetBool()) {
+		m_raytracing = new DX12Raytracing(m_device.Get());
+	}
+
 	m_initialized = true;
 }
 
 void DX12Renderer::LoadPipeline(HWND hWnd) {
 #if defined(_DEBUG)
+#if !defined(USE_PIX)
 	{
 		ComPtr<ID3D12Debug> debugController;
 		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
@@ -82,6 +95,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 			pDredSettings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
 		}*/
 	}
+#endif
 #endif
 
 	ComPtr<IDXGIFactory4> factory;
@@ -399,8 +413,13 @@ void DX12Renderer::FreeJointBuffer(DX12JointBuffer* buffer) {
 	buffer->jointBuffer->Release();
 }
 
-void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset) {
-	m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, m_frameIndex, m_commandList.Get());
+void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset, DX12Object* storedObject) {
+	D3D12_CONSTANT_BUFFER_VIEW_DESC descriptor = m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, m_frameIndex, m_commandList.Get());
+
+	if (storedObject != nullptr) {
+		storedObject->jointView = descriptor;
+		storedObject->includeJointView = true;
+	}
 }
 
 void DX12Renderer::SignalNextFrame() {
@@ -482,7 +501,8 @@ void DX12Renderer::BeginDraw() {
 
 	m_rootSignature->BeginFrame(m_frameIndex);
 	
-	m_objectIndex = -1;
+	m_objectCount = 0;
+	m_objectIndex = 0;
 	m_isDrawing = true;
 	DX12ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
 
@@ -515,7 +535,7 @@ UINT DX12Renderer::StartSurfaceSettings() {
 	return m_objectIndex;
 }
 
-bool DX12Renderer::EndSurfaceSettings() {
+bool DX12Renderer::EndSurfaceSettings(DX12Object* storedObject) {
 	// TODO: Define separate CBV for location data and Textures
 	// TODO: add a check if we need to update tehCBV and Texture data.
 
@@ -526,13 +546,24 @@ bool DX12Renderer::EndSurfaceSettings() {
 		return false;
 	}
 	
-	m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, m_frameIndex, m_commandList.Get());
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, m_frameIndex, m_commandList.Get());
 
 	// Copy the Textures
 	DX12TextureBuffer* currentTexture;
-	for (UINT index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
+	UINT index;
+	for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
 		SetTexturePixelShaderState(currentTexture);
 		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, m_frameIndex, m_commandList.Get());
+	}
+
+	if (storedObject != nullptr) {
+		storedObject->pipelineState = m_activePipelineState;
+		storedObject->cbvView = cbvView;
+		storedObject->textureCount = index;
+		
+		for (index = 0; index < storedObject->textureCount; ++index) {
+			storedObject->textures[index] = m_activeTextures[index];
+		}
 	}
 
 	return true;
@@ -600,8 +631,14 @@ void DX12Renderer::OnDestroy() {
 
 	CloseHandle(m_fenceEvent);
 
+	if (m_raytracing != nullptr) {
+		delete m_raytracing;
+		m_raytracing = nullptr;
+	}
+
 	if (m_rootSignature != nullptr) {
 		delete m_rootSignature;
+		m_rootSignature = nullptr;
 	}
 
 	m_initialized = false;
@@ -844,4 +881,18 @@ void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
 	m_copyCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
 	WaitForCopyToComplete();
+}
+
+DX12Object* DX12Renderer::AddToObjectList() {
+	assert(m_objectCount < MAX_OBJECT_COUNT, "Tried to allocate an object above the maximum object allocation amount.");
+
+	DX12Object* object = &m_objects[m_objectCount];
+	object->index = m_objectCount;
+	object->pipelineState = nullptr;
+	object->includeJointView = false;
+	object->textureCount = 0;
+
+
+	++m_objectCount;
+	return object;
 }

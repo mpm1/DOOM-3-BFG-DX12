@@ -99,7 +99,7 @@ void DX12RootSignature::BeginFrame(UINT frameIndex)
 	m_cbvHeapIndex = 0;
 }
 
-void DX12RootSignature::SetJointDescriptorTable(DX12JointBuffer* buffer, UINT jointOffset, UINT frameIndex, ID3D12GraphicsCommandList* commandList) {
+D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12JointBuffer* buffer, UINT jointOffset, UINT frameIndex, ID3D12GraphicsCommandList* commandList) {
 	assert(m_cbvHeapIndex < MAX_HEAP_INDEX_COUNT);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvHeap[frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
@@ -113,9 +113,10 @@ void DX12RootSignature::SetJointDescriptorTable(DX12JointBuffer* buffer, UINT jo
 	commandList->SetGraphicsRootDescriptorTable(1, tableHandle);
 
 	++m_cbvHeapIndex;
+	return cbvDesc;
 }
 
-void DX12RootSignature::SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* constantBuffer, UINT objectIndex, UINT frameIndex, ID3D12GraphicsCommandList* commandList) {
+D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* constantBuffer, UINT objectIndex, UINT frameIndex, ID3D12GraphicsCommandList* commandList) {
 	// Copy the CBV value to the upload heap
 	UINT8* buffer;
 	const UINT bufferSize = ((constantBufferSize + 255) & ~255);
@@ -138,12 +139,16 @@ void DX12RootSignature::SetCBVDescriptorTable(const size_t constantBufferSize, X
 	const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_cbvHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
 	commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
 	++m_cbvHeapIndex;
+
+	return cbvDesc;
 }
 
-void DX12RootSignature::SetTextureRegisterIndex(UINT textureIndex, DX12TextureBuffer* texture, UINT frameIndex, ID3D12GraphicsCommandList* commandList) {
+DX12TextureBuffer* DX12RootSignature::SetTextureRegisterIndex(UINT textureIndex, DX12TextureBuffer* texture, UINT frameIndex, ID3D12GraphicsCommandList* commandList) {
 	CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_cbvHeap[frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
 	m_device->CreateShaderResourceView(texture->textureBuffer.Get(), &texture->textureView, textureHandle);
 
 	++m_cbvHeapIndex;
 	//m_copyCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentTexture->textureBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
+
+	return texture;
 }

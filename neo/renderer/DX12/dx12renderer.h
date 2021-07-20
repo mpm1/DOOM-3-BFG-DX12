@@ -3,6 +3,7 @@
 
 #include "./dx12_global.h"
 #include "./dx12_RootSignature.h"
+#include "./dx12_raytracing.h"
 
 // Will be automatically enabled with preprocessor symbols: USE_PIX, DBG, _DEBUG, PROFILE, or PROFILE_BUILD
 #include <pix3.h>
@@ -68,7 +69,7 @@ public:
 
 	DX12JointBuffer* AllocJointBuffer(DX12JointBuffer* buffer, UINT numBytes);
 	void FreeJointBuffer(DX12JointBuffer* buffer);
-	void SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset);
+	void SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset, DX12Object* storedObject);
 
 	// Textures
 	void SetActiveTextureRegister(UINT8 index);
@@ -90,8 +91,11 @@ public:
 	void ResetCommandList(bool waitForBackBuffer = false);
 	void ExecuteCommandList();
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
-	bool EndSurfaceSettings(); // Records the the surface entry into the heap.
+	bool EndSurfaceSettings(DX12Object* storedObject); // Records the the surface entry into the heap.
 	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+
+	//Object commands
+	DX12Object* AddToObjectList();
 
 private:
 	UINT m_width;
@@ -125,11 +129,14 @@ private:
 	ComPtr<ID3D12GraphicsCommandList> m_commandList;
 	ComPtr<ID3D12GraphicsCommandList> m_copyCommandList;
 
-	UINT m_objectIndex;
 	XMFLOAT4 m_constantBuffer[53];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;
+
+	UINT m_objectCount = 0;
+	UINT m_objectIndex = 0; //TODO: This will be removed once we put everything into the m_objects table.
+	DX12Object m_objects[MAX_OBJECT_COUNT];
 
 	// Synchronization
 	UINT m_frameIndex;
@@ -148,6 +155,9 @@ private:
 	// Device removal
 	HANDLE m_deviceRemovedHandle;
 	HANDLE m_removeDeviceEvent;
+
+	// Raytracing
+	DX12Raytracing* m_raytracing;
 
 	void LoadPipeline(HWND hWnd);
 	void LoadAssets();

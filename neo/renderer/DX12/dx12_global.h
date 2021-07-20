@@ -10,6 +10,10 @@
 #include <dxcapi.h>
 #include <DirectXMath.h>
 
+// Will be automatically enabled with preprocessor symbols: USE_PIX, DBG, _DEBUG, PROFILE, or PROFILE_BUILD
+/*#include <pix3.h>
+#include <DXProgrammableCapture.h>*/
+
 #pragma comment (lib, "dxguid.lib")
 #pragma comment (lib, "d3d12.lib")
 #pragma comment (lib, "dxgi.lib")
@@ -18,9 +22,9 @@
 #define DX12_FRAME_COUNT 2
 
 #define TEXTURE_REGISTER_COUNT 5
-#define MAX_DESCRIPTOR_COUNT 6 // 1 CBV and 5 Shader Resource View
-#define MAX_OBJECT_COUNT 3000
-#define MAX_HEAP_INDEX_COUNT 30000
+#define MAX_DESCRIPTOR_COUNT 7 // 2 CBV and 5 Shader Resource View
+#define MAX_OBJECT_COUNT 10000
+#define MAX_HEAP_INDEX_COUNT 70000
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -64,7 +68,24 @@ struct DX12JointBuffer
 	UINT entrySizeInBytes;
 };
 
+//TODO: IMPELEMENT THIS OBJECT LIST
+struct DX12Object
+{
+	UINT index;
+	
+	ID3D12PipelineState* pipelineState;
+
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView;
+	D3D12_CONSTANT_BUFFER_VIEW_DESC jointView;
+	bool includeJointView;
+
+	// TODO: Eventually place this into stages.
+	UINT textureCount;
+	DX12TextureBuffer* textures[TEXTURE_REGISTER_COUNT];
+};
+
 void DX12FailMessage(LPCSTR message);
+void DX12WarnMessage(LPCSTR message);
 void DX12ThrowIfFailed(HRESULT hr);
 bool DX12WarnIfFailed(HRESULT hr);
 

@@ -14,6 +14,11 @@ void DX12FailMessage(LPCSTR message) {
 	common->Error(message);
 }
 
+void DX12WarnMessage(LPCSTR message) {
+	OutputDebugString(message);
+	common->Warning(message);
+}
+
 void DX12ThrowIfFailed(HRESULT hr)
 {
 	if (FAILED(hr))
