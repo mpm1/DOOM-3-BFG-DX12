@@ -559,11 +559,9 @@ bool DX12Renderer::EndSurfaceSettings(DX12Object* storedObject) {
 	if (storedObject != nullptr) {
 		storedObject->pipelineState = m_activePipelineState;
 		storedObject->cbvView = cbvView;
-		storedObject->textureCount = index;
 		
-		for (index = 0; index < storedObject->textureCount; ++index) {
-			storedObject->textures[index] = m_activeTextures[index];
-		}
+		// TODO: right now we're just setting the depth objects. We need to update this for all stages.
+		dxRenderer.AddStageToObject(storedObject, DEPTH_STAGE, index, m_activeTextures);
 	}
 
 	return true;
@@ -581,7 +579,7 @@ void DX12Renderer::PresentBackbuffer() {
 	WaitForPreviousFrame();
 }
 
-void DX12Renderer::DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
+void DX12Renderer::DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
 	if (!IsScissorWindowValid()) {
 		return;
 	}
@@ -883,16 +881,46 @@ void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
 	WaitForCopyToComplete();
 }
 
-DX12Object* DX12Renderer::AddToObjectList() {
+DX12Object* DX12Renderer::AddToObjectList(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
 	assert(m_objectCount < MAX_OBJECT_COUNT, "Tried to allocate an object above the maximum object allocation amount.");
 
 	DX12Object* object = &m_objects[m_objectCount];
 	object->index = m_objectCount;
 	object->pipelineState = nullptr;
 	object->includeJointView = false;
-	object->textureCount = 0;
 
+	object->vertexBuffer = vertexBuffer;
+	object->vertexOffset = vertexOffset;
 
+	object->indexBuffer = indexBuffer;
+	object->indexOffset = indexOffset;
+	object->indexCount = indexCount;
+
+	object->stages.clear();
 	++m_objectCount;
 	return object;
+}
+
+DX12Stage* DX12Renderer::AddStageToObject(DX12Object* storedObject, eStageType stageType, UINT textureCount, DX12TextureBuffer** textures) {
+	storedObject->stages.push_back(DX12Stage());
+
+	DX12Stage* stage = &storedObject->stages.back();
+	stage->type = stageType;
+	stage->textureCount = textureCount;
+	std::copy(textures, textures + textureCount, stage->textures);
+
+	return stage;
+}
+
+void DX12Renderer::UpdateAccelerationStructure() {
+	if (!IsRaytracingEnabled()) {
+		return;
+	}
+
+	int index;
+	for (index = 0; index < m_objectCount; ++index) {
+		m_raytracing->GenerateBottomLevelAS(m_commandList.Get(), &m_objects[index], false);
+
+		// TODO: Generate the TLAS for each stage.
+	}
 }

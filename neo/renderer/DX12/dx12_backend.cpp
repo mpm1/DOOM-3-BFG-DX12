@@ -475,6 +475,8 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
 			r_singleTriangle.GetBool() ? 3 : surf->numIndexes);
 
+		//TODO: Eventually do the creation of the acceleration structure outside of these commands.
+
 		dxRenderer.ExecuteCommandList();
 		dxRenderer.ResetCommandList();
 	}

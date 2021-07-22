@@ -178,7 +178,7 @@
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(DXSDK_DIR)\Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WIN32;_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WIN32;_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12;</PreprocessorDefinitions>
       <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">_USE_32BIT_TIME_T;%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp14</LanguageStandard>
     </ClCompile>
@@ -273,7 +273,9 @@
     <ClInclude Include="renderer\DX12\d3dx12.h" />
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
     <ClInclude Include="renderer\DX12\dx12_global.h" />
+    <ClInclude Include="renderer\DX12\dx12_raytracing.h" />
     <ClInclude Include="renderer\DX12\dx12_RootSignature.h" />
+    <ClInclude Include="renderer\DX12\dx12_TextureManager.h" />
     <ClInclude Include="renderer\DXT\DXTCodec.h" />
     <ClInclude Include="renderer\DXT\DXTCodec_local.h" />
     <ClInclude Include="renderer\Font.h" />
@@ -490,6 +492,7 @@
     <ClCompile Include="renderer\DX12\dx12_backend.cpp" />
     <ClCompile Include="renderer\DX12\dx12_BufferObject.cpp" />
     <ClCompile Include="renderer\DX12\dx12_global.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_raytracing.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RenderTools.cpp" />
     <ClCompile Include="renderer\DX12\dx12_GLFunctions.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
@@ -504,6 +507,7 @@
     <ClCompile Include="renderer\DX12\dx12_ImageLoad.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RenderProgs.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RootSignature.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_TextureManager.cpp" />
     <ClCompile Include="renderer\DXT\DXTDecoder.cpp" />
     <ClCompile Include="renderer\DXT\DXTEncoder.cpp" />
     <ClCompile Include="renderer\DXT\DXTEncoder_SSE2.cpp" />

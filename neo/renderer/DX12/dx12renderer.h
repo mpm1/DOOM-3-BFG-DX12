@@ -92,10 +92,15 @@ public:
 	void ExecuteCommandList();
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
 	bool EndSurfaceSettings(DX12Object* storedObject); // Records the the surface entry into the heap.
-	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+
+	// Raytracing
+	void UpdateAccelerationStructure(); // Loops through all objects and adds them to the AS
+	bool IsRaytracingEnabled() { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
 
 	//Object commands
-	DX12Object* AddToObjectList();
+	DX12Object* AddToObjectList(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+	DX12Stage* AddStageToObject(DX12Object* storedObject, eStageType stageType, UINT textureCount, DX12TextureBuffer** textures);
 
 private:
 	UINT m_width;
@@ -126,7 +131,7 @@ private:
 	ComPtr<ID3D12CommandQueue> m_copyCommandQueue;
 	ComPtr<ID3D12CommandAllocator> m_directCommandAllocator[DX12_FRAME_COUNT];
 	ComPtr<ID3D12CommandAllocator> m_copyCommandAllocator;
-	ComPtr<ID3D12GraphicsCommandList> m_commandList;
+	ComPtr<ID3D12GraphicsCommandList4> m_commandList;
 	ComPtr<ID3D12GraphicsCommandList> m_copyCommandList;
 
 	XMFLOAT4 m_constantBuffer[53];

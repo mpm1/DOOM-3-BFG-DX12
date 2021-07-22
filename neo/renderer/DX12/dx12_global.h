@@ -9,6 +9,7 @@
 #include <debugapi.h>
 #include <dxcapi.h>
 #include <DirectXMath.h>
+#include <vector>
 
 // Will be automatically enabled with preprocessor symbols: USE_PIX, DBG, _DEBUG, PROFILE, or PROFILE_BUILD
 /*#include <pix3.h>
@@ -68,6 +69,22 @@ struct DX12JointBuffer
 	UINT entrySizeInBytes;
 };
 
+enum eStageType {
+	DEPTH_STAGE,
+};
+
+struct DX12Stage
+{
+	eStageType type;
+
+	ComPtr<ID3D12Resource> tlas; // Top Level Acceleration Structure - Used for raytracing.
+
+	UINT textureCount;
+	DX12TextureBuffer* textures[TEXTURE_REGISTER_COUNT];
+
+	// TODO: Include stage information to tell if this is for shadow testing or lighting.
+};
+
 //TODO: IMPELEMENT THIS OBJECT LIST
 struct DX12Object
 {
@@ -79,9 +96,17 @@ struct DX12Object
 	D3D12_CONSTANT_BUFFER_VIEW_DESC jointView;
 	bool includeJointView;
 
-	// TODO: Eventually place this into stages.
-	UINT textureCount;
-	DX12TextureBuffer* textures[TEXTURE_REGISTER_COUNT];
+	DX12VertexBuffer* vertexBuffer;
+	UINT vertexOffset;
+	UINT vertexCount;
+
+	DX12IndexBuffer* indexBuffer;
+	UINT indexOffset;
+	UINT indexCount;
+
+	ComPtr<ID3D12Resource> blas; // Bottom Level Acceleration Structure - Used for raytracing.
+
+	std::vector<DX12Stage> stages;
 };
 
 void DX12FailMessage(LPCSTR message);
