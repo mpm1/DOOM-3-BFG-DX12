@@ -402,10 +402,6 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 	DX12Object* storedObject = nullptr;
 
-	if (addToObjectList) {
-		storedObject = dxRenderer.AddToObjectList();
-	}
-
 	// Connect to a new surfae renderer
 	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
 
@@ -454,7 +450,17 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 		}
 	}
 
-	// TODO: Add joint support
+	// Create the stored object.
+	if (addToObjectList) {
+		storedObject = dxRenderer.AddToObjectList(
+			reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
+			vertOffset / sizeof(idDrawVert),
+			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
+			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
+			r_singleTriangle.GetBool() ? 3 : surf->numIndexes
+		);
+	}
+
 	if (surf->jointCache) {
 		idJointBuffer jointBuffer;
 		if (!vertexCache.GetJointBuffer(surf->jointCache, &jointBuffer)) {
@@ -2613,6 +2619,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	// fill the depth buffer and clear color buffer to black except on subviews
 	//-------------------------------------------------
 	RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
+
+	// Build the acceleration structure.
+	dxRenderer.UpdateAccelerationStructure();
 
 	//-------------------------------------------------
 	// main light renderer

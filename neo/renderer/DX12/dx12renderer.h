@@ -92,7 +92,7 @@ public:
 	void ExecuteCommandList();
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
 	bool EndSurfaceSettings(DX12Object* storedObject); // Records the the surface entry into the heap.
-	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 
 	// Raytracing
 	void UpdateAccelerationStructure(); // Loops through all objects and adds them to the AS

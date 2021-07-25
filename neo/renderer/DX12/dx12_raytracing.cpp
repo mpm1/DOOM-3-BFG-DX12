@@ -2,13 +2,25 @@
 
 #include "./dx12_raytracing.h"
 
+// From NVIDIAs DXRHelper code
+// Specifies a heap used for uploading. This heap type has CPU access optimized
+// for uploading to the GPU.
+static const D3D12_HEAP_PROPERTIES kUploadHeapProps = {
+	D3D12_HEAP_TYPE_UPLOAD, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0 };
+
+// Specifies the default heap. This heap type experiences the most bandwidth for
+// the GPU, but cannot provide CPU access.
+static const D3D12_HEAP_PROPERTIES kDefaultHeapProps = {
+	D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0 };
+
 DX12Raytracing::DX12Raytracing(ID3D12Device5* device)
 	: m_device(device),
 	isRaytracingSupported(CheckRaytracingSupport(device))
 {
+	m_scratchBuffer = CreateBuffer(DEFAULT_SCRATCH_SIZE, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kDefaultHeapProps);
 }
 
-DX12Raytracing::~DX12Raytracing() 
+DX12Raytracing::~DX12Raytracing()
 {
 
 }
@@ -21,7 +33,7 @@ void DX12Raytracing::CacluateBLASBufferSizes(DX12Object* storedObject, UINT64* s
 	descriptor.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
 	descriptor.Triangles.VertexBuffer.StartAddress = storedObject->vertexBuffer->vertexBuffer->GetGPUVirtualAddress() + storedObject->vertexOffset;
 	descriptor.Triangles.VertexBuffer.StrideInBytes = storedObject->vertexBuffer->vertexBufferView.StrideInBytes;
-	descriptor.Triangles.VertexCount = storedObject->vertexCount;
+	//descriptor.Triangles.VertexCount = storedObject->vertexCount;
 	descriptor.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
 	descriptor.Triangles.IndexBuffer = storedObject->indexBuffer->indexBuffer->GetGPUVirtualAddress() + storedObject->indexOffset;
 	descriptor.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
@@ -43,12 +55,12 @@ void DX12Raytracing::CacluateBLASBufferSizes(DX12Object* storedObject, UINT64* s
 	m_device->GetRaytracingAccelerationStructurePrebuildInfo(&prebuildDesc, &info);
 
 	// 256 Align the storage size.
-	*scratchSizeInBytes = (info.ScratchDataSizeInBytes + 255) & ~256;
-	*resultSizeInBytes = (info.ResultDataMaxSizeInBytes + 255) & ~256;
+	*scratchSizeInBytes = (info.ScratchDataSizeInBytes + 255) & ~255;
+	*resultSizeInBytes = (info.ResultDataMaxSizeInBytes + 255) & ~255;
 }
 
 void DX12Raytracing::GenerateBottomLevelAS(ID3D12GraphicsCommandList4* commandList, DX12Object* storedObject, bool updateOnly) {
-	assert(updateOnly, "Updating a BLAS is currently not supported.");
+	assert(!updateOnly, "Updating a BLAS is currently not supported.");
 
 	// Create the needed resource buffers.
 	UpdateBLASResources(storedObject, updateOnly);
@@ -100,6 +112,42 @@ void DX12Raytracing::UpdateBLASResources(DX12Object* storedObject, bool updateOn
 
 	CacluateBLASBufferSizes(storedObject, &scratchSizeInBytes, &resultSizeInBytes);
 	assert(scratchSizeInBytes < DEFAULT_SCRATCH_SIZE, "The generated objects scratch size is too large.");
+
+	if (storedObject->blas == nullptr) {
+		storedObject->blas = CreateBuffer(resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
+	}
+}
+
+void DX12Raytracing::GenerateTopLevelAS(ID3D12GraphicsCommandList4* commandList, DX12Object* storedObject, DX12Stage* stage, bool updateOnly) {
+	D3D12_RAYTRACING_INSTANCE_DESC* instanceDesc;
+	stage->tlasInstanceDesc->Map(0, nullptr, reinterpret_cast<void**>(&instanceDesc));
+
+	if (!instanceDesc) {
+		DX12FailMessage("Cannot map instance descriptor for object.");
+	}
+
+	int i = 0;
+}
+
+void DX12Raytracing::UpdateTLASResources(DX12Object* storedObject, DX12Stage* stage) {
+	UINT64 scratchSizeInBytes;
+	UINT64 resultSizeInBytes;
+	UINT64 instanceDescsSize;
+
+	CacluateTLASBufferSizes(storedObject, stage, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
+	assert(scratchSizeInBytes < DEFAULT_SCRATCH_SIZE, "The generated objects scratch size is too large.");
+
+	if (stage->tlas == nullptr) {
+		stage->tlas = CreateBuffer(resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
+	}
+
+	if (stage->tlasInstanceDesc == nullptr) {
+		stage->tlasInstanceDesc = CreateBuffer(instanceDescsSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, kUploadHeapProps);
+	}
+}
+
+void DX12Raytracing::CacluateTLASBufferSizes(DX12Object* storedObject, DX12Stage* stage, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize) {
+
 }
 
 bool DX12Raytracing::CheckRaytracingSupport(ID3D12Device5* device) {
@@ -115,4 +163,24 @@ bool DX12Raytracing::CheckRaytracingSupport(ID3D12Device5* device) {
 	}
 
 	return true;
+}
+
+ID3D12Resource* DX12Raytracing::CreateBuffer(uint64_t size, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps) {
+	D3D12_RESOURCE_DESC description = {};
+	description.Alignment = 0;
+	description.DepthOrArraySize = 1;
+	description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	description.Flags = flags;
+	description.Format = DXGI_FORMAT_UNKNOWN;
+	description.Height = 1;
+	description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	description.MipLevels = 1;
+	description.SampleDesc.Count = 1;
+	description.SampleDesc.Quality = 0;
+	description.Width = size;
+
+	ID3D12Resource* pBuffer;
+	DX12ThrowIfFailed(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, nullptr, IID_PPV_ARGS(&pBuffer)));
+
+	return pBuffer;
 }

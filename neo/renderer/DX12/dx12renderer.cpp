@@ -329,7 +329,7 @@ void DX12Renderer::LoadAssets() {
 		const UINT bWidth = 1920;
 		const UINT bHeight = 1080;
 		const UINT bBytesPerRow = bWidth * 4;
-		const UINT64 textureUploadBufferSize = (((bBytesPerRow + 255) & ~256) * (bHeight - 1)) + bBytesPerRow;
+		const UINT64 textureUploadBufferSize = (((bBytesPerRow + 255) & ~255) * (bHeight - 1)) + bBytesPerRow;
 
 		DX12ThrowIfFailed(m_device->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -579,7 +579,7 @@ void DX12Renderer::PresentBackbuffer() {
 	WaitForPreviousFrame();
 }
 
-void DX12Renderer::DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
+void DX12Renderer::DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
 	if (!IsScissorWindowValid()) {
 		return;
 	}
@@ -921,6 +921,9 @@ void DX12Renderer::UpdateAccelerationStructure() {
 	for (index = 0; index < m_objectCount; ++index) {
 		m_raytracing->GenerateBottomLevelAS(m_commandList.Get(), &m_objects[index], false);
 
-		// TODO: Generate the TLAS for each stage.
+
+		for (auto it = m_objects[index].stages.begin(); it != m_objects[index].stages.end(); ++it) {
+			m_raytracing->GenerateTopLevelAS(m_commandList.Get(), &m_objects[index], it._Ptr, false);
+		}
 	}
 }

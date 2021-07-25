@@ -33,16 +33,28 @@ public:
 		ID3D12GraphicsCommandList4* commandList,
 		DX12Object* storedObject,
 		bool updateOnly);
+
+	void GenerateTopLevelAS(
+		ID3D12GraphicsCommandList4* commandList,
+		DX12Object* storedObject,
+		DX12Stage* stage,
+		bool updateOnly);
 private:
 	ID3D12Device5* m_device;
+
+	// Buffers
+	ID3D12Resource* CreateBuffer(uint64_t size, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps);
 	
 	// Acceleration Structure
 	void UpdateBLASResources(DX12Object* storedObject, bool updateOnly);
 	void CacluateBLASBufferSizes(DX12Object* storedObject, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes);
 
+	void UpdateTLASResources(DX12Object* storedObject, DX12Stage* stage);
+	void CacluateTLASBufferSizes(DX12Object* storedObject, DX12Stage* stage, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize);
+
 	static bool CheckRaytracingSupport(ID3D12Device5* device);
 
-	ComPtr<ID3D12Resource> scratchBuffer; // For now we will use the same scratch buffer for all AS creations.
+	ComPtr<ID3D12Resource> m_scratchBuffer; // For now we will use the same scratch buffer for all AS creations.
 };
 
 #endif
