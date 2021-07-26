@@ -2535,6 +2535,8 @@ static void RB_FogAllLights() {
 void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	renderLog.OpenBlock("RB_DrawViewInternal");
 
+	dxRenderer.BeginRayTracingSetup();
+
 	//-------------------------------------------------
 	// guis can wind up referencing purged images that need to be loaded.
 	// this used to be in the gui emit code, but now that it can be running
@@ -2621,7 +2623,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
 
 	// Build the acceleration structure.
-	dxRenderer.UpdateAccelerationStructure();
+	dxRenderer.EndRayTracingSetup();
 
 	//-------------------------------------------------
 	// main light renderer

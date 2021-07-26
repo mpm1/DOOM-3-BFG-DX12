@@ -912,7 +912,15 @@ DX12Stage* DX12Renderer::AddStageToObject(DX12Object* storedObject, eStageType s
 	return stage;
 }
 
-void DX12Renderer::UpdateAccelerationStructure() {
+void DX12Renderer::BeginRayTracingSetup() {
+	if (!IsRaytracingEnabled()) {
+		return;
+	}
+
+	m_raytracing->StartAccelerationStructure();
+}
+
+void DX12Renderer::BeginRayTracingSetup() {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
@@ -923,7 +931,9 @@ void DX12Renderer::UpdateAccelerationStructure() {
 
 
 		for (auto it = m_objects[index].stages.begin(); it != m_objects[index].stages.end(); ++it) {
-			m_raytracing->GenerateTopLevelAS(m_commandList.Get(), &m_objects[index], it._Ptr, false);
+			m_raytracing->tlas.AddInstance(&m_objects[index], it._Ptr);
 		}
 	}
+
+	m_raytracing->EndAccelerationStructure();
 }

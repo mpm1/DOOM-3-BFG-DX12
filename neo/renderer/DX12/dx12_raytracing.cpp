@@ -13,11 +13,47 @@ static const D3D12_HEAP_PROPERTIES kUploadHeapProps = {
 static const D3D12_HEAP_PROPERTIES kDefaultHeapProps = {
 	D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0 };
 
+ID3D12Resource* CreateBuffer(ID3D12Device5* device, uint64_t size, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps) {
+	D3D12_RESOURCE_DESC description = {};
+	description.Alignment = 0;
+	description.DepthOrArraySize = 1;
+	description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	description.Flags = flags;
+	description.Format = DXGI_FORMAT_UNKNOWN;
+	description.Height = 1;
+	description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	description.MipLevels = 1;
+	description.SampleDesc.Count = 1;
+	description.SampleDesc.Quality = 0;
+	description.Width = size;
+
+	ID3D12Resource* pBuffer;
+	DX12ThrowIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, nullptr, IID_PPV_ARGS(&pBuffer)));
+
+	return pBuffer;
+}
+
+bool CheckRaytracingSupport(ID3D12Device5* device) {
+	D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
+
+	if (!DX12WarnIfFailed(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))) {
+		return false;
+	}
+
+	if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0) {
+		DX12WarnMessage("Raytracing Tier is not supported.");
+		return false;
+	}
+
+	return true;
+}
+
 DX12Raytracing::DX12Raytracing(ID3D12Device5* device)
 	: m_device(device),
+	tlas(device),
 	isRaytracingSupported(CheckRaytracingSupport(device))
 {
-	m_scratchBuffer = CreateBuffer(DEFAULT_SCRATCH_SIZE, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kDefaultHeapProps);
+	m_scratchBuffer = CreateBuffer(device, DEFAULT_SCRATCH_SIZE, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kDefaultHeapProps);
 }
 
 DX12Raytracing::~DX12Raytracing()
@@ -114,73 +150,63 @@ void DX12Raytracing::UpdateBLASResources(DX12Object* storedObject, bool updateOn
 	assert(scratchSizeInBytes < DEFAULT_SCRATCH_SIZE, "The generated objects scratch size is too large.");
 
 	if (storedObject->blas == nullptr) {
-		storedObject->blas = CreateBuffer(resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
+		storedObject->blas = CreateBuffer(m_device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
 	}
 }
 
 void DX12Raytracing::GenerateTopLevelAS(ID3D12GraphicsCommandList4* commandList, DX12Object* storedObject, DX12Stage* stage, bool updateOnly) {
-	D3D12_RAYTRACING_INSTANCE_DESC* instanceDesc;
+	/*D3D12_RAYTRACING_INSTANCE_DESC* instanceDesc;
 	stage->tlasInstanceDesc->Map(0, nullptr, reinterpret_cast<void**>(&instanceDesc));
 
 	if (!instanceDesc) {
 		DX12FailMessage("Cannot map instance descriptor for object.");
 	}
 
-	int i = 0;
+	int i = 0;*/
 }
 
-void DX12Raytracing::UpdateTLASResources(DX12Object* storedObject, DX12Stage* stage) {
+DX12TopLevelAccelerationStructure::DX12TopLevelAccelerationStructure(ID3D12Device5* device)
+	: m_device(device)
+{
+
+}
+
+void DX12TopLevelAccelerationStructure::Reset() {
+	m_instances.clear();
+}
+
+DX12Instance* DX12TopLevelAccelerationStructure::AddInstance(DX12Object* storedObject, DX12Stage* stage) {
+	DX12Instance* instance = &m_instances.back();
+	instance->bottomLevelAS = storedObject->blas.Get();
+
+	return instance;
+}
+
+void DX12TopLevelAccelerationStructure::UpdateResources(DX12Object* storedObject, DX12Stage* stage) {
 	UINT64 scratchSizeInBytes;
 	UINT64 resultSizeInBytes;
 	UINT64 instanceDescsSize;
 
-	CacluateTLASBufferSizes(storedObject, stage, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
+	CacluateBufferSizes(storedObject, stage, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
 	assert(scratchSizeInBytes < DEFAULT_SCRATCH_SIZE, "The generated objects scratch size is too large.");
 
-	if (stage->tlas == nullptr) {
-		stage->tlas = CreateBuffer(resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
+	if (m_result == nullptr) {
+		m_result = CreateBuffer(m_device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
 	}
 
-	if (stage->tlasInstanceDesc == nullptr) {
-		stage->tlasInstanceDesc = CreateBuffer(instanceDescsSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, kUploadHeapProps);
+	if (m_instanceDesc == nullptr) {
+		m_instanceDesc = CreateBuffer(m_device, instanceDescsSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, kUploadHeapProps);
 	}
 }
 
-void DX12Raytracing::CacluateTLASBufferSizes(DX12Object* storedObject, DX12Stage* stage, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize) {
+void DX12TopLevelAccelerationStructure::CacluateBufferSizes(DX12Object* storedObject, DX12Stage* stage, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize) {
+	D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
+		? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
+		: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
 
-}
+	D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS description = {};
+	description.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+	description.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+	description.NumDescs =
 
-bool DX12Raytracing::CheckRaytracingSupport(ID3D12Device5* device) {
-	D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
-
-	if(!DX12WarnIfFailed(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))){
-		return false;
-	}
-
-	if (options5.RaytracingTier < D3D12_RAYTRACING_TIER_1_0) {
-		DX12WarnMessage("Raytracing Tier is not supported.");
-		return false;
-	}
-
-	return true;
-}
-
-ID3D12Resource* DX12Raytracing::CreateBuffer(uint64_t size, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps) {
-	D3D12_RESOURCE_DESC description = {};
-	description.Alignment = 0;
-	description.DepthOrArraySize = 1;
-	description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-	description.Flags = flags;
-	description.Format = DXGI_FORMAT_UNKNOWN;
-	description.Height = 1;
-	description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
-	description.MipLevels = 1;
-	description.SampleDesc.Count = 1;
-	description.SampleDesc.Quality = 0;
-	description.Width = size;
-
-	ID3D12Resource* pBuffer;
-	DX12ThrowIfFailed(m_device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, nullptr, IID_PPV_ARGS(&pBuffer)));
-
-	return pBuffer;
 }

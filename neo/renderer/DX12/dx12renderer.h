@@ -95,7 +95,8 @@ public:
 	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 
 	// Raytracing
-	void UpdateAccelerationStructure(); // Loops through all objects and adds them to the AS
+	void BeginRayTracingSetup();
+	void EndRayTracingSetup();
 	bool IsRaytracingEnabled() { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
 
 	//Object commands

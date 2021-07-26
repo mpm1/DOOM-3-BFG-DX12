@@ -8,20 +8,25 @@ using namespace Microsoft::WRL;
 
 #define DEFAULT_SCRATCH_SIZE 262144 // 256 * 1024. We need to check if this is big enough.
 
-struct DX12AccelerationStructureBuffers
-{
-	ComPtr<ID3D12Resource> pScratch; // Scratch memory for the acceleration structure builder.
-	ComPtr<ID3D12Resource> pResult; // The location of the acceleration structure.
-	ComPtr<ID3D12Resource> pInstanceDesc; // Holds the matrix data. TODO: It may be better to change this to point to the CBV Heap.
+struct DX12Instance {
+	ID3D12Resource*	bottomLevelAS;
+	XMMATRIX		transformation;
+	UINT			instanceId;
+	UINT			hitGroupIndex; // Should this be stage index?
+	//TODO: Add support for bone information.
 };
 
 class DX12Raytracing {
 public:
 	const bool isRaytracingSupported;
+	const DX12TopLevelAccelerationStructure tlas;
 
 	DX12Raytracing(ID3D12Device5* device);
 	~DX12Raytracing();
 	
+	void StartAccelerationStructure();
+	void EndAccelerationStructure();
+
 	/// <summary>
 	/// Generates the bottom level accelr
 	/// </summary>
@@ -33,28 +38,32 @@ public:
 		ID3D12GraphicsCommandList4* commandList,
 		DX12Object* storedObject,
 		bool updateOnly);
-
-	void GenerateTopLevelAS(
-		ID3D12GraphicsCommandList4* commandList,
-		DX12Object* storedObject,
-		DX12Stage* stage,
-		bool updateOnly);
 private:
 	ID3D12Device5* m_device;
+	ComPtr<ID3D12Resource> m_scratchBuffer; // For now we will use the same scratch buffer for all AS creations.
 
-	// Buffers
-	ID3D12Resource* CreateBuffer(uint64_t size, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps);
-	
 	// Acceleration Structure
 	void UpdateBLASResources(DX12Object* storedObject, bool updateOnly);
 	void CacluateBLASBufferSizes(DX12Object* storedObject, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes);
+};
 
-	void UpdateTLASResources(DX12Object* storedObject, DX12Stage* stage);
-	void CacluateTLASBufferSizes(DX12Object* storedObject, DX12Stage* stage, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize);
 
-	static bool CheckRaytracingSupport(ID3D12Device5* device);
+class DX12TopLevelAccelerationStructure {
+public:
+	DX12TopLevelAccelerationStructure(ID3D12Device5* device);
+	~DX12TopLevelAccelerationStructure();
 
-	ComPtr<ID3D12Resource> m_scratchBuffer; // For now we will use the same scratch buffer for all AS creations.
+	void Reset(); // Clears the acceleration structure.
+	DX12Instance* AddInstance(DX12Object* object, DX12Stage* stage);
+
+private:
+	ID3D12Device5* m_device;
+	ComPtr<ID3D12Resource> m_result; // Top Level Acceleration Structure - Used for raytracing.
+	ComPtr<ID3D12Resource> m_instanceDesc;
+	std::vector<DX12Instance> m_instances;
+
+	void UpdateResources(DX12Object* storedObject, DX12Stage* stage);
+	void CacluateBufferSizes(DX12Object* storedObject, DX12Stage* stage, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize);
 };
 
 #endif

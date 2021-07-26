@@ -77,9 +77,6 @@ struct DX12Stage
 {
 	eStageType type;
 
-	ComPtr<ID3D12Resource> tlas; // Top Level Acceleration Structure - Used for raytracing.
-	ComPtr<ID3D12Resource> tlasInstanceDesc;
-
 	UINT textureCount;
 	DX12TextureBuffer* textures[TEXTURE_REGISTER_COUNT];
 
