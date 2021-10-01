@@ -27,8 +27,13 @@
 #define MAX_OBJECT_COUNT 10000
 #define MAX_HEAP_INDEX_COUNT 70000
 
+#define DX12_ALIGN(SIZE, ALIGNMENT) ((SIZE) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1)
+
 using namespace DirectX;
 using namespace Microsoft::WRL;
+
+namespace DX12Rendering {
+}
 
 struct Vertex
 {
@@ -104,6 +109,7 @@ struct DX12Object
 
 	ComPtr<ID3D12Resource> blas; // Bottom Level Acceleration Structure - Used for raytracing.
 
+	//const idMaterial* shader;
 	std::vector<DX12Stage> stages;
 };
 

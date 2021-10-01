@@ -219,10 +219,10 @@ void* idVertexBuffer::MapBuffer(bufferMapType_t mapType) const {
 
 	UINT8* buffer = NULL;
 	D3D12_RANGE readRange = { 0, 0 };
-	DX12VertexBuffer* bufferObject = reinterpret_cast<DX12VertexBuffer*>(apiObject);
+	const DX12VertexBuffer* bufferObject = reinterpret_cast<DX12VertexBuffer*>(apiObject);
 
 	if (mapType == BM_READ || mapType == BM_WRITE) { // TODO: Can we make a read only one?
-		HRESULT hr = bufferObject->vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&buffer));
+		const HRESULT hr = bufferObject->vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&buffer));
 		if (FAILED(hr)) {
 			common->Warning("Could not load vertex buffer.");
 			buffer = NULL;

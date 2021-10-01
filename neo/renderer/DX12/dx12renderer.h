@@ -163,7 +163,7 @@ private:
 	HANDLE m_removeDeviceEvent;
 
 	// Raytracing
-	DX12Raytracing* m_raytracing;
+	DX12Rendering::Raytracing* m_raytracing;
 
 	void LoadPipeline(HWND hWnd);
 	void LoadAssets();

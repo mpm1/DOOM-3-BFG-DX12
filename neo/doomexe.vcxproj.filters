@@ -1190,13 +1190,13 @@
     <ClCompile Include="renderer\DX12\dx12_RootSignature.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
-    <ClCompile Include="renderer\DX12\dx12_global.cpp">
-      <Filter>Renderer</Filter>
-    </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_raytracing.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_TextureManager.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_global.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
   </ItemGroup>

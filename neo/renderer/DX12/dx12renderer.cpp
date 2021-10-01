@@ -73,7 +73,7 @@ void DX12Renderer::Init(HWND hWnd) {
 	LoadAssets();
 
 	if (r_useRaytracedShadows.GetBool() || r_useRaytracedReflections.GetBool() || r_useGlobalIllumination.GetBool()) {
-		m_raytracing = new DX12Raytracing(m_device.Get());
+		m_raytracing = new DX12Rendering::Raytracing(m_device.Get());
 	}
 
 	m_initialized = true;
@@ -917,10 +917,10 @@ void DX12Renderer::BeginRayTracingSetup() {
 		return;
 	}
 
-	m_raytracing->StartAccelerationStructure();
+	m_raytracing->StartAccelerationStructure(r_useRaytracedShadows.GetBool(), r_useRaytracedReflections.GetBool(), r_useGlobalIllumination.GetBool());
 }
 
-void DX12Renderer::BeginRayTracingSetup() {
+void DX12Renderer::EndRayTracingSetup() {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
@@ -929,11 +929,8 @@ void DX12Renderer::BeginRayTracingSetup() {
 	for (index = 0; index < m_objectCount; ++index) {
 		m_raytracing->GenerateBottomLevelAS(m_commandList.Get(), &m_objects[index], false);
 
-
-		for (auto it = m_objects[index].stages.begin(); it != m_objects[index].stages.end(); ++it) {
-			m_raytracing->tlas.AddInstance(&m_objects[index], it._Ptr);
-		}
+		m_raytracing->AddObjectToAllTopLevelAS(&m_objects[index], false);
 	}
 
-	m_raytracing->EndAccelerationStructure();
+	m_raytracing->EndAccelerationStructure(m_commandList.Get());
 }
