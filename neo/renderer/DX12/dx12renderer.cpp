@@ -711,8 +711,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 	return true;
 }
 
-void DX12Renderer::UpdateViewport(FLOAT topLeftX, FLOAT topLeftY, FLOAT width, FLOAT height, FLOAT minDepth, FLOAT maxDepth) {
-	
+void DX12Renderer::UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, const FLOAT width, const FLOAT height, const FLOAT minDepth, const FLOAT maxDepth) {
 	m_viewport.TopLeftX = topLeftX;
 	m_viewport.TopLeftY = topLeftY;
 	m_viewport.Width = width;
@@ -721,24 +720,13 @@ void DX12Renderer::UpdateViewport(FLOAT topLeftX, FLOAT topLeftY, FLOAT width, F
 	m_viewport.MaxDepth = maxDepth;
 }
 
-void DX12Renderer::UpdateScissorRect(LONG left, LONG top, LONG right, LONG bottom) {
-	if (left <= right) {
-		m_scissorRect.left = left;
-		m_scissorRect.right = right;
-	}
-	else {
-		m_scissorRect.left = right;
-		m_scissorRect.right = left;
-	}
-	
-	if (top <= bottom) {
-		m_scissorRect.top = top;
-		m_scissorRect.bottom = bottom;
-	}
-	else {
-		m_scissorRect.top = bottom;
-		m_scissorRect.bottom = top;
-	}
+void DX12Renderer::UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h) {
+	m_scissorRect.left = x;
+	m_scissorRect.right = x + w;
+
+	// Note: x and y are the lower left corner  of the scissor window. We need to calculate the y location to work properly with DirectX. 
+	m_scissorRect.bottom = m_viewport.Height - y;
+	m_scissorRect.top = m_scissorRect.bottom - h;
 
 	if (m_isDrawing) {
 		m_commandList->RSSetScissorRects(1, &m_scissorRect);

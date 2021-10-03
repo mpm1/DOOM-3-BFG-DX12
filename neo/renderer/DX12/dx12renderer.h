@@ -48,8 +48,8 @@ public:
 	bool SetScreenParams(UINT width, UINT height, int fullscreen);
 	void OnDestroy();
 
-	void UpdateViewport(FLOAT topLeftX, FLOAT topLeftY, FLOAT width, FLOAT height, FLOAT minDepth = 0.0f, FLOAT maxDepth = 1.0f); // Used to put us into right hand depth space.
-	void UpdateScissorRect(LONG left, LONG top, LONG right, LONG bottom);
+	void UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, const FLOAT width, const FLOAT height, const FLOAT minDepth = 0.0f, const FLOAT maxDepth = 1.0f); // Used to put us into right hand depth space.
+	void UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h);
 	void UpdateStencilRef(UINT ref);
 
 	void ReadPixels(int x, int y, int width, int height, UINT readBuffer, byte* buffer);
