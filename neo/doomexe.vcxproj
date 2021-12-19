@@ -924,6 +924,14 @@
     </FxCompile>
     <None Include="..\base\renderprogs\fxaa.pixel" />
     <None Include="..\base\renderprogs\fxaa.vertex" />
+    <FxCompile Include="..\base\renderprogs\generator.ray">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.3</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).rcso</ObjectFileOutput>
+      <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+      </EntryPointName>
+    </FxCompile>
     <None Include="..\base\renderprogs\global.inc" />
     <FxCompile Include="..\base\renderprogs\gui.pixel">
       <FileType>Document</FileType>
@@ -1141,6 +1149,7 @@
     <None Include="..\base\renderprogs\motionBlur.vertex" />
     <None Include="..\base\renderprogs\postprocess.pixel" />
     <None Include="..\base\renderprogs\postprocess.vertex" />
+    <None Include="..\base\renderprogs\raytracing_global.inc" />
     <None Include="..\base\renderprogs\shadow.pixel" />
     <FxCompile Include="..\base\renderprogs\shadow.vertex">
       <FileType>Document</FileType>

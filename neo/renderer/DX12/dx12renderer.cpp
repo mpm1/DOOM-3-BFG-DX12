@@ -101,7 +101,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	ComPtr<IDXGIFactory4> factory;
 	DX12ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
 
-	// TODO: Try to enable a WARP adapter
+	// TODO: Try to enable a WARP adapter? I don't think we need to do this, since we expect DXR hardware.
 	{
 		ComPtr<IDXGIAdapter1> hardwareAdapter;
 		GetHardwareAdapter(factory.Get(), &hardwareAdapter);

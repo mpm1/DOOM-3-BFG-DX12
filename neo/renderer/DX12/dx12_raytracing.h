@@ -24,6 +24,15 @@ namespace DX12Rendering {
 		Instance(ID3D12Resource* blas) : bottomLevelAS(blas) {}
 	};
 
+	struct RootSignatureAssociation {
+		ID3D12RootSignature* m_rootSignature;
+		std::vector<std::wstring> m_symbols;
+
+		RootSignatureAssociation(ID3D12RootSignature* rootSignature, const std::vector<std::wstring>& symbols) :
+			m_rootSignature(rootSignature),
+			m_symbols(symbols) {}
+	};
+
 	class TopLevelAccelerationStructure;
 
 	class Raytracing;
@@ -61,6 +70,8 @@ public:
 	void StartAccelerationStructure(bool raytracedShadows, bool raytracedReflections, bool raytracedIllumination);
 	void EndAccelerationStructure(ID3D12GraphicsCommandList4* commandList);
 
+	void CastRays(const CD3DX12_VIEWPORT viewport, const CD3DX12_RECT scissorRect) const;
+
 	/// <summary>
 	/// Generates the bottom level accelr
 	/// </summary>
@@ -85,6 +96,20 @@ private:
 	UINT32 m_state;
 	ID3D12Device5* m_device;
 	ComPtr<ID3D12Resource> m_scratchBuffer; // For now we will use the same scratch buffer for all AS creations.
+
+	ComPtr<ID3D12RootSignature> m_rayGenSignature;
+	ComPtr<ID3D12RootSignature> m_missSignature;
+	ComPtr<ID3D12RootSignature> m_hitSignature;
+
+	ComPtr<ID3D12StateObject> m_stateObject; // Raytracing pipeline state.
+	ComPtr<ID3D12StateObjectProperties> m_stateObjectProps;
+
+	// Pipeline
+	ComPtr<ID3D12RootSignature> CreateRayGenSignature();
+	ComPtr<ID3D12RootSignature> CreateMissSignature();
+	ComPtr<ID3D12RootSignature> CreateHitSignature();
+	void CreatePipeline();
+	void LoadShader(); // TODO: Implement function to load in the correct shader.
 
 	// Acceleration Structure
 	bool UpdateBLASResources(DX12Object* storedObject, bool updateOnly);
