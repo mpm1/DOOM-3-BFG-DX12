@@ -34,24 +34,6 @@ namespace DX12Rendering {
 		return pBuffer;
 	}
 
-	ID3D12RootSignature* CreateRaytracingRootSignature(ID3D12Device* device, D3D12_ROOT_PARAMETER* parameters, UINT parameterCount) {
-		// Describe the raytracing root signature.
-		D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
-		rootDesc.NumParameters = parameterCount;
-		rootDesc.pParameters = parameters;
-		rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
-
-		// Create the root signature
-		ID3DBlob* signatureBlob;
-		ID3DBlob* errorBlob;
-		DX12ThrowIfFailed(D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1_0, &signatureBlob, &errorBlob));
-
-		ID3D12RootSignature* rootSignature;
-		DX12ThrowIfFailed(device->CreateRootSignature(0, signatureBlob->GetBufferPointer(), signatureBlob->GetBufferSize(), IID_PPV_ARGS(&rootSignature)));
-
-		return rootSignature;
-	}
-
 	bool CheckRaytracingSupport(ID3D12Device5* device) {
 		D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
 
@@ -70,7 +52,10 @@ namespace DX12Rendering {
 	Raytracing::Raytracing(ID3D12Device5* device)
 		: m_device(device),
 		shadowTlas(device), reflectionTlas(device), emmisiveTlas(device),
-		isRaytracingSupported(CheckRaytracingSupport(device))
+		isRaytracingSupported(CheckRaytracingSupport(device)),
+		m_rayGenSignature(device, WRITE_OUTPUT | READ_ENVIRONMENT),
+		m_missSignature(device, NONE),
+		m_hitSignature(device, NONE)
 	{
 		m_scratchBuffer = CreateBuffer(device, DEFAULT_SCRATCH_SIZE, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kDefaultHeapProps);
 		CreatePipeline();
@@ -78,7 +63,6 @@ namespace DX12Rendering {
 
 	Raytracing::~Raytracing()
 	{
-
 	}
 
 	void Raytracing::StartAccelerationStructure(bool raytracedShadows, bool raytracedReflections, bool raytracedIllumination) {
@@ -242,41 +226,13 @@ namespace DX12Rendering {
 		return m_state & BIT_RAYTRACED_ILLUMINATION > 0;
 	}
 
-	ComPtr<ID3D12RootSignature> Raytracing::CreateRayGenSignature() {
-		const UINT descriptorCount = 2;
-		D3D12_ROOT_PARAMETER param;
-
-		const D3D12_DESCRIPTOR_RANGE descriptorRanges[descriptorCount] = {
-			{D3D12_DESCRIPTOR_RANGE_TYPE_UAV /* UAV representing the output buffer*/, 1 /*1 descriptor */, 0 /*u0*/, 0 /*use the implicit register space 0*/, 0 /*heap slot where the UAV is defined*/},
-			{D3D12_DESCRIPTOR_RANGE_TYPE_SRV /*Top-level acceleration structure*/, 1, 0 /*t0*/, 0, 1}
-		};
-
-		param.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
-		param.DescriptorTable.NumDescriptorRanges = descriptorCount;
-		param.DescriptorTable.pDescriptorRanges = descriptorRanges;
-
-		return CreateRaytracingRootSignature(m_device, &param, 1);
-	}
-
-	ComPtr<ID3D12RootSignature> Raytracing::CreateMissSignature() {
-		return CreateRaytracingRootSignature(m_device, nullptr, 0);
-	}
-
-	ComPtr<ID3D12RootSignature> Raytracing::CreateHitSignature() {
-		return CreateRaytracingRootSignature(m_device, nullptr, 0);
-	}
-
 	void Raytracing::CreatePipeline() {
 		// TODO: Load the HLSL files for raytracing
 
-		m_rayGenSignature = CreateRayGenSignature(); <- Something wrong here
-		m_missSignature = CreateMissSignature();
-		m_hitSignature = CreateHitSignature();
-
 		std::vector<RootSignatureAssociation> associations = {
-			RootSignatureAssociation(m_rayGenSignature.Get(), {L"RayGen"}),
-			RootSignatureAssociation(m_missSignature.Get(), {L"Miss"}),
-			RootSignatureAssociation(m_hitSignature.Get(), {L"HitGroup"}),
+			RootSignatureAssociation(m_rayGenSignature.GetRootSignature(), {L"RayGen"}),
+			RootSignatureAssociation(m_missSignature.GetRootSignature(), {L"Miss"}),
+			RootSignatureAssociation(m_hitSignature.GetRootSignature(), {L"HitGroup"}),
 		};
 
 		//TODO: Start here, implement the Generate function of the RootSignatureHelper

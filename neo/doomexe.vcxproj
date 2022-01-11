@@ -275,7 +275,9 @@
     <ClInclude Include="renderer\DX12\dx12_global.h" />
     <ClInclude Include="renderer\DX12\dx12_raytracing.h" />
     <ClInclude Include="renderer\DX12\dx12_RootSignature.h" />
+    <ClInclude Include="renderer\DX12\dx12_shader.h" />
     <ClInclude Include="renderer\DX12\dx12_TextureManager.h" />
+    <ClInclude Include="renderer\DX12\RaytracingRootSignature.h" />
     <ClInclude Include="renderer\DXT\DXTCodec.h" />
     <ClInclude Include="renderer\DXT\DXTCodec_local.h" />
     <ClInclude Include="renderer\Font.h" />
@@ -507,7 +509,9 @@
     <ClCompile Include="renderer\DX12\dx12_ImageLoad.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RenderProgs.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RootSignature.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_shader.cpp" />
     <ClCompile Include="renderer\DX12\dx12_TextureManager.cpp" />
+    <ClCompile Include="renderer\DX12\RaytracingRootSignature.cpp" />
     <ClCompile Include="renderer\DXT\DXTDecoder.cpp" />
     <ClCompile Include="renderer\DXT\DXTEncoder.cpp" />
     <ClCompile Include="renderer\DXT\DXTEncoder_SSE2.cpp" />

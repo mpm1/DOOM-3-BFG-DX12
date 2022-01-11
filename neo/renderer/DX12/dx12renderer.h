@@ -32,11 +32,6 @@ struct DX12FrameDataBuffer
 	UINT8* m_constantBufferGPUAddress;
 };
 
-enum eShader {
-	VERTEX,
-	PIXEL
-};
-
 bool DX12_ActivatePipelineState();
 
 class DX12Renderer {

@@ -1,6 +1,9 @@
 #ifndef __DX12_RAYTRACING_H__
 #define __DX12_RAYTRACING_H__
 
+#include "./dx12_global.h"
+#include "./RaytracingRootSignature.h"
+
 #define BIT_RAYTRACED_NONE			0x00000000
 #define BIT_RAYTRACED_SHADOWS		0x00000001
 #define BIT_RAYTRACED_REFLECTIONS	0x00000002
@@ -9,8 +12,6 @@
 #define DEFAULT_SCRATCH_SIZE 262144 // 256 * 1024. We need to check if this is big enough.
 
 namespace DX12Rendering {
-	#include "./dx12_global.h"
-
 	using namespace DirectX;
 	using namespace Microsoft::WRL;
 
@@ -21,7 +22,11 @@ namespace DX12Rendering {
 		UINT			hitGroupIndex; // Should this be stage index?
 		//TODO: Add support for bone information.
 
-		Instance(ID3D12Resource* blas) : bottomLevelAS(blas) {}
+		Instance(ID3D12Resource* blas) : 
+			bottomLevelAS(blas),
+			transformation(),
+			instanceId(0),
+			hitGroupIndex(0) {}
 	};
 
 	struct RootSignatureAssociation {
@@ -97,17 +102,14 @@ private:
 	ID3D12Device5* m_device;
 	ComPtr<ID3D12Resource> m_scratchBuffer; // For now we will use the same scratch buffer for all AS creations.
 
-	ComPtr<ID3D12RootSignature> m_rayGenSignature;
-	ComPtr<ID3D12RootSignature> m_missSignature;
-	ComPtr<ID3D12RootSignature> m_hitSignature;
+	DX12Rendering::RaytracingRootSignature m_rayGenSignature;
+	DX12Rendering::RaytracingRootSignature m_missSignature;
+	DX12Rendering::RaytracingRootSignature m_hitSignature;
 
 	ComPtr<ID3D12StateObject> m_stateObject; // Raytracing pipeline state.
 	ComPtr<ID3D12StateObjectProperties> m_stateObjectProps;
 
 	// Pipeline
-	ComPtr<ID3D12RootSignature> CreateRayGenSignature();
-	ComPtr<ID3D12RootSignature> CreateMissSignature();
-	ComPtr<ID3D12RootSignature> CreateHitSignature();
 	void CreatePipeline();
 	void LoadShader(); // TODO: Implement function to load in the correct shader.
 

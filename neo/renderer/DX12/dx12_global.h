@@ -54,12 +54,6 @@ struct DX12IndexBuffer
 	UINT indexCount;
 };
 
-struct DX12CompiledShader
-{
-	byte* data;
-	size_t size;
-};
-
 struct DX12TextureBuffer
 {
 	ComPtr<ID3D12Resource> textureBuffer;

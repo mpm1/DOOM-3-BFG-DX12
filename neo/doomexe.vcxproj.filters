@@ -564,6 +564,12 @@
     <ClInclude Include="renderer\DX12\dx12_TextureManager.h">
       <Filter>Renderer\DX12</Filter>
     </ClInclude>
+    <ClInclude Include="renderer\DX12\RaytracingRootSignature.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_shader.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cm\CollisionModel_contacts.cpp">
@@ -1197,6 +1203,12 @@
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_global.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\RaytracingRootSignature.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_shader.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
   </ItemGroup>
