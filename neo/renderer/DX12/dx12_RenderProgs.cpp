@@ -274,8 +274,8 @@ void idRenderProgManager::LoadProgram(const int programIndex, const int vertexSh
 		return; // Already loaded.
 	}
 
-	DX12Rendering::DX12CompiledShader* vertexShader = (vertexShaderIndex != -1) ? static_cast<DX12Rendering::DX12CompiledShader*>(vertexShaders[vertexShaderIndex].apiObject) : NULL;
-	DX12Rendering::DX12CompiledShader* fragmentShader = (fragmentShaderIndex != -1) ? static_cast<DX12Rendering::DX12CompiledShader*>(fragmentShaders[fragmentShaderIndex].apiObject) : NULL;
+	DX12Rendering::CompiledShader* vertexShader = (vertexShaderIndex != -1) ? static_cast<DX12Rendering::CompiledShader*>(vertexShaders[vertexShaderIndex].apiObject) : NULL;
+	DX12Rendering::CompiledShader* fragmentShader = (fragmentShaderIndex != -1) ? static_cast<DX12Rendering::CompiledShader*>(fragmentShaders[fragmentShaderIndex].apiObject) : NULL;
 
 	if (vertexShader == NULL || fragmentShader == NULL || vertexShader->data == NULL || fragmentShader->data == NULL) {
 		common->Warning("Could not build shader %s.", vertexShaders[vertexShaderIndex].name.c_str());
@@ -313,7 +313,7 @@ void idRenderProgManager::LoadVertexShader(int index) {
 		return; // Already loaded
 	}
 
-	DX12Rendering::DX12CompiledShader* shader = (DX12Rendering::DX12CompiledShader*)malloc(sizeof(DX12Rendering::DX12CompiledShader));
+	DX12Rendering::CompiledShader* shader = (DX12Rendering::CompiledShader*)malloc(sizeof(DX12Rendering::CompiledShader));
 
 	DX12Rendering::LoadHLSLShader(shader, vertexShaders[index].name, DX12Rendering::VERTEX);
 
@@ -331,7 +331,7 @@ void idRenderProgManager::LoadFragmentShader(int index) {
 		return; // Already loaded
 	}
 
-	DX12Rendering::DX12CompiledShader* shader = (DX12Rendering::DX12CompiledShader*)malloc(sizeof(DX12Rendering::DX12CompiledShader));
+	DX12Rendering::CompiledShader* shader = (DX12Rendering::CompiledShader*)malloc(sizeof(DX12Rendering::CompiledShader));
 
 	DX12Rendering::LoadHLSLShader(shader, fragmentShaders[index].name, DX12Rendering::PIXEL);
 

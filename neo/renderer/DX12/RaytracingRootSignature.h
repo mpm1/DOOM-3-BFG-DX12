@@ -1,11 +1,9 @@
 #ifndef __DX12_RAYTRACING_ROOT_SIGNATURE_H__
 #define __DX12_RAYTRACING_ROOT_SIGNATURE_H__
 
+#include "./dx12_global.h"
+
 namespace DX12Rendering {
-	#include "./dx12_global.h"
-
-	using namespace DirectX;
-
 	enum eRootSignatureFlags {
 		NONE = 0,
 		WRITE_OUTPUT = 1,

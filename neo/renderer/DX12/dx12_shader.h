@@ -9,16 +9,22 @@ namespace DX12Rendering {
 
 	enum eShader {
 		VERTEX,
-		PIXEL
+		PIXEL,
+		DXR
 	};
 
-	struct DX12CompiledShader
+	struct CompiledShader
 	{
 		byte* data;
 		size_t size;
+
+		CompiledShader() :
+			data(nullptr),
+			size(0) {}
 	};
 
-	void LoadHLSLShader(DX12CompiledShader* shader, const char* name, eShader shaderType);
+	void LoadHLSLShader(CompiledShader* shader, const char* name, eShader shaderType);
+	void UnloadHLSLShader(CompiledShader* shader);
 }
 
 #endif

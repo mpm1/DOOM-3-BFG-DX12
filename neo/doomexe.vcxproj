@@ -39,6 +39,7 @@
     <Keyword>Win32Proj</Keyword>
     <SccAuxPath>
     </SccAuxPath>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
@@ -274,6 +275,7 @@
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
     <ClInclude Include="renderer\DX12\dx12_global.h" />
     <ClInclude Include="renderer\DX12\dx12_raytracing.h" />
+    <ClInclude Include="renderer\DX12\dx12_RaytracingPipeline.h" />
     <ClInclude Include="renderer\DX12\dx12_RootSignature.h" />
     <ClInclude Include="renderer\DX12\dx12_shader.h" />
     <ClInclude Include="renderer\DX12\dx12_TextureManager.h" />
@@ -495,6 +497,7 @@
     <ClCompile Include="renderer\DX12\dx12_BufferObject.cpp" />
     <ClCompile Include="renderer\DX12\dx12_global.cpp" />
     <ClCompile Include="renderer\DX12\dx12_raytracing.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_RaytracingPipeline.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RenderTools.cpp" />
     <ClCompile Include="renderer\DX12\dx12_GLFunctions.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
@@ -936,7 +939,6 @@
       <EntryPointName Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </EntryPointName>
     </FxCompile>
-    <None Include="..\base\renderprogs\global.inc" />
     <FxCompile Include="..\base\renderprogs\gui.pixel">
       <FileType>Document</FileType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
@@ -979,6 +981,7 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
     </FxCompile>
+    <None Include="..\base\renderprogs\global.inc" />
     <None Include="..\base\renderprogs\heathaze.pixel" />
     <None Include="..\base\renderprogs\heathaze.vertex" />
     <None Include="..\base\renderprogs\heatHazeWithMask.pixel" />

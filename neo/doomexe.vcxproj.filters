@@ -570,6 +570,9 @@
     <ClInclude Include="renderer\DX12\dx12_shader.h">
       <Filter>Renderer\DX12</Filter>
     </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_RaytracingPipeline.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cm\CollisionModel_contacts.cpp">
@@ -1211,6 +1214,9 @@
     <ClCompile Include="renderer\DX12\dx12_shader.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_RaytracingPipeline.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="sys\win32\rc\res\doom.ico">
@@ -1295,9 +1301,6 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\base\renderprogs\fxaa.vertex">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\global.inc">
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\base\renderprogs\heathaze.pixel">
@@ -1398,6 +1401,9 @@
     </None>
     <None Include="packages.config" />
     <None Include="..\base\renderprogs\raytracing_global.inc">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\base\renderprogs\global.inc">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>

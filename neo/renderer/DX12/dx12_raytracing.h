@@ -3,6 +3,7 @@
 
 #include "./dx12_global.h"
 #include "./RaytracingRootSignature.h"
+#include "./dx12_RaytracingPipeline.h"
 
 #define BIT_RAYTRACED_NONE			0x00000000
 #define BIT_RAYTRACED_SHADOWS		0x00000001
@@ -11,10 +12,10 @@
 
 #define DEFAULT_SCRATCH_SIZE 262144 // 256 * 1024. We need to check if this is big enough.
 
-namespace DX12Rendering {
-	using namespace DirectX;
-	using namespace Microsoft::WRL;
+using namespace DirectX;
+using namespace Microsoft::WRL;
 
+namespace DX12Rendering {
 	struct Instance {
 		ID3D12Resource* bottomLevelAS;
 		XMMATRIX		transformation;
@@ -27,15 +28,6 @@ namespace DX12Rendering {
 			transformation(),
 			instanceId(0),
 			hitGroupIndex(0) {}
-	};
-
-	struct RootSignatureAssociation {
-		ID3D12RootSignature* m_rootSignature;
-		std::vector<std::wstring> m_symbols;
-
-		RootSignatureAssociation(ID3D12RootSignature* rootSignature, const std::vector<std::wstring>& symbols) :
-			m_rootSignature(rootSignature),
-			m_symbols(symbols) {}
 	};
 
 	class TopLevelAccelerationStructure;
@@ -106,12 +98,13 @@ private:
 	DX12Rendering::RaytracingRootSignature m_missSignature;
 	DX12Rendering::RaytracingRootSignature m_hitSignature;
 
-	ComPtr<ID3D12StateObject> m_stateObject; // Raytracing pipeline state.
+	ComPtr<ID3D12StateObject> m_shadowStateObject; // Raytracing pipeline state.
 	ComPtr<ID3D12StateObjectProperties> m_stateObjectProps;
+
+	ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
 	// Pipeline
 	void CreatePipeline();
-	void LoadShader(); // TODO: Implement function to load in the correct shader.
 
 	// Acceleration Structure
 	bool UpdateBLASResources(DX12Object* storedObject, bool updateOnly);
@@ -120,5 +113,7 @@ private:
 	bool IsReflectiveEnabled() const;
 	bool IsShadowEnabled() const;
 	bool IsIlluminationEnabled() const;
+
+	ID3D12RootSignature* GetGlobalRootSignature();
 };
 #endif

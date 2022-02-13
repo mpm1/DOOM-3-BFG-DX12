@@ -5,9 +5,6 @@
 #include "./dx12_RootSignature.h"
 #include "./dx12_raytracing.h"
 
-// Will be automatically enabled with preprocessor symbols: USE_PIX, DBG, _DEBUG, PROFILE, or PROFILE_BUILD
-#include <pix3.h>
-
 // Use D3D clip space.
 #define CLIP_SPACE_D3D
 

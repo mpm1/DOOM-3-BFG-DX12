@@ -32,7 +32,7 @@ namespace DX12Rendering {
 				1
 			));
 		}
-
+		
 		if (descriptorRanges.size() > 0) {
 			rootParameters[0].InitAsDescriptorTable(descriptorRanges.size(), (D3D12_DESCRIPTOR_RANGE1*)descriptorRanges.data());
 

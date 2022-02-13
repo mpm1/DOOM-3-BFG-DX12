@@ -24,6 +24,7 @@ void DX12ThrowIfFailed(HRESULT hr)
 	if (FAILED(hr))
 	{
 		_com_error err(hr);
+		auto errDesc = err.ErrorInfo();
 
 		// Set a breakpoint on this line to catch DirectX API errors
 		DX12FailMessage(err.ErrorMessage());

@@ -1,8 +1,8 @@
 #pragma hdrstop
 
-namespace DX12Rendering {
-	#include "./dx12_raytracing.h"
+#include "./dx12_raytracing.h"
 
+namespace DX12Rendering {
 	// From NVIDIAs DXRHelper code
 	// Specifies a heap used for uploading. This heap type has CPU access optimized
 	// for uploading to the GPU.
@@ -226,16 +226,39 @@ namespace DX12Rendering {
 		return m_state & BIT_RAYTRACED_ILLUMINATION > 0;
 	}
 
+	ID3D12RootSignature* Raytracing::GetGlobalRootSignature() {
+		if (m_globalRootSignature.Get() == nullptr) {
+			D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
+			rootDesc.NumParameters = 0;
+			rootDesc.pParameters = nullptr;
+			rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_NONE;
+
+			ComPtr<ID3DBlob> rootSignature;
+			ComPtr<ID3DBlob> error;
+
+			DX12ThrowIfFailed(D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &rootSignature, &error));
+
+			DX12ThrowIfFailed(m_device->CreateRootSignature(0, rootSignature->GetBufferPointer(), rootSignature->GetBufferSize(), IID_PPV_ARGS(&m_globalRootSignature)));
+		}
+
+		return m_globalRootSignature.Get();
+	}
+
 	void Raytracing::CreatePipeline() {
-		// TODO: Load the HLSL files for raytracing
+		// Create the Pipline
+		DX12Rendering::RaytracingPipeline pipeline(m_device, "generator", GetGlobalRootSignature(), {L"RayGen", L"Miss", L"ClosestHit"});
 
-		std::vector<RootSignatureAssociation> associations = {
-			RootSignatureAssociation(m_rayGenSignature.GetRootSignature(), {L"RayGen"}),
-			RootSignatureAssociation(m_missSignature.GetRootSignature(), {L"Miss"}),
-			RootSignatureAssociation(m_hitSignature.GetRootSignature(), {L"HitGroup"}),
-		};
+		pipeline.AddAssocation(m_rayGenSignature.GetRootSignature(), { L"RayGen" });
+		pipeline.AddAssocation(m_missSignature.GetRootSignature(), { L"Miss" });
+		pipeline.AddAssocation(m_hitSignature.GetRootSignature(), { L"HitGroup" });
 
-		//TODO: Start here, implement the Generate function of the RootSignatureHelper
+		pipeline.AddHitGroup(L"HitGroup", L"ClosestHit");
+		
+		pipeline.SetMaxPayloadSize(4 * sizeof(float)); //RGB + Distance
+
+		// TODO: Add the hit and miss properties to the pipeline
+
+		m_shadowStateObject = pipeline.Generate();
 	}
 
 	TopLevelAccelerationStructure::TopLevelAccelerationStructure(ID3D12Device5* device)
