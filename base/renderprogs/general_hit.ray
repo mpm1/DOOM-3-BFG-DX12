@@ -1,0 +1,13 @@
+#include "raytracing_global.inc"
+
+[shader("closesthit")] 
+void ClosestHit(inout HitInfo payload, Attributes attrib) 
+{
+	// TODO: Handle lighting and normals. For now we are showing the distance.
+	/*payload.diffuseColor = float4(1, 1, 1, 1);
+	payload.emissiveColor = float3(0, 0, 0);
+
+	float color = RayTCurrent() / 1000.0f;
+	payload.lightColor = float3(color, color, color);*/
+	payload.light = RayTCurrent() / 1000.0f;
+}

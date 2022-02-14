@@ -10,32 +10,12 @@ RaytracingAccelerationStructure SceneBVH :register(t0);
 void RayGen() {
 	// Initialize the ray payload
 	HitInfo payload;
-	payload.diffuseColor = float4(1, 1, 1, 1);
+	payload.light = 1.0f;
 
 	// Get the location within the dispatched 2D grid of work items
 	// (often maps to pixels, so this could represent a pixel coordinate).
 	uint2 launchIndex = DispatchRaysIndex();
 
-	gOutput[launchIndex].rgb = (payload.diffuseColor.rgb * payload.lightColor) + payload.emissiveColor; // TODO: Add appropriate ray pathing. Should we use the max between the emissive and the lightColor?
+	gOutput[launchIndex].rgb = payload.light * float3(1.0f, 1.0f, 1.0f);
 	gOutput[launchIndex].a = 1.0f;
-}
-
-// General shader functions
-[shader("miss")]
-void Miss(inout HitInfo payload : SV_RayPayload)
-{
-    payload.diffuseColor = float4(0, 0, 0, 0);
-	payload.emissiveColor = float3(0, 0, 0);
-	payload.lightColor = float3(0, 0, 0);
-}
-
-[shader("closesthit")] 
-void ClosestHit(inout HitInfo payload, Attributes attrib) 
-{
-	// TODO: Handle lighting and normals. For now we are showing the distance.
-	payload.diffuseColor = float4(1, 1, 1, 1);
-	payload.emissiveColor = float3(0, 0, 0);
-
-	float color = RayTCurrent() / 1000.0f;
-	payload.lightColor = float3(color, color, color);
 }

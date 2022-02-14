@@ -3,21 +3,10 @@
 #include "./dx12_RaytracingPipeline.h"
 
 namespace DX12Rendering {
-	RaytracingPipeline::RaytracingPipeline(ID3D12Device5* device, const char* libraryName, ID3D12RootSignature* globalRootSignature, const std::vector<LPCWSTR>& symbolExports)
+	RaytracingPipeline::RaytracingPipeline(ID3D12Device5* device, ID3D12RootSignature* globalRootSignature)
 		: m_device(device),
 		m_globalRootSignature(globalRootSignature)
 	{
-		for (const LPCWSTR& symbol : symbolExports) {
-			m_symbolDesc.push_back({ symbol, nullptr, D3D12_EXPORT_FLAG_NONE });
-		}
-
-		DX12Rendering::LoadHLSLShader(&m_shader, libraryName, DXR);
-
-		m_libDesc = {};
-		m_libDesc.DXILLibrary = { m_shader.data, m_shader.size };
-		m_libDesc.NumExports = m_symbolDesc.size();
-		m_libDesc.pExports = (D3D12_EXPORT_DESC*)m_symbolDesc.data();
-
 		// Build Empty RootSignature
 		D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
 		rootDesc.NumParameters = 0;
@@ -36,26 +25,25 @@ namespace DX12Rendering {
 	}
 
 	RaytracingPipeline::~RaytracingPipeline() {
-		DX12Rendering::UnloadHLSLShader(&m_shader);
 	}
 
 	void RaytracingPipeline::AddHitGroup(const std::wstring& name, const std::wstring& closestHitSymbol) {
 		// For now we are only using Closest Hit Shaders
-		D3D12_HIT_GROUP_DESC hitGroupDesc = {};
-		hitGroupDesc.HitGroupExport = name.c_str();
-		hitGroupDesc.Type = D3D12_HIT_GROUP_TYPE_TRIANGLES;
-		hitGroupDesc.ClosestHitShaderImport = closestHitSymbol.c_str();
-
-		m_hitGroupDesc.emplace_back(hitGroupDesc);
+		m_hitGroupDesc.emplace_back(HitGroupDescription(name, closestHitSymbol));
 	}
 
 	void RaytracingPipeline::AddAssocation(ID3D12RootSignature* m_rootSignature, const std::vector<std::wstring>& symbols) {
 		m_associations.emplace_back(RootSignatureAssociation(m_rootSignature, symbols));
 	}
 
+	void RaytracingPipeline::AddLibrary(const std::string libraryName, const std::vector<std::wstring>& symbolExports)
+	{
+		m_libDesc.push_back(LibraryDescription(libraryName, symbolExports));
+	}
+
 	ID3D12StateObject* RaytracingPipeline::Generate() {
 		UINT64 subObjectCount =
-			1 +							// DXIL libraries
+			m_libDesc.size() +			// DXIL libraries
 			m_hitGroupDesc.size() +		// Hit group declarations
 			1 +							// Shader configuration
 			1 +                         // Shader payload
@@ -67,16 +55,28 @@ namespace DX12Rendering {
 		UINT currentIndex = 0;
 
 		// Add the DXIL Library
-		D3D12_STATE_SUBOBJECT libObject = {};
-		libObject.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
-		libObject.pDesc = &m_libDesc;
-		subObjects[currentIndex++] = libObject;
+		for (LibraryDescription& libDesc : m_libDesc)
+		{
+			libDesc.m_libDesc.DXILLibrary = { libDesc.m_shader.data, libDesc.m_shader.size };
+			libDesc.m_libDesc.NumExports = libDesc.m_symbolDesc.size();
+			libDesc.m_libDesc.pExports = (D3D12_EXPORT_DESC*)libDesc.m_symbolDesc.data();
+
+			D3D12_STATE_SUBOBJECT libObject = {};
+			libObject.Type = D3D12_STATE_SUBOBJECT_TYPE_DXIL_LIBRARY;
+			libObject.pDesc = &libDesc.m_libDesc;
+			subObjects[currentIndex++] = libObject;
+		}
 
 		// Add the hit group declarations
-		for (const D3D12_HIT_GROUP_DESC& hitGroup : m_hitGroupDesc) {
+		for (HitGroupDescription& hitGroup : m_hitGroupDesc) {
+			hitGroup.m_hitGroupDesc.HitGroupExport = hitGroup.m_name.c_str();
+			hitGroup.m_hitGroupDesc.ClosestHitShaderImport = hitGroup.m_closestHitSymbol.c_str();
+			hitGroup.m_hitGroupDesc.AnyHitShaderImport = nullptr;
+			hitGroup.m_hitGroupDesc.IntersectionShaderImport = nullptr;
+
 			D3D12_STATE_SUBOBJECT subObject = {};
 			subObject.Type = D3D12_STATE_SUBOBJECT_TYPE_HIT_GROUP;
-			subObject.pDesc = &hitGroup;
+			subObject.pDesc = &hitGroup.m_hitGroupDesc;
 
 			subObjects[currentIndex++] = subObject;
 		}
@@ -93,15 +93,11 @@ namespace DX12Rendering {
 
 		// Add the exported symbols
 		std::vector<LPCWSTR> exportedSymbolPointers = {};
-		exportedSymbolPointers.reserve(m_symbolDesc.size());
-		for (const auto& name : m_symbolDesc)
-		{
-			exportedSymbolPointers.emplace_back(name.Name);
-		}
+		BuildExportedSymbolsList(exportedSymbolPointers);
 
 		const WCHAR** symbolExports = exportedSymbolPointers.data();
 		D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION payloadAssociation = {};
-		payloadAssociation.NumExports = m_symbolDesc.size();
+		payloadAssociation.NumExports = exportedSymbolPointers.size();
 		payloadAssociation.pExports = symbolExports;
 		payloadAssociation.pSubobjectToAssociate = &subObjects[currentIndex - 1];
 
@@ -175,6 +171,29 @@ namespace DX12Rendering {
 		return rayTracingStateObject;
 	}
 
+	void RaytracingPipeline::BuildExportedSymbolsList(std::vector<LPCWSTR>& exportedSymbols) {
+		std::unordered_set<LPCWSTR> exports;
+
+		for (const LibraryDescription& libDesc : m_libDesc)
+		{
+			for (const auto& name : libDesc.m_symbolDesc) {
+				exports.insert(name.Name);
+			}
+		}
+
+		for (const HitGroupDescription& hitDesc : m_hitGroupDesc)
+		{
+			exports.erase(hitDesc.m_closestHitSymbol.c_str());
+			exports.insert(hitDesc.m_name.c_str());
+		}
+
+		// Build the final list
+		exportedSymbols.reserve(exports.size());
+		for (const auto& name : exports) {
+			exportedSymbols.push_back(name);
+		}
+	}
+
 	RootSignatureAssociation::RootSignatureAssociation(ID3D12RootSignature* rootSignature, const std::vector<std::wstring>& symbols) :
 		m_rootSignature(rootSignature),
 		m_symbols()
@@ -183,7 +202,27 @@ namespace DX12Rendering {
 		for (auto& symbol : symbols) {
 			m_symbols.push_back(symbol.c_str());
 		}
+	}
 
+	LibraryDescription::LibraryDescription(const std::string libraryName, const std::vector<std::wstring>& symbolExports) :
+		m_symbolDesc()
+	{
+		DX12Rendering::LoadHLSLShader(&m_shader, libraryName.c_str(), DXR);
 
+		m_symbolDesc.reserve(symbolExports.size());
+		for (auto& symbol : symbolExports) {
+			m_symbolDesc.push_back({ symbol.c_str(), nullptr, D3D12_EXPORT_FLAG_NONE });
+		}
+	}
+
+	LibraryDescription::~LibraryDescription()
+	{
+		DX12Rendering::UnloadHLSLShader(&m_shader);
+	}
+
+	HitGroupDescription::HitGroupDescription(std::wstring hitGroupName, std::wstring closestHitSymbol) :
+		m_name(std::move(hitGroupName)),
+		m_closestHitSymbol(std::move(closestHitSymbol))
+	{
 	}
 }

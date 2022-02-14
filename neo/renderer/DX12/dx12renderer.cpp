@@ -88,12 +88,12 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 			debugController->EnableDebugLayer();
 		}
 
-		/*ComPtr<ID3D12DeviceRemovedExtendedDataSettings> pDredSettings;
+		ComPtr<ID3D12DeviceRemovedExtendedDataSettings> pDredSettings;
 		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&pDredSettings)))) {
 			// Turn on auto-breadcrumbs and page fault reporting.
 			pDredSettings->SetAutoBreadcrumbsEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
 			pDredSettings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
-		}*/
+		}
 	}
 #endif
 #endif

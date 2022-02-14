@@ -104,7 +104,7 @@ private:
 	ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
 	// Pipeline
-	void CreatePipeline();
+	void CreateShadowPipeline();
 
 	// Acceleration Structure
 	bool UpdateBLASResources(DX12Object* storedObject, bool updateOnly);

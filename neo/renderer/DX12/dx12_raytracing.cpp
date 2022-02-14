@@ -58,7 +58,7 @@ namespace DX12Rendering {
 		m_hitSignature(device, NONE)
 	{
 		m_scratchBuffer = CreateBuffer(device, DEFAULT_SCRATCH_SIZE, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kDefaultHeapProps);
-		CreatePipeline();
+		CreateShadowPipeline();
 	}
 
 	Raytracing::~Raytracing()
@@ -244,19 +244,25 @@ namespace DX12Rendering {
 		return m_globalRootSignature.Get();
 	}
 
-	void Raytracing::CreatePipeline() {
+	void Raytracing::CreateShadowPipeline() { 
 		// Create the Pipline
-		DX12Rendering::RaytracingPipeline pipeline(m_device, "generator", GetGlobalRootSignature(), {L"RayGen", L"Miss", L"ClosestHit"});
+		DX12Rendering::RaytracingPipeline pipeline(m_device, GetGlobalRootSignature());
+		std::vector<std::wstring> generatorSymbols = { L"RayGen" };
+		std::vector<std::wstring> missSymbols = { L"Miss" };
+		std::vector<std::wstring> hitSymbols = { L"ClosestHit" };
 
-		pipeline.AddAssocation(m_rayGenSignature.GetRootSignature(), { L"RayGen" });
-		pipeline.AddAssocation(m_missSignature.GetRootSignature(), { L"Miss" });
-		pipeline.AddAssocation(m_hitSignature.GetRootSignature(), { L"HitGroup" });
+		pipeline.AddLibrary("shadow_generator", generatorSymbols);
+		pipeline.AddLibrary("general_miss", missSymbols);
+		pipeline.AddLibrary("general_hit", hitSymbols);
+
+		pipeline.AddAssocation(m_rayGenSignature.GetRootSignature(), generatorSymbols);
+		pipeline.AddAssocation(m_missSignature.GetRootSignature(), missSymbols);
+		pipeline.AddAssocation(m_hitSignature.GetRootSignature(), hitSymbols);
 
 		pipeline.AddHitGroup(L"HitGroup", L"ClosestHit");
 		
-		pipeline.SetMaxPayloadSize(4 * sizeof(float)); //RGB + Distance
-
-		// TODO: Add the hit and miss properties to the pipeline
+		pipeline.SetMaxPayloadSize(4 * sizeof(float)); // Normal.xyz, and light amount.
+		pipeline.SetMaxAttributeSize(4 * sizeof(float)); // x, y, z, w corrdinates.
 
 		m_shadowStateObject = pipeline.Generate();
 	}

@@ -1,0 +1,8 @@
+#include "raytracing_global.inc"
+
+// General shader functions
+[shader("miss")]
+void Miss(inout HitInfo payload : SV_RayPayload)
+{
+    payload.light = 1.0f;
+}

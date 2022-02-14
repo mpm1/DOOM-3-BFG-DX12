@@ -1406,6 +1406,12 @@
     <None Include="..\base\renderprogs\global.inc">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\base\renderprogs\general_hit.ray">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\base\renderprogs\general_miss.ray">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sys\win32\rc\doom.rc">
@@ -1506,7 +1512,7 @@
     <FxCompile Include="..\base\renderprogs\skybox.pixel">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="..\base\renderprogs\generator.ray">
+    <FxCompile Include="..\base\renderprogs\shadow_generator.ray">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

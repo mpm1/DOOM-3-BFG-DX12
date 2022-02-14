@@ -1,11 +1,9 @@
 {
   "ExpandedNodes": [
     "",
-    "\\neo",
-    "\\neo\\framework",
-    "\\neo\\renderer",
-    "\\neo\\renderer\\DX12"
+    "\\base",
+    "\\doomclassic",
+    "\\neo"
   ],
-  "SelectedNode": "\\neo\\external.vcxproj",
   "PreviewInSolutionExplorer": false
 }
