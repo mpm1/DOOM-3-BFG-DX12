@@ -4,6 +4,7 @@
 #include "./dx12_global.h"
 #include "./RaytracingRootSignature.h"
 #include "./dx12_RaytracingPipeline.h"
+#include "./dx12_ShaderBindingTable.h"
 
 #define BIT_RAYTRACED_NONE			0x00000000
 #define BIT_RAYTRACED_SHADOWS		0x00000001
@@ -44,6 +45,7 @@ public:
 	void Reset(); // Clears the acceleration structure.
 	void UpdateResources(ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer);
 
+	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() { return m_result->GetGPUVirtualAddress(); }
 private:
 	ID3D12Device5* m_device;
 	ComPtr<ID3D12Resource> m_result; // Top Level Acceleration Structure - Used for raytracing.
@@ -61,13 +63,25 @@ public:
 	DX12Rendering::TopLevelAccelerationStructure reflectionTlas; // Contains all objects that would appear in reflections. We may be able to use this for global illumination.
 	DX12Rendering::TopLevelAccelerationStructure emmisiveTlas; // Contains all objects emitting light.
 
-	Raytracing(ID3D12Device5* device);
+	Raytracing(ID3D12Device5* device, UINT screenWidth, UINT screenHeight);
 	~Raytracing();
+
+	void Resize(UINT width, UINT height);
 
 	void StartAccelerationStructure(bool raytracedShadows, bool raytracedReflections, bool raytracedIllumination);
 	void EndAccelerationStructure(ID3D12GraphicsCommandList4* commandList);
 
-	void CastRays(const CD3DX12_VIEWPORT viewport, const CD3DX12_RECT scissorRect) const;
+	/// <summary>
+	/// Cast the rays to the stencil buffer to store for shadow generation.
+	/// </summary>
+	/// <param name="commandList"></param>
+	/// <param name="viewport"></param>
+	/// <param name="scissorRect"></param>
+	void CastShadowRays(ID3D12GraphicsCommandList4* commandList, 
+		const CD3DX12_VIEWPORT& viewport, 
+		const CD3DX12_RECT& scissorRect,
+		ID3D12Resource* depthStencilBuffer,
+		UINT32 stencilIndex);
 
 	/// <summary>
 	/// Generates the bottom level accelr
@@ -92,6 +106,9 @@ public:
 private:
 	UINT32 m_state;
 	ID3D12Device5* m_device;
+	UINT m_width;
+	UINT m_height;
+
 	ComPtr<ID3D12Resource> m_scratchBuffer; // For now we will use the same scratch buffer for all AS creations.
 
 	DX12Rendering::RaytracingRootSignature m_rayGenSignature;
@@ -99,12 +116,23 @@ private:
 	DX12Rendering::RaytracingRootSignature m_hitSignature;
 
 	ComPtr<ID3D12StateObject> m_shadowStateObject; // Raytracing pipeline state.
-	ComPtr<ID3D12StateObjectProperties> m_stateObjectProps;
+	ComPtr<ID3D12StateObjectProperties> m_shadowStateObjectProps;
 
 	ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
+	ComPtr<ID3D12Resource> m_shadowResource; // For testing right now, we will acutally copy to the stencil buffer when needed.
+	ComPtr<ID3D12DescriptorHeap> m_shadowUavHeaps;
+	ComPtr<ID3D12Resource> m_shadowSBTData;
+
+	ShaderBindingTable m_shadowSBTDesc;
+
 	// Pipeline
 	void CreateShadowPipeline();
+	void CreateOutputBuffers();
+	void CreateShaderResourceHeap();
+
+	void CreateShaderBindingTables();
+	void CreateShadowBindingTable();
 
 	// Acceleration Structure
 	bool UpdateBLASResources(DX12Object* storedObject, bool updateOnly);
@@ -113,6 +141,10 @@ private:
 	bool IsReflectiveEnabled() const;
 	bool IsShadowEnabled() const;
 	bool IsIlluminationEnabled() const;
+
+	// Custom width and height selectors will be set based on definded scalers.
+	UINT GetShadowWidth() const { return m_width; };
+	UINT GetShadowHeight() const { return m_height;  };
 
 	ID3D12RootSignature* GetGlobalRootSignature();
 };

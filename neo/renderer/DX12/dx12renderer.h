@@ -89,7 +89,8 @@ public:
 	// Raytracing
 	void BeginRayTracingSetup();
 	void EndRayTracingSetup();
-	bool IsRaytracingEnabled() { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
+	bool IsRaytracingEnabled() const { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
+	void GenerateRaytracedStencilShadows();
 
 	//Object commands
 	DX12Object* AddToObjectList(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);

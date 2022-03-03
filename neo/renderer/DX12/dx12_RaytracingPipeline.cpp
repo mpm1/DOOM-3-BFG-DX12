@@ -17,11 +17,11 @@ namespace DX12Rendering {
 		ID3DBlob* error;
 
 		HRESULT hr = D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &rootSignature, &error);
-		DX12ThrowIfFailed(hr);
+		DX12Rendering::ThrowIfFailed(hr);
 
 		hr = m_device->CreateRootSignature(0, rootSignature->GetBufferPointer(), rootSignature->GetBufferSize(), IID_PPV_ARGS(&m_localRootSignature));
 		rootSignature->Release();
-		DX12ThrowIfFailed(hr);
+		DX12Rendering::ThrowIfFailed(hr);
 	}
 
 	RaytracingPipeline::~RaytracingPipeline() {
@@ -162,10 +162,10 @@ namespace DX12Rendering {
 		pipelineDesc.pSubobjects = subObjects.data();
 
 		HRESULT hr = m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&rayTracingStateObject));
-		DX12ThrowIfFailed(hr);
+		DX12Rendering::ThrowIfFailed(hr);
 		/*if (FAILED(hr)) 
 		{
-			DX12FailMessage("Could not create raytracing pipeline state object.");
+			DX12Rendering::FailMessage("Could not create raytracing pipeline state object.");
 		}*/
 
 		return rayTracingStateObject;

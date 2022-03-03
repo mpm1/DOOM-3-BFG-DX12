@@ -33,6 +33,12 @@ using namespace DirectX;
 using namespace Microsoft::WRL;
 
 namespace DX12Rendering {
+	void FailMessage(LPCSTR message);
+	void WarnMessage(LPCSTR message);
+	void ThrowIfFailed(HRESULT hr);
+	bool WarnIfFailed(HRESULT hr);
+
+	ID3D12DescriptorHeap* CreateDescriptorHeap(ID3D12Device* device, uint32_t count, D3D12_DESCRIPTOR_HEAP_TYPE type, bool shaderVisible);
 }
 
 struct Vertex
@@ -106,10 +112,5 @@ struct DX12Object
 	//const idMaterial* shader;
 	std::vector<DX12Stage> stages;
 };
-
-void DX12FailMessage(LPCSTR message);
-void DX12WarnMessage(LPCSTR message);
-void DX12ThrowIfFailed(HRESULT hr);
-bool DX12WarnIfFailed(HRESULT hr);
 
 #endif

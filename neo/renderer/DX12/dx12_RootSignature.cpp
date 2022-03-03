@@ -44,9 +44,9 @@ void DX12RootSignature::CreateRootSignature()
 	ComPtr<ID3DBlob> signature;
 	ComPtr<ID3DBlob> error;
 
-	DX12ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error));
+	DX12Rendering::ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signature, &error));
 
-	DX12ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
+	DX12Rendering::ThrowIfFailed(m_device->CreateRootSignature(0, signature->GetBufferPointer(), signature->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
 }
 
 void DX12RootSignature::CreateCBVHeap(const size_t constantBufferSize) {
@@ -65,10 +65,10 @@ void DX12RootSignature::CreateCBVHeap(const size_t constantBufferSize) {
 			cbvHeapDesc.NumDescriptors = MAX_HEAP_INDEX_COUNT;
 			cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 			cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-			DX12ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap[frameIndex])));
+			DX12Rendering::ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap[frameIndex])));
 
 			// Create the Constant buffer heap for each frame
-			DX12ThrowIfFailed(m_device->CreateCommittedResource(
+			DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
 				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 				D3D12_HEAP_FLAG_NONE,
 				&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
@@ -123,7 +123,7 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const s
 	UINT offset = bufferSize * objectIndex; // Each entry is 256 byte aligned.
 	CD3DX12_RANGE readRange(offset, bufferSize);
 
-	DX12ThrowIfFailed(m_cbvUploadHeap[frameIndex]->Map(0, &readRange, reinterpret_cast<void**>(&buffer)));
+	DX12Rendering::ThrowIfFailed(m_cbvUploadHeap[frameIndex]->Map(0, &readRange, reinterpret_cast<void**>(&buffer)));
 	memcpy(&buffer[offset], constantBuffer, constantBufferSize);
 	m_cbvUploadHeap[frameIndex]->Unmap(0, &readRange);
 

@@ -56,8 +56,8 @@ namespace DX12Rendering {
 		// Create the root signature
 		ComPtr<ID3DBlob> signatureBlob;
 		ComPtr<ID3DBlob> errorBlob;
-		DX12ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, &errorBlob));
+		DX12Rendering::ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, &errorBlob));
 
-		DX12ThrowIfFailed(m_device->CreateRootSignature(0, signatureBlob.Get()->GetBufferPointer(), signatureBlob.Get()->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
+		DX12Rendering::ThrowIfFailed(m_device->CreateRootSignature(0, signatureBlob.Get()->GetBufferPointer(), signatureBlob.Get()->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
 	}
 }

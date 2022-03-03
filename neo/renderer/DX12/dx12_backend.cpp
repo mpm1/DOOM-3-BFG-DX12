@@ -454,7 +454,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 	if (addToObjectList) {
 		storedObject = dxRenderer.AddToObjectList(
 			reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
-			vertOffset / sizeof(idDrawVert),
+			vertOffset,// / sizeof(idDrawVert),
 			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
 			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
 			r_singleTriangle.GetBool() ? 3 : surf->numIndexes
@@ -1839,6 +1839,14 @@ static void RB_DrawInteractions() {
 				}
 				GL_State(GLS_DEFAULT);	// make sure stencil mask passes for the clear
 				GL_Clear(false, false, true, STENCIL_SHADOW_TEST_VALUE, 0.0f, 0.0f, 0.0f, 0.0f);
+			}
+
+			if (dxRenderer.IsRaytracingEnabled())
+			{
+				// TODO: Move this to a function to fill the TLAS first.
+				dxRenderer.GenerateRaytracedStencilShadows();
+				dxRenderer.ExecuteCommandList();
+				dxRenderer.ResetCommandList();
 			}
 		}
 

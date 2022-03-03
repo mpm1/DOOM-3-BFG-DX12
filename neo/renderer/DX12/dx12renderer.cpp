@@ -26,7 +26,7 @@ void __stdcall OnDeviceRemoved(PVOID context, BOOLEAN) {
 	pDred->GetPageFaultAllocationOutput1(&DredPageFaultOutput); //TODO: Validate result
 
 	_com_error err(removedReason);
-	DX12FailMessage(err.ErrorMessage());
+	DX12Rendering::FailMessage(err.ErrorMessage());
 }
 
 void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter) {
@@ -73,7 +73,7 @@ void DX12Renderer::Init(HWND hWnd) {
 	LoadAssets();
 
 	if (r_useRaytracedShadows.GetBool() || r_useRaytracedReflections.GetBool() || r_useGlobalIllumination.GetBool()) {
-		m_raytracing = new DX12Rendering::Raytracing(m_device.Get());
+		m_raytracing = new DX12Rendering::Raytracing(m_device.Get(), m_width, m_height);
 	}
 
 	m_initialized = true;
@@ -99,14 +99,14 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 #endif
 
 	ComPtr<IDXGIFactory4> factory;
-	DX12ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
+	DX12Rendering::ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
 
 	// TODO: Try to enable a WARP adapter? I don't think we need to do this, since we expect DXR hardware.
 	{
 		ComPtr<IDXGIAdapter1> hardwareAdapter;
 		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
 
-		DX12ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&m_device)));
+		DX12Rendering::ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&m_device)));
 	}
 
 	// Describe and create the command queue
@@ -114,14 +114,14 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
-	DX12ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_directCommandQueue)));
+	DX12Rendering::ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_directCommandQueue)));
 
 	// Describe and create the copy command queue
 	D3D12_COMMAND_QUEUE_DESC copyQueueDesc = {};
 	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
 
-	DX12ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_copyCommandQueue)));
+	DX12Rendering::ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_copyCommandQueue)));
 
 	// Describe and create the swap chain
 	DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
@@ -136,12 +136,12 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	swapChainDesc.Windowed = TRUE; //TODO: Change to option
 
 	ComPtr<IDXGISwapChain> swapChain;
-	DX12ThrowIfFailed(factory->CreateSwapChain(m_directCommandQueue.Get(), &swapChainDesc, &swapChain));
+	DX12Rendering::ThrowIfFailed(factory->CreateSwapChain(m_directCommandQueue.Get(), &swapChainDesc, &swapChain));
 
-	DX12ThrowIfFailed(swapChain.As(&m_swapChain));
+	DX12Rendering::ThrowIfFailed(swapChain.As(&m_swapChain));
 
 	// Remove ALT+ENTER functionality.
-	DX12ThrowIfFailed(factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
+	DX12Rendering::ThrowIfFailed(factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
@@ -157,11 +157,11 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 		WCHAR nameDest[25];
 		wsprintfW(nameDest, L"Main Command Allocator %d", frame);
 		
-		DX12ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_directCommandAllocator[frame])));
+		DX12Rendering::ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_directCommandAllocator[frame])));
 		m_directCommandAllocator[frame]->SetName(nameDest);
 	}
 
-	DX12ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&m_copyCommandAllocator)));
+	DX12Rendering::ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&m_copyCommandAllocator)));
 	m_copyCommandAllocator->SetName(L"Main Command Allocator");
 }
 
@@ -242,7 +242,7 @@ void DX12Renderer::LoadPipelineState(D3D12_GRAPHICS_PIPELINE_STATE_DESC* psoDesc
 
 	psoDesc->pRootSignature = m_rootSignature->GetRootSignature();
 
-	DX12ThrowIfFailed(m_device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));	
+	DX12Rendering::ThrowIfFailed(m_device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));	
 }
 
 void DX12Renderer::SetActivePipelineState(ID3D12PipelineState* pPipelineState) {
@@ -262,23 +262,23 @@ void DX12Renderer::Uniform4f(UINT index, const float* uniform) {
 void DX12Renderer::LoadAssets() {
 	// Create the synchronization objects
 	{
-		DX12ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
+		DX12Rendering::ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
 		m_fenceValue = 1;
 
-		DX12ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_copyFence)));
+		DX12Rendering::ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_copyFence)));
 		m_copyFenceValue = 1;
 
 		// Create an event handle to use for the frame synchronization
 		m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_fenceEvent == nullptr) {
-			DX12ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+			DX12Rendering::ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
 		}
 
 		// Attach event for device removal
 #if defined(_DEBUG)
 		m_removeDeviceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_removeDeviceEvent == nullptr) {
-			DX12ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
+			DX12Rendering::ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
 		}
 		m_fence->SetEventOnCompletion(UINT64_MAX, m_removeDeviceEvent); // This is done because all fence values are set the to  UINT64_MAX value when the device is removed.
 
@@ -302,8 +302,8 @@ void DX12Renderer::LoadAssets() {
 
 	// Create the Command Lists
 	{
-		DX12ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_directCommandAllocator[m_frameIndex].Get(), NULL, IID_PPV_ARGS(&m_commandList)));
-		DX12ThrowIfFailed(m_commandList->Close());
+		DX12Rendering::ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_directCommandAllocator[m_frameIndex].Get(), NULL, IID_PPV_ARGS(&m_commandList)));
+		DX12Rendering::ThrowIfFailed(m_commandList->Close());
 
 		WCHAR nameDest[16];
 		wsprintfW(nameDest, L"Command List %d", 0);
@@ -313,8 +313,8 @@ void DX12Renderer::LoadAssets() {
 
 	// Create the Copy Command Lists
 	{
-		DX12ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, m_copyCommandAllocator.Get(), NULL, IID_PPV_ARGS(&m_copyCommandList)));
-		DX12ThrowIfFailed(m_copyCommandList->Close());
+		DX12Rendering::ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, m_copyCommandAllocator.Get(), NULL, IID_PPV_ARGS(&m_copyCommandList)));
+		DX12Rendering::ThrowIfFailed(m_copyCommandList->Close());
 
 		WCHAR nameDest[20];
 		wsprintfW(nameDest, L"Copy Command List %d", 0);
@@ -331,7 +331,7 @@ void DX12Renderer::LoadAssets() {
 		const UINT bBytesPerRow = bWidth * 4;
 		const UINT64 textureUploadBufferSize = (((bBytesPerRow + 255) & ~255) * (bHeight - 1)) + bBytesPerRow;
 
-		DX12ThrowIfFailed(m_device->CreateCommittedResource(
+		DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 			D3D12_HEAP_FLAG_NONE,
 			&CD3DX12_RESOURCE_DESC::Buffer(textureUploadBufferSize),
@@ -346,7 +346,7 @@ void DX12Renderer::LoadAssets() {
 }
 
 DX12VertexBuffer* DX12Renderer::AllocVertexBuffer(DX12VertexBuffer* buffer, UINT numBytes) {
-	DX12ThrowIfFailed(m_device->CreateCommittedResource(
+	DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(numBytes),
@@ -367,7 +367,7 @@ void DX12Renderer::FreeVertexBuffer(DX12VertexBuffer* buffer) {
 }
 
 DX12IndexBuffer* DX12Renderer::AllocIndexBuffer(DX12IndexBuffer* buffer, UINT numBytes) {
-	DX12ThrowIfFailed(m_device->CreateCommittedResource(
+	DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(numBytes),
@@ -394,7 +394,7 @@ DX12JointBuffer* DX12Renderer::AllocJointBuffer(DX12JointBuffer* buffer, UINT nu
 	const UINT heapSize = (numBytes + resourceAlignment) & ~resourceAlignment;
 
 	// TODO: SET THIS FOR THE UPLOAD HEAP... THEN DO A SEPARATE JOINT HEAP JUST LIKE CBV
-	DX12ThrowIfFailed(m_device->CreateCommittedResource(
+	DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
@@ -423,7 +423,7 @@ void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset, DX1
 }
 
 void DX12Renderer::SignalNextFrame() {
-	DX12ThrowIfFailed(m_directCommandQueue->Signal(m_fence.Get(), m_fenceValue));
+	DX12Rendering::ThrowIfFailed(m_directCommandQueue->Signal(m_fence.Get(), m_fenceValue));
 }
 
 void DX12Renderer::WaitForPreviousFrame() {
@@ -431,19 +431,19 @@ void DX12Renderer::WaitForPreviousFrame() {
 
 	// Wait for the previous frame to finish
 	if (m_fence->GetCompletedValue() < fence) {
-		DX12ThrowIfFailed(m_fence->SetEventOnCompletion(fence, m_fenceEvent));
+		DX12Rendering::ThrowIfFailed(m_fence->SetEventOnCompletion(fence, m_fenceEvent));
 		WaitForSingleObject(m_fenceEvent, INFINITE);
 	}
 }
 
 void DX12Renderer::WaitForCopyToComplete() {
 	const UINT64 fence = m_copyFenceValue;
-	DX12ThrowIfFailed(m_copyCommandQueue->Signal(m_copyFence.Get(), fence));
+	DX12Rendering::ThrowIfFailed(m_copyCommandQueue->Signal(m_copyFence.Get(), fence));
 	++m_copyFenceValue;
 
 	// Wait for the frame to finish
 	if (m_copyFence->GetCompletedValue() < fence) {
-		DX12ThrowIfFailed(m_copyFence->SetEventOnCompletion(fence, m_copyFenceEvent));
+		DX12Rendering::ThrowIfFailed(m_copyFence->SetEventOnCompletion(fence, m_copyFenceEvent));
 		WaitForSingleObject(m_copyFenceEvent, INFINITE);
 	}
 }
@@ -453,7 +453,7 @@ void DX12Renderer::ResetCommandList(bool waitForBackBuffer) {
 		return;
 	}
 
-	DX12ThrowIfFailed(m_commandList->Reset(m_directCommandAllocator[m_frameIndex].Get(), m_activePipelineState));
+	DX12Rendering::ThrowIfFailed(m_commandList->Reset(m_directCommandAllocator[m_frameIndex].Get(), m_activePipelineState));
 	m_commandList->SetGraphicsRootSignature(m_rootSignature->GetRootSignature());
 
 	if (waitForBackBuffer) {
@@ -483,7 +483,7 @@ void DX12Renderer::ExecuteCommandList() {
 	}
 
 	//TODO: Implement version for multiple command lists
-	DX12WarnIfFailed(m_commandList->Close());
+	DX12Rendering::WarnIfFailed(m_commandList->Close());
 
 	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
 	m_directCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
@@ -504,7 +504,7 @@ void DX12Renderer::BeginDraw() {
 	m_objectCount = 0;
 	m_objectIndex = 0;
 	m_isDrawing = true;
-	DX12ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
+	DX12Rendering::ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
 
 	ResetCommandList(true);
 }
@@ -573,7 +573,7 @@ bool DX12Renderer::IsScissorWindowValid() {
 
 void DX12Renderer::PresentBackbuffer() {
 	// Present the frame
-	DX12ThrowIfFailed(m_swapChain->Present(1, 0));
+	DX12Rendering::ThrowIfFailed(m_swapChain->Present(1, 0));
 	
 	SignalNextFrame();
 	WaitForPreviousFrame();
@@ -687,6 +687,8 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			return false;
 		}
 
+		m_raytracing->Resize(m_width, m_height);
+
 		UpdateViewport(0.0f, 0.0f, width, height);
 		UpdateScissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height));
 
@@ -705,8 +707,6 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 		UpdateViewport(0.0f, 0.0f, width, height);
 		UpdateScissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height));
 	}
-
-	
 
 	return true;
 }
@@ -757,7 +757,7 @@ void DX12Renderer::SetActiveTextureRegister(UINT8 index) {
 
 DX12TextureBuffer* DX12Renderer::AllocTextureBuffer(DX12TextureBuffer* buffer, D3D12_RESOURCE_DESC* textureDesc, const idStr* name) {
 	// Create the buffer object.
-	if (!DX12WarnIfFailed(m_device->CreateCommittedResource(
+	if (!DX12Rendering::WarnIfFailed(m_device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		textureDesc,
@@ -921,4 +921,10 @@ void DX12Renderer::EndRayTracingSetup() {
 	}
 
 	m_raytracing->EndAccelerationStructure(m_commandList.Get());
+}
+
+void DX12Renderer::GenerateRaytracedStencilShadows()
+{
+	const UINT32 stencilIndex = 11; // TODO: Calculate this earlier
+	m_raytracing->CastShadowRays(m_commandList.Get(), m_viewport, m_scissorRect, m_depthBuffer.Get(), 11);
 }
