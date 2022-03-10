@@ -501,7 +501,7 @@ void DX12Renderer::BeginDraw() {
 
 	m_rootSignature->BeginFrame(m_frameIndex);
 	
-	m_objectCount = 0;
+	m_objects.empty();
 	m_objectIndex = 0;
 	m_isDrawing = true;
 	DX12Rendering::ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
@@ -869,24 +869,23 @@ void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
 	WaitForCopyToComplete();
 }
 
-DX12Object* DX12Renderer::AddToObjectList(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
-	assert(m_objectCount < MAX_OBJECT_COUNT, "Tried to allocate an object above the maximum object allocation amount.");
+DX12Object* DX12Renderer::AddToObjectList(const dxObjectIndex_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
+	DX12Object object = {};
+	object.index = key;
+	object.pipelineState = nullptr;
+	object.includeJointView = false;
 
-	DX12Object* object = &m_objects[m_objectCount];
-	object->index = m_objectCount;
-	object->pipelineState = nullptr;
-	object->includeJointView = false;
+	object.vertexBuffer = vertexBuffer;
+	object.vertexOffset = vertexOffset;
 
-	object->vertexBuffer = vertexBuffer;
-	object->vertexOffset = vertexOffset;
+	object.indexBuffer = indexBuffer;
+	object.indexOffset = indexOffset;
+	object.indexCount = indexCount;
 
-	object->indexBuffer = indexBuffer;
-	object->indexOffset = indexOffset;
-	object->indexCount = indexCount;
+	object.stages.clear();
 
-	object->stages.clear();
-	++m_objectCount;
-	return object;
+	m_objects[key] = object;
+	return &m_objects[key];
 }
 
 DX12Stage* DX12Renderer::AddStageToObject(DX12Object* storedObject, eStageType stageType, UINT textureCount, DX12TextureBuffer** textures) {
@@ -900,27 +899,48 @@ DX12Stage* DX12Renderer::AddStageToObject(DX12Object* storedObject, eStageType s
 	return stage;
 }
 
-void DX12Renderer::BeginRayTracingSetup() {
-	if (!IsRaytracingEnabled()) {
-		return;
+void DX12Renderer::BeginBottomLevelRayTracingSetup()
+{
+	assert(IsRaytracingEnabled(), "DX12Renderer::BeginBottomLevelRayTracingSetup - Raytracing is not enabled");
+
+	m_raytracing->ResetFrame();
+	// For now we will clear the object list and reset the BLAS.
+	// TODO: Modify this to just update, and have a separate clear function.
+}
+
+void DX12Renderer::EndBottomLevelRayTracingSetup(std::function<void(const dxObjectIndex_t&, const DX12Object&)> onGenerateBLAS = nullptr)
+{
+	assert(IsRaytracingEnabled(), "DX12Renderer::EndBottomLevelRayTracingSetup - Raytracing is not enabled");
+
+	for (auto& objectPair : m_objects)
+	{
+		m_raytracing->GenerateBottomLevelAS(&objectPair.second, false);
+
+		if (onGenerateBLAS != nullptr)
+		{
+			onGenerateBLAS(objectPair.first, objectPair.second);
+		}
 	}
+
+	m_raytracing->ExecuteCommandList();
+	m_raytracing->ResetCommandList();
+}
+
+void DX12Renderer::BeginTopLevelRayTracingSetup() {
+	assert(IsRaytracingEnabled(), "DX12Renderer::BeginTopLevelRayTracingSetup - Raytracing is not enabled");
 
 	m_raytracing->StartAccelerationStructure(r_useRaytracedShadows.GetBool(), r_useRaytracedReflections.GetBool(), r_useGlobalIllumination.GetBool());
 }
 
-void DX12Renderer::EndRayTracingSetup() {
-	if (!IsRaytracingEnabled()) {
-		return;
+void DX12Renderer::EndTopLevelRayTracingSetup(const std::vector<dxObjectIndex_t>& objectIds) {
+	assert(IsRaytracingEnabled(), "DX12Renderer::EndTopLevelRayTracingSetup - Raytracing is not enabled");
+	
+	for (const dxObjectIndex_t& index : objectIds) {
+		DX12Object object = m_objects[index];
+		m_raytracing->AddObjectToAllTopLevelAS(&object, false);
 	}
 
-	int index;
-	for (index = 0; index < m_objectCount; ++index) {
-		m_raytracing->GenerateBottomLevelAS(m_commandList.Get(), &m_objects[index], false);
-
-		m_raytracing->AddObjectToAllTopLevelAS(&m_objects[index], false);
-	}
-
-	m_raytracing->EndAccelerationStructure(m_commandList.Get());
+	m_raytracing->EndAccelerationStructure();
 }
 
 void DX12Renderer::GenerateRaytracedStencilShadows()

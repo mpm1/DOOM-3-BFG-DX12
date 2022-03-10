@@ -4,6 +4,8 @@
 #include "../tr_local.h"
 #include "../../framework/Common_local.h"
 
+#include <memory>
+
 idCVar r_drawEyeColor("r_drawEyeColor", "0", CVAR_RENDERER | CVAR_BOOL, "Draw a colored box, red = left eye, blue = right eye, grey = non-stereo");
 idCVar r_motionBlur("r_motionBlur", "0", CVAR_RENDERER | CVAR_INTEGER | CVAR_ARCHIVE, "1 - 5, log2 of the number of motion blur samples");
 idCVar r_forceZPassStencilShadows("r_forceZPassStencilShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force Z-pass rendering for performance testing");
@@ -16,7 +18,30 @@ extern idCVar stereoRender_swapEyes;
 
 backEndState_t	backEnd;
 
-bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) {
+// Debug funcitons for the renderer
+#ifdef _DEBUG_COMMAND_LIST
+void DebugCycleCommandList(std::string caller, std::string file, int line)
+{
+	common->DPrintf("Cycling CommandList for %s in %s:line %d\n", caller.c_str(), file.c_str(), line);
+
+	dxRenderer.ExecuteCommandList(); 
+	dxRenderer.ResetCommandList();
+}
+
+#define CYCLE_COMMAND_LIST() DebugCycleCommandList(__FUNCTION__, __FILE__, __LINE__)
+#else
+#define CYCLE_COMMAND_LIST() dxRenderer.ExecuteCommandList();dxRenderer.ResetCommandList()
+#endif
+
+const dxObjectIndex_t R_GetIndexFromSurface(const drawSurf_t* surf) {
+	// TODO: Use a getter key. For now since we reset our table each frame we can use this version.
+	UINT64 index = reinterpret_cast<UINT64>(std::addressof(surf));
+
+	return index;
+}
+
+bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
+{
 	// TODO: Implement
 	for (int i = 0; i <= displayNum; ++i) {
 		vidMode_t mode;
@@ -35,7 +60,8 @@ bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 SetVertexParm
 ================
 */
-static ID_INLINE void SetVertexParm(renderParm_t rp, const float* value) {
+static ID_INLINE void SetVertexParm(renderParm_t rp, const float* value) 
+{
 	renderProgManager.SetUniformValue(rp, value);
 }
 
@@ -44,7 +70,8 @@ static ID_INLINE void SetVertexParm(renderParm_t rp, const float* value) {
 SetVertexParms
 ================
 */
-static ID_INLINE void SetVertexParms(renderParm_t rp, const float* value, int num) {
+static ID_INLINE void SetVertexParms(renderParm_t rp, const float* value, int num) 
+{
 	for (int i = 0; i < num; i++) {
 		renderProgManager.SetUniformValue((renderParm_t)(rp + i), value + (i * 4));
 	}
@@ -55,8 +82,49 @@ static ID_INLINE void SetVertexParms(renderParm_t rp, const float* value, int nu
 SetFragmentParm
 ================
 */
-static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value) {
+static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value) 
+{
 	renderProgManager.SetUniformValue(rp, value);
+}
+
+static void RB_FillBottomLevelAccelerationStructure(const drawSurf_t* const* drawSurfs, int numDrawSurfs)
+{
+	if (numDrawSurfs == 0) {
+		return;
+	}
+
+	dxRenderer.BeginBottomLevelRayTracingSetup();
+
+	//TODO:Change our object setup here instead of in the Depth Pass.
+
+	dxRenderer.EndBottomLevelRayTracingSetup(nullptr);
+}
+
+static void RB_FillTopLevelAccelerationStructure(const viewLight_t* vLight)
+{
+	if (true) return;
+	dxRenderer.BeginTopLevelRayTracingSetup();
+
+	std::vector<dxObjectIndex_t> objects = {};
+	objects.reserve(100);
+
+	if (vLight->localInteractions) {
+		for (const drawSurf_t* walk = vLight->localInteractions; walk != NULL; walk = walk->nextOnLight) 
+		{
+			const dxObjectIndex_t index = R_GetIndexFromSurface(walk);
+			objects.emplace_back(index);
+		}
+	}
+
+	dxRenderer.EndTopLevelRayTracingSetup(objects);
+	CYCLE_COMMAND_LIST();
+}
+
+static void RB_CastRayTracedStencilShadows(const viewLight_t* vLight)
+{
+	if (true) return;
+	dxRenderer.GenerateRaytracedStencilShadows();
+	CYCLE_COMMAND_LIST();
 }
 
 /*
@@ -453,6 +521,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 	// Create the stored object.
 	if (addToObjectList) {
 		storedObject = dxRenderer.AddToObjectList(
+			R_GetIndexFromSurface(surf),
 			reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
 			vertOffset,// / sizeof(idDrawVert),
 			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
@@ -483,8 +552,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 
 		//TODO: Eventually do the creation of the acceleration structure outside of these commands.
 
-		dxRenderer.ExecuteCommandList();
-		dxRenderer.ResetCommandList();
+		CYCLE_COMMAND_LIST();
 	}
 
 	/*if (backEnd.glState.currentIndexBuffer != (GLuint)indexBuffer->GetAPIObject() || !r_useStateCaching.GetBool()) {
@@ -1810,6 +1878,12 @@ static void RB_DrawInteractions() {
 			GL_DepthBoundsTest(vLight->scissorRect.zmin, vLight->scissorRect.zmax);
 		}
 
+		// Setup Raytracing structure
+		if (dxRenderer.IsRaytracingEnabled())
+		{
+			RB_FillTopLevelAccelerationStructure(vLight);
+		}
+
 		// only need to clear the stencil buffer and perform stencil testing if there are shadows
 		const bool performStencilTest = (vLight->globalShadows != NULL || vLight->localShadows != NULL);
 
@@ -1843,10 +1917,7 @@ static void RB_DrawInteractions() {
 
 			if (dxRenderer.IsRaytracingEnabled())
 			{
-				// TODO: Move this to a function to fill the TLAS first.
-				dxRenderer.GenerateRaytracedStencilShadows();
-				dxRenderer.ExecuteCommandList();
-				dxRenderer.ResetCommandList();
+				RB_CastRayTracedStencilShadows(vLight);
 			}
 		}
 
@@ -2543,8 +2614,6 @@ static void RB_FogAllLights() {
 void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	renderLog.OpenBlock("RB_DrawViewInternal");
 
-	dxRenderer.BeginRayTracingSetup();
-
 	//-------------------------------------------------
 	// guis can wind up referencing purged images that need to be loaded.
 	// this used to be in the gui emit code, but now that it can be running
@@ -2625,13 +2694,19 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
 	}
 
-	//-------------------------------------------------
-	// fill the depth buffer and clear color buffer to black except on subviews
-	//-------------------------------------------------
-	RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
+	// if we are just doing 2D rendering, no need to fill the depth buffer
+	if (backEnd.viewDef->viewEntitys != NULL) {
+		//-------------------------------------------------
+		// fill the depth buffer and clear color buffer to black except on subviews
+		//-------------------------------------------------
+		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
 
-	// Build the acceleration structure.
-	dxRenderer.EndRayTracingSetup();
+		// Build the acceleration structure.
+		if (dxRenderer.IsRaytracingEnabled())
+		{
+			RB_FillBottomLevelAccelerationStructure(drawSurfs, numDrawSurfs);
+		}
+	}
 
 	//-------------------------------------------------
 	// main light renderer

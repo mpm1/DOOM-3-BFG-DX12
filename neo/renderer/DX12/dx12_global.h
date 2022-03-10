@@ -32,6 +32,8 @@
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
+typedef UINT64 dxObjectIndex_t;
+
 namespace DX12Rendering {
 	void FailMessage(LPCSTR message);
 	void WarnMessage(LPCSTR message);
@@ -87,30 +89,4 @@ struct DX12Stage
 
 	// TODO: Include stage information to tell if this is for shadow testing or lighting.
 };
-
-//TODO: IMPELEMENT THIS OBJECT LIST
-struct DX12Object
-{
-	UINT index;
-	
-	ID3D12PipelineState* pipelineState;
-
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView;
-	D3D12_CONSTANT_BUFFER_VIEW_DESC jointView;
-	bool includeJointView;
-
-	DX12VertexBuffer* vertexBuffer;
-	UINT vertexOffset;
-	UINT vertexCount;
-
-	DX12IndexBuffer* indexBuffer;
-	UINT indexOffset;
-	UINT indexCount;
-
-	ComPtr<ID3D12Resource> blas; // Bottom Level Acceleration Structure - Used for raytracing.
-
-	//const idMaterial* shader;
-	std::vector<DX12Stage> stages;
-};
-
 #endif

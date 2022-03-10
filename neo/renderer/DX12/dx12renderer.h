@@ -1,6 +1,9 @@
 #ifndef __DX12_RENDERER_H__
 #define __DX12_RENDERER_H__
 
+#include <map>
+#include <functional>
+
 #include "./dx12_global.h"
 #include "./dx12_RootSignature.h"
 #include "./dx12_raytracing.h"
@@ -87,13 +90,17 @@ public:
 	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 
 	// Raytracing
-	void BeginRayTracingSetup();
-	void EndRayTracingSetup();
+	void BeginBottomLevelRayTracingSetup();
+	void EndBottomLevelRayTracingSetup(std::function<void(const dxObjectIndex_t&, const DX12Object&)> onGenerateBLAS);
+
+	void BeginTopLevelRayTracingSetup();
+	void EndTopLevelRayTracingSetup(const std::vector<dxObjectIndex_t>& objectIds);
+
 	bool IsRaytracingEnabled() const { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
 	void GenerateRaytracedStencilShadows();
 
 	//Object commands
-	DX12Object* AddToObjectList(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+	DX12Object* AddToObjectList(const dxObjectIndex_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 	DX12Stage* AddStageToObject(DX12Object* storedObject, eStageType stageType, UINT textureCount, DX12TextureBuffer** textures);
 
 private:
@@ -133,9 +140,8 @@ private:
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;
 
-	UINT m_objectCount = 0;
-	UINT m_objectIndex = 0; //TODO: This will be removed once we put everything into the m_objects table.
-	DX12Object m_objects[MAX_OBJECT_COUNT];
+	std::map<dxObjectIndex_t, DX12Object> m_objects = {};
+	UINT m_objectIndex = 0;
 
 	// Synchronization
 	UINT m_frameIndex;

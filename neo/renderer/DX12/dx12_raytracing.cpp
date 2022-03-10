@@ -68,11 +68,56 @@ namespace DX12Rendering {
 			kDefaultHeapProps);
 		m_scratchBuffer->SetName(L"Raytracing Scratch Buffer");
 		
+		CreateCommandList();
 		CreateShadowPipeline();
 	}
 
 	Raytracing::~Raytracing()
 	{
+	}
+
+	void Raytracing::CreateCommandList()
+	{
+		// Describe and create the command queue
+		D3D12_COMMAND_QUEUE_DESC queueDesc = {};
+		queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+		queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
+
+		ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_commandQueue)));
+		m_commandQueue->SetName(L"Raytracing Command Queue");
+
+		// Create the Command Allocator
+		ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COMPUTE, IID_PPV_ARGS(&m_commandAllocator)));
+		m_commandAllocator->SetName(L"Raytracing Command Allocator");
+
+		//Create the command list
+		DX12Rendering::ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COMPUTE, m_commandAllocator.Get(), NULL, IID_PPV_ARGS(&m_commandList)));
+		DX12Rendering::ThrowIfFailed(m_commandList->Close());
+		m_commandList->SetName(L"Raytracing Command List");
+	}
+
+	void Raytracing::ExecuteCommandList()
+	{
+		WarnIfFailed(m_commandList->Close());
+
+		ID3D12CommandList* const ppCommandLists[] = { m_commandList.Get() };
+		m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+	}
+
+	void Raytracing::ResetCommandList()
+	{
+		ThrowIfFailed(m_commandList->Reset(m_commandAllocator.Get(), NULL));
+	}
+
+	void Raytracing::ResetCommandAllocator()
+	{
+		ThrowIfFailed(m_commandAllocator->Reset());
+	}
+
+	void Raytracing::ResetFrame()
+	{
+		ResetCommandAllocator();
+		ResetCommandList();
 	}
 
 	void Raytracing::CreateOutputBuffers()
@@ -125,6 +170,11 @@ namespace DX12Rendering {
 		m_device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
 	}
 
+	void Raytracing::ResetBLAS()
+	{
+		//TODO
+	}
+
 	void Raytracing::StartAccelerationStructure(bool raytracedShadows, bool raytracedReflections, bool raytracedIllumination) 
 	{
 		m_state = BIT_RAYTRACED_NONE;
@@ -145,15 +195,15 @@ namespace DX12Rendering {
 		}
 	}
 
-	void Raytracing::EndAccelerationStructure(ID3D12GraphicsCommandList4* commandList) {
+	void Raytracing::EndAccelerationStructure() {
 		if (IsShadowEnabled()) {
-			shadowTlas.UpdateResources(commandList, m_scratchBuffer.Get());
+			shadowTlas.UpdateResources(m_commandList.Get(), m_scratchBuffer.Get());
 		}
 		if (IsReflectiveEnabled()) {
-			reflectionTlas.UpdateResources(commandList, m_scratchBuffer.Get());
+			reflectionTlas.UpdateResources(m_commandList.Get(), m_scratchBuffer.Get());
 		}
 		if (IsIlluminationEnabled()) {
-			emmisiveTlas.UpdateResources(commandList, m_scratchBuffer.Get());
+			emmisiveTlas.UpdateResources(m_commandList.Get(), m_scratchBuffer.Get());
 		}
 
 		// TODO: UpdateResources does not work yet for the TLAS, this is throwing a setup error.
@@ -264,7 +314,7 @@ namespace DX12Rendering {
 		}
 	}
 
-	void Raytracing::GenerateBottomLevelAS(ID3D12GraphicsCommandList4* commandList, DX12Object* storedObject, bool updateOnly) {
+	void Raytracing::GenerateBottomLevelAS(DX12Object* storedObject, bool updateOnly) {
 		assert(!updateOnly, "Updating a BLAS is currently not supported.");
 
 		// Create the needed resource buffers.
@@ -282,8 +332,8 @@ namespace DX12Rendering {
 		geometryDesc.Triangles.IndexBuffer = storedObject->indexBuffer->indexBuffer->GetGPUVirtualAddress() + storedObject->indexOffset;
 		geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
 		geometryDesc.Triangles.IndexCount = storedObject->indexCount;
-		geometryDesc.Triangles.Transform3x4 = 0; //TODO: Check if we need to add a transform here.
-		geometryDesc.Flags = false ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE
+		geometryDesc.Triangles.Transform3x4 = NULL; //TODO: Check if we need to add a transform here.
+		geometryDesc.Flags = true ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE
 			: D3D12_RAYTRACING_GEOMETRY_FLAG_NONE; //TODO: Eventually add support for opaque geometry.
 
 		D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = storedObject->blas->GetGPUVirtualAddress();
@@ -297,17 +347,17 @@ namespace DX12Rendering {
 		descriptor.Inputs.Flags = flags;
 		descriptor.DestAccelerationStructureData = { gpuAddress };
 		descriptor.ScratchAccelerationStructureData = { m_scratchBuffer->GetGPUVirtualAddress() };
-		descriptor.SourceAccelerationStructureData = updateOnly ? gpuAddress : 0;
+		descriptor.SourceAccelerationStructureData = updateOnly ? gpuAddress : NULL;
 
 		// Build the acceleration structure.
-		commandList->BuildRaytracingAccelerationStructure(&descriptor, 0, nullptr);
+		m_commandList->BuildRaytracingAccelerationStructure(&descriptor, 0, nullptr);
 
 		// Wait for the building of the blas to complete.
 		D3D12_RESOURCE_BARRIER uavBarrier;
 		uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 		uavBarrier.UAV.pResource = storedObject->blas.Get();
 		uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		commandList->ResourceBarrier(1, &uavBarrier);
+		m_commandList->ResourceBarrier(1, &uavBarrier);
 	}
 
 	bool Raytracing::UpdateBLASResources(DX12Object* storedObject, bool updateOnly) {
@@ -320,10 +370,12 @@ namespace DX12Rendering {
 		CacluateBLASBufferSizes(storedObject, &scratchSizeInBytes, &resultSizeInBytes);
 		assert(scratchSizeInBytes < DEFAULT_SCRATCH_SIZE, "The generated objects scratch size is too large.");
 
-		//if (storedObject->blas == nullptr) {
-		createdNewBuffer = true;
-		storedObject->blas = CreateBuffer(m_device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
-		//}
+		if (storedObject->blas == nullptr || storedObject->blasByteSize < resultSizeInBytes)
+		{
+			createdNewBuffer = true;
+			storedObject->blas = CreateBuffer(m_device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
+			storedObject->blasByteSize = resultSizeInBytes;
+		}
 
 		return createdNewBuffer;
 	}
@@ -413,106 +465,5 @@ namespace DX12Rendering {
 
 		// Fill the SBT
 		m_shadowSBTDesc.Generate(m_shadowSBTData.Get(), m_shadowStateObjectProps.Get());
-	}
-
-	TopLevelAccelerationStructure::TopLevelAccelerationStructure(ID3D12Device5* device)
-		: m_device(device)
-	{
-		UINT64 scratchSizeInBytes;
-		UINT64 resultSizeInBytes;
-		UINT64 instanceDescsSize;
-
-		CacluateBufferSizes(&scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
-		assert(scratchSizeInBytes < DEFAULT_SCRATCH_SIZE, "The generated objects scratch size is too large.");
-
-		if (m_result == nullptr) {
-			m_result = CreateBuffer(m_device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
-			m_result->SetName(L"TLAS Result Buffer");
-		}
-	}
-
-	TopLevelAccelerationStructure::~TopLevelAccelerationStructure() {
-
-	}
-
-	void TopLevelAccelerationStructure::Reset() {
-		m_instances.clear();
-	}
-
-	void TopLevelAccelerationStructure::AddInstance(DX12Object* storedObject, DX12Stage* stage) {
-		Instance instance(storedObject->blas.Get());
-		m_instances.push_back(instance);
-	}
-
-	void TopLevelAccelerationStructure::UpdateResources(ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer) {
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
-			? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
-			: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
-		UINT64 scratchSizeInBytes;
-		UINT64 resultSizeInBytes;
-		UINT64 instanceDescsSize;
-
-		CacluateBufferSizes(&scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
-		assert(scratchSizeInBytes < DEFAULT_SCRATCH_SIZE, "The generated objects scratch size is too large.");
-
-		if (instanceDescsSize == 0) {
-			return;
-		}
-
-		if (m_instanceDesc == nullptr) {
-			// TODO: Check if our descriptor size is too small.
-			m_instanceDesc = CreateBuffer(m_device, instanceDescsSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, kUploadHeapProps);
-		}
-
-		D3D12_GPU_VIRTUAL_ADDRESS pSourceAS = 0;// updateOnly ? previousResult->GetGPUVirtualAddress() : 0;
-
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC descriptor = {};
-		descriptor.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-		descriptor.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		descriptor.Inputs.InstanceDescs = m_instanceDesc->GetGPUVirtualAddress();
-		descriptor.Inputs.NumDescs = static_cast<UINT>(m_instances.size());
-		descriptor.Inputs.Flags = flags;
-
-		descriptor.DestAccelerationStructureData = {
-			m_result->GetGPUVirtualAddress()
-		};
-		descriptor.ScratchAccelerationStructureData = {
-			scratchBuffer->GetGPUVirtualAddress()
-		};
-		descriptor.SourceAccelerationStructureData = pSourceAS;
-
-		// Build the top level AS
-		commandList->BuildRaytracingAccelerationStructure(&descriptor, 0, nullptr);
-
-		// Wait for the buffer to complete setup.
-		D3D12_RESOURCE_BARRIER uavBarrier;
-		uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-		uavBarrier.UAV.pResource = m_result.Get();
-		uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		commandList->ResourceBarrier(1, &uavBarrier);
-	}
-
-	void TopLevelAccelerationStructure::CacluateBufferSizes(UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize) {
-		const UINT numDescs = 1000;
-
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
-			? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
-			: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
-
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS description = {};
-		description.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-		description.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		description.NumDescs = numDescs; //static_cast<UINT>(m_instances.size());
-		description.Flags = flags;
-
-		// Calculate the space needed to generate the Acceleration Structure
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
-		m_device->GetRaytracingAccelerationStructurePrebuildInfo(&description, &info);
-
-		// 256 Align the storage size.
-		*scratchSizeInBytes = DX12_ALIGN(info.ScratchDataSizeInBytes, 256);
-		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, 256);
-
-		*instanceDescsSize = DX12_ALIGN(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * static_cast<UINT64>(m_instances.size()), 256);
 	}
 }

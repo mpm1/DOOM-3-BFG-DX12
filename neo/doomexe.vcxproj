@@ -273,6 +273,7 @@
     <ClInclude Include="renderer\Color\ColorSpace.h" />
     <ClInclude Include="renderer\DX12\d3dx12.h" />
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
+    <ClInclude Include="renderer\DX12\dx12_AccelerationStructure.h" />
     <ClInclude Include="renderer\DX12\dx12_global.h" />
     <ClInclude Include="renderer\DX12\dx12_raytracing.h" />
     <ClInclude Include="renderer\DX12\dx12_RaytracingPipeline.h" />
@@ -494,6 +495,7 @@
     <ClCompile Include="renderer\Cinematic.cpp" />
     <ClCompile Include="renderer\Color\ColorSpace.cpp" />
     <ClCompile Include="renderer\DX12\dx12renderer.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_AccelerationStructure.cpp" />
     <ClCompile Include="renderer\DX12\dx12_backend.cpp" />
     <ClCompile Include="renderer\DX12\dx12_BufferObject.cpp" />
     <ClCompile Include="renderer\DX12\dx12_global.cpp" />

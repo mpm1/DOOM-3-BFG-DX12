@@ -41,7 +41,7 @@ public:
 	TopLevelAccelerationStructure(ID3D12Device5* device);
 	~TopLevelAccelerationStructure();
 
-	void AddInstance(DX12Object* object, DX12Stage* stage);
+	void AddInstance(const DX12Object* object, const DX12Stage* stage);
 	void Reset(); // Clears the acceleration structure.
 	void UpdateResources(ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer);
 
@@ -68,8 +68,20 @@ public:
 
 	void Resize(UINT width, UINT height);
 
+	/// <summary>
+	/// Clears the BLAS and removes
+	/// </summary>
+	void ResetBLAS();
+
+	/// <summary>
+	/// Resets the command allocator. Should be called after a frame is completed.
+	/// </summary>
+	void ResetFrame();
+	void ExecuteCommandList();
+	void ResetCommandList();
+
 	void StartAccelerationStructure(bool raytracedShadows, bool raytracedReflections, bool raytracedIllumination);
-	void EndAccelerationStructure(ID3D12GraphicsCommandList4* commandList);
+	void EndAccelerationStructure();
 
 	/// <summary>
 	/// Cast the rays to the stencil buffer to store for shadow generation.
@@ -91,7 +103,6 @@ public:
 	/// <param name="buffer">The resulting BLAS buffer resources.</param>
 	/// <param name="updateOnly">If true, refit the existing BLAS.</param>
 	void GenerateBottomLevelAS(
-		ID3D12GraphicsCommandList4* commandList,
 		DX12Object* storedObject,
 		bool updateOnly);
 
@@ -126,6 +137,10 @@ private:
 
 	ShaderBindingTable m_shadowSBTDesc;
 
+	ComPtr<ID3D12CommandQueue> m_commandQueue;
+	ComPtr<ID3D12CommandAllocator> m_commandAllocator;
+	ComPtr<ID3D12GraphicsCommandList4> m_commandList;
+
 	// Pipeline
 	void CreateShadowPipeline();
 	void CreateOutputBuffers();
@@ -133,6 +148,10 @@ private:
 
 	void CreateShaderBindingTables();
 	void CreateShadowBindingTable();
+
+	// Command List
+	void CreateCommandList();
+	void ResetCommandAllocator();
 
 	// Acceleration Structure
 	bool UpdateBLASResources(DX12Object* storedObject, bool updateOnly);
