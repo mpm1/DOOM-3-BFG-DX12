@@ -46,6 +46,26 @@ bool DX12Rendering::WarnIfFailed(HRESULT hr)
 	return true;
 }
 
+ID3D12Resource* DX12Rendering::CreateBuffer(ID3D12Device5* device, uint64_t size, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps) {
+	D3D12_RESOURCE_DESC description = {};
+	description.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+	description.DepthOrArraySize = 1;
+	description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+	description.Flags = flags;
+	description.Format = DXGI_FORMAT_UNKNOWN;
+	description.Height = 1;
+	description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+	description.MipLevels = 1;
+	description.SampleDesc.Count = 1;
+	description.SampleDesc.Quality = 0;
+	description.Width = size;
+
+	ID3D12Resource* pBuffer;
+	DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, nullptr, IID_PPV_ARGS(&pBuffer)));
+
+	return pBuffer;
+}
+
 ID3D12DescriptorHeap* DX12Rendering::CreateDescriptorHeap(ID3D12Device* device, uint32_t count, D3D12_DESCRIPTOR_HEAP_TYPE type, bool shaderVisible)
 {
 	D3D12_DESCRIPTOR_HEAP_DESC desc = {};

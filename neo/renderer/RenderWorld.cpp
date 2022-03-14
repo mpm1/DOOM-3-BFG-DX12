@@ -224,7 +224,7 @@ qhandle_t idRenderWorldLocal::AddEntityDef( const renderEntity_t *re ){
 	}
 
 	UpdateEntityDef( entityHandle, re );
-	
+
 	return entityHandle;
 }
 
@@ -326,6 +326,9 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 	// based on the model bounds, add references in each area
 	// that may contain the updated surface
 	R_CreateEntityRefs( def );
+
+	// Add the entity to the raytracing acceleration structure.
+	dxRenderer.UpdateEntityInBLAS(entityHandle, re);
 }
 
 /*
@@ -850,6 +853,9 @@ void idRenderWorldLocal::RenderScene( const renderView_t *renderView ) {
 	tr.primaryWorld = this;
 	tr.primaryRenderView = *renderView;
 	tr.primaryView = parms;
+
+	// Update the raytracing structure if needed.
+	dxRenderer.UpdateBLAS();
 
 	// rendering this view may cause other views to be rendered
 	// for mirrors / portals / shadows / environment maps

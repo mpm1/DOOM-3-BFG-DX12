@@ -10,22 +10,22 @@ namespace DX12Rendering {
 	BottomLevelAccelerationStructure::~BottomLevelAccelerationStructure()
 	{}
 
-	DX12AccelerationObject* BottomLevelAccelerationStructure::AddAccelerationObject(const dxObjectIndex_t& key, DX12VertexBuffer& vertexBuffer, UINT vertexOffset, DX12IndexBuffer& indexBuffer, UINT indexOffset, UINT indexCount)
+	DX12AccelerationObject* BottomLevelAccelerationStructure::AddAccelerationObject(const dxObjectIndex_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount)
 	{
 		if (GetAccelerationObject(key) != nullptr) 
 		{
-			FailMessage(L"BottomLevelAccelerationStructure::AddAccelerationObject failed due to an already existing acceleration object.");
+			FailMessage("BottomLevelAccelerationStructure::AddAccelerationObject failed due to an already existing acceleration object.");
 			return nullptr;
 		}
 
 		D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc = {};
 		geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-		geometryDesc.Triangles.VertexBuffer.StartAddress = vertexBuffer.vertexBuffer->GetGPUVirtualAddress() + vertexOffset;
-		geometryDesc.Triangles.VertexBuffer.StrideInBytes = vertexBuffer.vertexBufferView.StrideInBytes;
-		geometryDesc.Triangles.VertexCount = vertexBuffer.vertexBufferView.SizeInBytes / vertexBuffer.vertexBufferView.StrideInBytes;
+		geometryDesc.Triangles.VertexBuffer.StartAddress = vertexBuffer->vertexBuffer->GetGPUVirtualAddress() + vertexOffsetBytes;
+		geometryDesc.Triangles.VertexBuffer.StrideInBytes = vertexBuffer->vertexBufferView.StrideInBytes;
+		geometryDesc.Triangles.VertexCount = vertexCount;
 		geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
 
-		geometryDesc.Triangles.IndexBuffer = indexBuffer.indexBuffer->GetGPUVirtualAddress() + indexOffset;
+		geometryDesc.Triangles.IndexBuffer = indexBuffer->indexBuffer->GetGPUVirtualAddress() + indexOffset;
 		geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
 		geometryDesc.Triangles.IndexCount = indexCount;
 		geometryDesc.Triangles.Transform3x4 = NULL; //TODO: Check if we need to add a transform here.
@@ -33,7 +33,9 @@ namespace DX12Rendering {
 			: D3D12_RAYTRACING_GEOMETRY_FLAG_NONE; //TODO: Eventually add support for opaque geometry.
 
 		m_vertexBuffers.emplace_back(geometryDesc);
-		m_objectMap.emplace(key, m_vertexBuffers.back());
+		m_objectMap.emplace(key, &m_vertexBuffers.back());
+
+		m_isDirty = true;
 	}
 
 	DX12AccelerationObject* BottomLevelAccelerationStructure::GetAccelerationObject(const dxObjectIndex_t& key) {
@@ -51,10 +53,16 @@ namespace DX12Rendering {
 		m_objectMap.clear();
 		m_vertexBuffers.clear();
 		m_result = nullptr;
+		m_isDirty = true;
 	}
 
 	void BottomLevelAccelerationStructure::Generate(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT64 inputScratchSizeInBytes)
 	{
+		if (!m_isDirty) {
+			return;
+		}
+
+		m_isDirty = false;
 		bool isUpdate = m_result.Get() != nullptr;
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = isUpdate ? 
 			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE :
@@ -81,11 +89,7 @@ namespace DX12Rendering {
 			description.SampleDesc.Quality = 0;
 			description.Width = resultSizeInBytes;
 
-			D3D12_HEAP_PROPERTIES heapProps = {
-				D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0
-			};
-
-			ThrowIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nullptr, IID_PPV_ARGS(&m_result)));
+			ThrowIfFailed(device->CreateCommittedResource(&kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nullptr, IID_PPV_ARGS(&m_result)));
 			
 			m_resultSizeInBytes = resultSizeInBytes;
 			isUpdate = false; // Since we built a new resource, all objects will be updated inside.
@@ -163,9 +167,8 @@ namespace DX12Rendering {
 		m_instances.clear();
 	}
 
-	void TopLevelAccelerationStructure::AddInstance(const DX12Object* storedObject, const DX12Stage* stage) {
-		Instance instance(storedObject->blas.Get());
-		m_instances.push_back(instance);
+	void TopLevelAccelerationStructure::AddInstance(const dxObjectIndex_t& index) {
+		// TODO: include the BottomLevelAccelerationStructure to get the resource referenced by the input entity.
 	}
 
 	void TopLevelAccelerationStructure::UpdateResources(ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer) {

@@ -33,13 +33,6 @@ void DebugCycleCommandList(std::string caller, std::string file, int line)
 #define CYCLE_COMMAND_LIST() dxRenderer.ExecuteCommandList();dxRenderer.ResetCommandList()
 #endif
 
-const dxObjectIndex_t R_GetIndexFromSurface(const drawSurf_t* surf) {
-	// TODO: Use a getter key. For now since we reset our table each frame we can use this version.
-	UINT64 index = reinterpret_cast<UINT64>(std::addressof(surf));
-
-	return index;
-}
-
 bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 {
 	// TODO: Implement
@@ -87,37 +80,22 @@ static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value)
 	renderProgManager.SetUniformValue(rp, value);
 }
 
-static void RB_FillBottomLevelAccelerationStructure(const drawSurf_t* const* drawSurfs, int numDrawSurfs)
-{
-	if (numDrawSurfs == 0) {
-		return;
-	}
-
-	dxRenderer.BeginBottomLevelRayTracingSetup();
-
-	//TODO:Change our object setup here instead of in the Depth Pass.
-
-	dxRenderer.EndBottomLevelRayTracingSetup(nullptr);
-}
-
 static void RB_FillTopLevelAccelerationStructure(const viewLight_t* vLight)
 {
-	if (true) return;
 	dxRenderer.BeginTopLevelRayTracingSetup();
 
 	std::vector<dxObjectIndex_t> objects = {};
 	objects.reserve(100);
 
 	if (vLight->localInteractions) {
-		for (const drawSurf_t* walk = vLight->localInteractions; walk != NULL; walk = walk->nextOnLight) 
+		for (const drawSurf_t* walk = vLight->localInteractions; walk != NULL; walk = walk->nextOnLight)
 		{
-			const dxObjectIndex_t index = R_GetIndexFromSurface(walk);
+			const dxObjectIndex_t index = dxRenderer.GetIndexFromEntityHandle(walk->entityHandle);
 			objects.emplace_back(index);
 		}
 	}
-
-	dxRenderer.EndTopLevelRayTracingSetup(objects);
-	CYCLE_COMMAND_LIST();
+	//dxRenderer.EndTopLevelRayTracingSetup(objects);
+	//CYCLE_COMMAND_LIST();
 }
 
 static void RB_CastRayTracedStencilShadows(const viewLight_t* vLight)
@@ -468,8 +446,6 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 }
 
 void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
-	DX12Object* storedObject = nullptr;
-
 	// Connect to a new surfae renderer
 	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
 
@@ -518,18 +494,6 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 		}
 	}
 
-	// Create the stored object.
-	if (addToObjectList) {
-		storedObject = dxRenderer.AddToObjectList(
-			R_GetIndexFromSurface(surf),
-			reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
-			vertOffset,// / sizeof(idDrawVert),
-			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
-			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
-			r_singleTriangle.GetBool() ? 3 : surf->numIndexes
-		);
-	}
-
 	if (surf->jointCache) {
 		idJointBuffer jointBuffer;
 		if (!vertexCache.GetJointBuffer(surf->jointCache, &jointBuffer)) {
@@ -538,12 +502,12 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 		}
 		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
 
-		dxRenderer.SetJointBuffer(reinterpret_cast<DX12JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), storedObject);
+		dxRenderer.SetJointBuffer(reinterpret_cast<DX12JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset());
 	}
 
 	const triIndex_t* test = (triIndex_t*)indexOffset;
 
-	if (dxRenderer.EndSurfaceSettings(storedObject)) {
+	if (dxRenderer.EndSurfaceSettings()) {
 		dxRenderer.DrawModel(reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
 			vertOffset / sizeof(idDrawVert),
 			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
@@ -1889,7 +1853,7 @@ static void RB_DrawInteractions() {
 
 		// mirror flips the sense of the stencil select, and I don't want to risk accidentally breaking it
 		// in the normal case, so simply disable the stencil select in the mirror case
-		const bool useLightStencilSelect = (r_useLightStencilSelect.GetBool() && backEnd.viewDef->isMirror == false);
+		const bool useLightStencilSelect = !dxRenderer.IsRaytracingEnabled() && r_useLightStencilSelect.GetBool() && backEnd.viewDef->isMirror == false;
 
 		if (performStencilTest) {
 			if (useLightStencilSelect) {
@@ -2700,12 +2664,6 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		// fill the depth buffer and clear color buffer to black except on subviews
 		//-------------------------------------------------
 		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
-
-		// Build the acceleration structure.
-		if (dxRenderer.IsRaytracingEnabled())
-		{
-			RB_FillBottomLevelAccelerationStructure(drawSurfs, numDrawSurfs);
-		}
 	}
 
 	//-------------------------------------------------

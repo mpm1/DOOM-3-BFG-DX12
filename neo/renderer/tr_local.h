@@ -113,6 +113,7 @@ struct drawSurf_t {
 	idScreenRect			scissorRect;		// for scissor clipping, local inside renderView viewport
 	int						renderZFail;
 	volatile shadowVolumeState_t shadowVolumeState;
+	qhandle_t				entityHandle;		// used per frame to track the entities for raytracing.
 };
 
 // areas have references to hold all the lights and entities in them

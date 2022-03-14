@@ -413,13 +413,8 @@ void DX12Renderer::FreeJointBuffer(DX12JointBuffer* buffer) {
 	buffer->jointBuffer->Release();
 }
 
-void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset, DX12Object* storedObject) {
+void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset) {
 	D3D12_CONSTANT_BUFFER_VIEW_DESC descriptor = m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, m_frameIndex, m_commandList.Get());
-
-	if (storedObject != nullptr) {
-		storedObject->jointView = descriptor;
-		storedObject->includeJointView = true;
-	}
 }
 
 void DX12Renderer::SignalNextFrame() {
@@ -501,7 +496,6 @@ void DX12Renderer::BeginDraw() {
 
 	m_rootSignature->BeginFrame(m_frameIndex);
 	
-	m_objects.empty();
 	m_objectIndex = 0;
 	m_isDrawing = true;
 	DX12Rendering::ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
@@ -535,7 +529,7 @@ UINT DX12Renderer::StartSurfaceSettings() {
 	return m_objectIndex;
 }
 
-bool DX12Renderer::EndSurfaceSettings(DX12Object* storedObject) {
+bool DX12Renderer::EndSurfaceSettings() {
 	// TODO: Define separate CBV for location data and Textures
 	// TODO: add a check if we need to update tehCBV and Texture data.
 
@@ -554,14 +548,6 @@ bool DX12Renderer::EndSurfaceSettings(DX12Object* storedObject) {
 	for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
 		SetTexturePixelShaderState(currentTexture);
 		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, m_frameIndex, m_commandList.Get());
-	}
-
-	if (storedObject != nullptr) {
-		storedObject->pipelineState = m_activePipelineState;
-		storedObject->cbvView = cbvView;
-		
-		// TODO: right now we're just setting the depth objects. We need to update this for all stages.
-		dxRenderer.AddStageToObject(storedObject, DEPTH_STAGE, index, m_activeTextures);
 	}
 
 	return true;
@@ -869,75 +855,119 @@ void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
 	WaitForCopyToComplete();
 }
 
-DX12Object* DX12Renderer::AddToObjectList(const dxObjectIndex_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
-	DX12Object object = {};
-	object.index = key;
-	object.pipelineState = nullptr;
-	object.includeJointView = false;
-
-	object.vertexBuffer = vertexBuffer;
-	object.vertexOffset = vertexOffset;
-
-	object.indexBuffer = indexBuffer;
-	object.indexOffset = indexOffset;
-	object.indexCount = indexCount;
-
-	object.stages.clear();
-
-	m_objects[key] = object;
-	return &m_objects[key];
-}
-
-DX12Stage* DX12Renderer::AddStageToObject(DX12Object* storedObject, eStageType stageType, UINT textureCount, DX12TextureBuffer** textures) {
-	storedObject->stages.push_back(DX12Stage());
-
-	DX12Stage* stage = &storedObject->stages.back();
-	stage->type = stageType;
-	stage->textureCount = textureCount;
-	std::copy(textures, textures + textureCount, stage->textures);
-
-	return stage;
-}
-
-void DX12Renderer::BeginBottomLevelRayTracingSetup()
+void DX12Renderer::ResetBLAS()
 {
-	assert(IsRaytracingEnabled(), "DX12Renderer::BeginBottomLevelRayTracingSetup - Raytracing is not enabled");
-
-	m_raytracing->ResetFrame();
-	// For now we will clear the object list and reset the BLAS.
-	// TODO: Modify this to just update, and have a separate clear function.
-}
-
-void DX12Renderer::EndBottomLevelRayTracingSetup(std::function<void(const dxObjectIndex_t&, const DX12Object&)> onGenerateBLAS = nullptr)
-{
-	assert(IsRaytracingEnabled(), "DX12Renderer::EndBottomLevelRayTracingSetup - Raytracing is not enabled");
-
-	for (auto& objectPair : m_objects)
-	{
-		m_raytracing->GenerateBottomLevelAS(&objectPair.second, false);
-
-		if (onGenerateBLAS != nullptr)
-		{
-			onGenerateBLAS(objectPair.first, objectPair.second);
-		}
+	if (!IsRaytracingEnabled()) {
+		return;
 	}
 
+	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
+
+	m_raytracing->blas.Reset();
+	m_raytracing->ResetFrame();
+}
+
+void DX12Renderer::UpdateEntityInBLAS(qhandle_t entityHandle, const renderEntity_t* re)
+{
+	if (!IsRaytracingEnabled() || re == nullptr) {
+		return;
+	}
+
+	// TODO: Add support for joints.
+	if (re->joints != NULL) {
+		return;
+	}
+
+	// For now we are only supporting objects that can receive shadows.
+	if (re->noShadow)
+	{
+		return;
+	}
+
+	if (re->hModel->NumSurfaces() <= 0) {
+		return;
+	}
+
+	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
+	const dxObjectIndex_t index = GetIndexFromEntityHandle(entityHandle);
+	DX12Rendering::DX12AccelerationObject* result = m_raytracing->blas.GetAccelerationObject(index);
+
+	idVertexBuffer* vertexBuffer = nullptr;
+	idIndexBuffer* indexBuffer = nullptr;
+
+	if (result != nullptr)
+	{
+		//TODO: update
+	}
+	else
+	{
+		const modelSurface_t surf = *re->hModel->Surface(0);
+		const vertCacheHandle_t vbHandle = surf.geometry->ambientCache;
+		const vertCacheHandle_t ibHandle = surf.geometry->indexCache;
+
+		// Get vertex buffer
+		if (vertexCache.CacheIsStatic(vbHandle))
+		{
+			vertexBuffer = &vertexCache.staticData.vertexBuffer;
+		}
+		else 
+		{ 
+			// TODO: add support for dynamic vertecies.
+			return; 
+		}
+		const int vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+
+		// Get the index buffer
+		if (vertexCache.CacheIsStatic(ibHandle))
+		{
+			indexBuffer = &vertexCache.staticData.indexBuffer;
+		}
+		else
+		{
+			// TODO: add support for dynamic indexes.
+			return;
+		}
+		const int indexOffset = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+
+		m_raytracing->blas.AddAccelerationObject(
+			index,
+			reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
+			vertOffsetBytes,
+			surf.geometry->numVerts,
+			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
+			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
+			r_singleTriangle.GetBool() ? 3 : surf.geometry->numIndexes
+		);
+	}
+}
+
+void DX12Renderer::UpdateBLAS()
+{
+	if (!IsRaytracingEnabled()) {
+		return;
+	}
+
+	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
+
+	m_raytracing->blas.Generate(m_device.Get(), m_raytracing->GetCommandList(), m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE);
+	
 	m_raytracing->ExecuteCommandList();
 	m_raytracing->ResetCommandList();
 }
 
-void DX12Renderer::BeginTopLevelRayTracingSetup() {
+void DX12Renderer::BeginTopLevelRayTracingSetup() 
+{
 	assert(IsRaytracingEnabled(), "DX12Renderer::BeginTopLevelRayTracingSetup - Raytracing is not enabled");
 
 	m_raytracing->StartAccelerationStructure(r_useRaytracedShadows.GetBool(), r_useRaytracedReflections.GetBool(), r_useGlobalIllumination.GetBool());
 }
 
-void DX12Renderer::EndTopLevelRayTracingSetup(const std::vector<dxObjectIndex_t>& objectIds) {
+void DX12Renderer::EndTopLevelRayTracingSetup(const std::vector<dxObjectIndex_t>& objectIds) 
+{
 	assert(IsRaytracingEnabled(), "DX12Renderer::EndTopLevelRayTracingSetup - Raytracing is not enabled");
 	
 	for (const dxObjectIndex_t& index : objectIds) {
-		DX12Object object = m_objects[index];
-		m_raytracing->AddObjectToAllTopLevelAS(&object, false);
+		//TODO: Implement.
 	}
 
 	m_raytracing->EndAccelerationStructure();

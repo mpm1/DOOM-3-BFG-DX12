@@ -2,6 +2,7 @@
 #define __DX12_ACCELERATION_STRUCTURE_H__
 
 #include <map>
+#include <atomic>
 
 #include "./dx12_global.h"
 
@@ -16,6 +17,21 @@ namespace DX12Rendering
 		DX12AccelerationObject(D3D12_RAYTRACING_GEOMETRY_DESC* desc) :
 			vertex_buffer(desc) {}
 	};
+
+	struct Instance {
+		ID3D12Resource* bottomLevelAS;
+		XMMATRIX		transformation;
+		UINT			instanceId;
+		UINT			hitGroupIndex; // Should this be stage index?
+		//TODO: Add support for bone information.
+
+		Instance(ID3D12Resource* blas) :
+			bottomLevelAS(blas),
+			transformation(),
+			instanceId(0),
+			hitGroupIndex(0) {}
+	};
+
 	/// <summary>
 	/// The base structure tree for all objects being referenced in the scene.
 	/// </summary>
@@ -34,7 +50,7 @@ public:
 	BottomLevelAccelerationStructure();
 	~BottomLevelAccelerationStructure();
 
-	DX12AccelerationObject* AddAccelerationObject(const dxObjectIndex_t& key, DX12VertexBuffer& vertexBuffer, UINT vertexOffset, DX12IndexBuffer& indexBuffer, UINT indexOffset, UINT indexCount);
+	DX12AccelerationObject* AddAccelerationObject(const dxObjectIndex_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 	DX12AccelerationObject* GetAccelerationObject(const dxObjectIndex_t& key);
 
 	void Reset();
@@ -45,6 +61,7 @@ private:
 	std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> m_vertexBuffers = {};
 	ComPtr<ID3D12Resource> m_result = nullptr;
 	UINT64 m_resultSizeInBytes = 0;
+	std::atomic_bool m_isDirty = true;
 };
 
 class DX12Rendering::TopLevelAccelerationStructure {
@@ -52,7 +69,7 @@ public:
 	TopLevelAccelerationStructure(ID3D12Device5* device);
 	~TopLevelAccelerationStructure();
 
-	void AddInstance(const DX12Object* object, const DX12Stage* stage);
+	void AddInstance(const dxObjectIndex_t& index);
 	void Reset(); // Clears the acceleration structure.
 	void UpdateResources(ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer);
 

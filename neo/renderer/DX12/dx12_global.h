@@ -40,6 +40,19 @@ namespace DX12Rendering {
 	void ThrowIfFailed(HRESULT hr);
 	bool WarnIfFailed(HRESULT hr);
 
+	// From NVIDIAs DXRHelper code
+	// Specifies a heap used for uploading. This heap type has CPU access optimized
+	// for uploading to the GPU.
+	static const D3D12_HEAP_PROPERTIES kUploadHeapProps = {
+		D3D12_HEAP_TYPE_UPLOAD, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0 };
+
+	// Specifies the default heap. This heap type experiences the most bandwidth for
+	// the GPU, but cannot provide CPU access.
+	static const D3D12_HEAP_PROPERTIES kDefaultHeapProps = {
+		D3D12_HEAP_TYPE_DEFAULT, D3D12_CPU_PAGE_PROPERTY_UNKNOWN, D3D12_MEMORY_POOL_UNKNOWN, 0, 0 };
+
+	ID3D12Resource* CreateBuffer(ID3D12Device5* device, uint64_t size, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps);
+
 	ID3D12DescriptorHeap* CreateDescriptorHeap(ID3D12Device* device, uint32_t count, D3D12_DESCRIPTOR_HEAP_TYPE type, bool shaderVisible);
 }
 

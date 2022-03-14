@@ -1068,6 +1068,10 @@ void R_AddModels() {
 	for ( viewEntity_t * vEntity = tr.viewDef->viewEntitys; vEntity != NULL; vEntity = vEntity->next ) {
 		for ( drawSurf_t * ds = vEntity->drawSurfs; ds != NULL; ) {
 			drawSurf_t * next = ds->nextOnLight;
+
+			// Add entity handle
+			ds->entityHandle = vEntity->entityDef->index;
+
 			if ( ds->linkChain == NULL ) {
 				R_LinkDrawSurfToView( ds, tr.viewDef );
 			} else {

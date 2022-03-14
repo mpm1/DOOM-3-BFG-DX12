@@ -3,6 +3,7 @@
 
 #include <map>
 #include <functional>
+#include <mutex>
 
 #include "./dx12_global.h"
 #include "./dx12_RootSignature.h"
@@ -64,7 +65,7 @@ public:
 
 	DX12JointBuffer* AllocJointBuffer(DX12JointBuffer* buffer, UINT numBytes);
 	void FreeJointBuffer(DX12JointBuffer* buffer);
-	void SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset, DX12Object* storedObject);
+	void SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset);
 
 	// Textures
 	void SetActiveTextureRegister(UINT8 index);
@@ -86,12 +87,13 @@ public:
 	void ResetCommandList(bool waitForBackBuffer = false);
 	void ExecuteCommandList();
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
-	bool EndSurfaceSettings(DX12Object* storedObject); // Records the the surface entry into the heap.
+	bool EndSurfaceSettings(); // Records the the surface entry into the heap.
 	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 
 	// Raytracing
-	void BeginBottomLevelRayTracingSetup();
-	void EndBottomLevelRayTracingSetup(std::function<void(const dxObjectIndex_t&, const DX12Object&)> onGenerateBLAS);
+	void ResetBLAS(); // Resets the bottom level acceleration structure to an empty state.
+	void UpdateEntityInBLAS(const qhandle_t entityHandle, const renderEntity_t* re);
+	void UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
 
 	void BeginTopLevelRayTracingSetup();
 	void EndTopLevelRayTracingSetup(const std::vector<dxObjectIndex_t>& objectIds);
@@ -99,9 +101,8 @@ public:
 	bool IsRaytracingEnabled() const { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
 	void GenerateRaytracedStencilShadows();
 
-	//Object commands
-	DX12Object* AddToObjectList(const dxObjectIndex_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
-	DX12Stage* AddStageToObject(DX12Object* storedObject, eStageType stageType, UINT textureCount, DX12TextureBuffer** textures);
+	// Converters
+	const dxObjectIndex_t GetIndexFromEntityHandle(const qhandle_t entityHandle) { return static_cast<dxObjectIndex_t>(entityHandle); };
 
 private:
 	UINT m_width;
@@ -140,7 +141,6 @@ private:
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;
 
-	std::map<dxObjectIndex_t, DX12Object> m_objects = {};
 	UINT m_objectIndex = 0;
 
 	// Synchronization
@@ -163,6 +163,7 @@ private:
 
 	// Raytracing
 	DX12Rendering::Raytracing* m_raytracing;
+	std::mutex m_raytracingMutex;
 
 	void LoadPipeline(HWND hWnd);
 	void LoadAssets();
