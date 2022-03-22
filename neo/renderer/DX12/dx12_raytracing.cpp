@@ -1,5 +1,6 @@
 #pragma hdrstop
 
+#include <stdexcept>
 #include "./dx12_raytracing.h"
 
 namespace DX12Rendering {
@@ -20,7 +21,6 @@ namespace DX12Rendering {
 
 	Raytracing::Raytracing(ID3D12Device5* device, UINT screenWidth, UINT screenHeight)
 		: m_device(device),
-		shadowTlas(device), reflectionTlas(device), emmisiveTlas(device),
 		isRaytracingSupported(CheckRaytracingSupport(device)),
 		m_rayGenSignature(device, WRITE_OUTPUT | READ_ENVIRONMENT),
 		m_missSignature(device, NONE),
@@ -31,12 +31,12 @@ namespace DX12Rendering {
 		const UINT64 scratchSize = DX12_ALIGN(DEFAULT_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
 		scratchBuffer = CreateBuffer(
 			device,
-			scratchSize, 
-			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, 
+			scratchSize,
+			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
 			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
 			kDefaultHeapProps);
 		scratchBuffer->SetName(L"Raytracing Scratch Buffer");
-		
+
 		CreateCommandList();
 		CreateShadowPipeline();
 	}
@@ -90,7 +90,7 @@ namespace DX12Rendering {
 	}
 
 	void Raytracing::CreateOutputBuffers()
-	{
+	{Mark start here. We need to move this info into the tlas?
 		// Create the test shadow resource
 		D3D12_RESOURCE_DESC shadowDesc = {};
 		shadowDesc.DepthOrArraySize = 1;
@@ -121,66 +121,107 @@ namespace DX12Rendering {
 	{
 		// Create a SRV/UAV/CBV descriptor heap. We need 2 entries - 1 UAV for the 
 		// raytracing output and 1 SRV for the TLAS 
-		m_shadowUavHeaps = CreateDescriptorHeap( m_device, 2, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
-		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_shadowUavHeaps->GetCPUDescriptorHandleForHeapStart(); 
-		
-		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {}; 
-		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D; 
+		m_shadowUavHeaps = CreateDescriptorHeap(m_device, 2, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_shadowUavHeaps->GetCPUDescriptorHandleForHeapStart();
+
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 		m_device->CreateUnorderedAccessView(m_shadowResource.Get(), nullptr, &uavDesc, shadowHandle);
-		
+	}
+
+	//void Raytracing::StartAccelerationStructure(bool raytracedShadows, bool raytracedReflections, bool raytracedIllumination) 
+	//{
+	//	m_state = BIT_RAYTRACED_NONE;
+
+	//	if (raytracedShadows) {
+	//		m_state |= BIT_RAYTRACED_SHADOWS;
+	//		shadowTlas.Reset();
+	//	}
+
+	//	if (raytracedReflections) {
+	//		m_state |= BIT_RAYTRACED_REFLECTIONS;
+	//		reflectionTlas.Reset();
+	//	}
+
+	//	if (raytracedIllumination) {
+	//		m_state |= BIT_RAYTRACED_ILLUMINATION;
+	//		emmisiveTlas.Reset();
+	//	}
+	//}
+
+	//void Raytracing::EndAccelerationStructure() {
+	//	if (IsShadowEnabled()) {
+	//		shadowTlas.UpdateResources(m_commandList.Get(), scratchBuffer.Get());
+	//	}
+	//	if (IsReflectiveEnabled()) {
+	//		reflectionTlas.UpdateResources(m_commandList.Get(), scratchBuffer.Get());
+	//	}
+	//	if (IsIlluminationEnabled()) {
+	//		emmisiveTlas.UpdateResources(m_commandList.Get(), scratchBuffer.Get());
+	//	}
+
+	//	// TODO: UpdateResources does not work yet for the TLAS, this is throwing a setup error.
+	//		// Add matricies to the TLAS data
+	//		// Add bone information to the TLAS data.
+	//}
+
+	TopLevelAccelerationStructure* Raytracing::GetShadowTLAS(const dxHandle_t& handle)
+	{
+		try 
+		{
+			return &m_shadowTlas.at(handle);
+		}
+		catch (std::out_of_range e)
+		{
+			return nullptr;
+		}
+	}
+
+	TopLevelAccelerationStructure* Raytracing::EmplaceShadowTLAS(const dxHandle_t& handle)
+	{
+		TopLevelAccelerationStructure* tlas = GetShadowTLAS(handle);
+
+		if (tlas == nullptr) 
+		{
+			m_shadowTlas.emplace(handle, &blas);
+			tlas = &m_shadowTlas.at(handle);
+		}
+
+		return tlas;
+	}
+
+	void Raytracing::GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas)
+	{
+		assert(tlas != nullptr);
+
+		// Update the resource
+		if (!tlas->UpdateResources(m_device, m_commandList.Get(), scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE))
+		{
+			return;
+		}
+
 		// Write the acceleration structure to the view.
-		shadowHandle.ptr += m_device->GetDescriptorHandleIncrementSize( D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV); 
+		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_shadowUavHeaps->GetCPUDescriptorHandleForHeapStart();
+		shadowHandle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.RaytracingAccelerationStructure.Location = shadowTlas.GetGPUVirtualAddress(); // Write the acceleration structure view in the heap 
-		
+		srvDesc.RaytracingAccelerationStructure.Location = tlas->GetGPUVirtualAddress(); // Write the acceleration structure view in the heap 
+
 		m_device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
 	}
 
-	void Raytracing::StartAccelerationStructure(bool raytracedShadows, bool raytracedReflections, bool raytracedIllumination) 
-	{
-		m_state = BIT_RAYTRACED_NONE;
-
-		if (raytracedShadows) {
-			m_state |= BIT_RAYTRACED_SHADOWS;
-			shadowTlas.Reset();
-		}
-
-		if (raytracedReflections) {
-			m_state |= BIT_RAYTRACED_REFLECTIONS;
-			reflectionTlas.Reset();
-		}
-
-		if (raytracedIllumination) {
-			m_state |= BIT_RAYTRACED_ILLUMINATION;
-			emmisiveTlas.Reset();
-		}
-	}
-
-	void Raytracing::EndAccelerationStructure() {
-		if (IsShadowEnabled()) {
-			shadowTlas.UpdateResources(m_commandList.Get(), scratchBuffer.Get());
-		}
-		if (IsReflectiveEnabled()) {
-			reflectionTlas.UpdateResources(m_commandList.Get(), scratchBuffer.Get());
-		}
-		if (IsIlluminationEnabled()) {
-			emmisiveTlas.UpdateResources(m_commandList.Get(), scratchBuffer.Get());
-		}
-
-		// TODO: UpdateResources does not work yet for the TLAS, this is throwing a setup error.
-			// Add matricies to the TLAS data
-			// Add bone information to the TLAS data.
-	}
-
 	void Raytracing::CastShadowRays(ID3D12GraphicsCommandList4* commandList, 
+		const dxHandle_t lightHandle,
 		const CD3DX12_VIEWPORT& viewport, 
 		const CD3DX12_RECT& scissorRect, 
 		ID3D12Resource* depthStencilBuffer,
 		UINT32 stencilIndex)
 	{
+		DX12Rendering::TopLevelAccelerationStructure* tlas = GetShadowTLAS(lightHandle);
+
 		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
 		std::vector<ID3D12DescriptorHeap*> heaps = { m_shadowUavHeaps.Get() };
 		commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
@@ -217,7 +258,7 @@ namespace DX12Rendering {
 
 		// Output to resource.
 		// TODO: Copy this to the stencil buffer.
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowResource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(tlas->GetResult(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 		commandList->ResourceBarrier(1, &transition);
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COPY_DEST);
@@ -225,7 +266,7 @@ namespace DX12Rendering {
 
 		// TODO: Should we limit this to the scissor window?
 		CD3DX12_TEXTURE_COPY_LOCATION dst(depthStencilBuffer, stencilIndex);
-		CD3DX12_TEXTURE_COPY_LOCATION src(m_shadowResource.Get());
+		CD3DX12_TEXTURE_COPY_LOCATION src(tlas->GetResult());
 		commandList->CopyTextureRegion(&dst, viewport.TopLeftX, viewport.TopLeftY, 0, &src, nullptr);
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE);

@@ -80,28 +80,9 @@ static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value)
 	renderProgManager.SetUniformValue(rp, value);
 }
 
-static void RB_FillTopLevelAccelerationStructure(const viewLight_t* vLight)
-{
-	dxRenderer.BeginTopLevelRayTracingSetup();
-
-	std::vector<dxObjectIndex_t> objects = {};
-	objects.reserve(100);
-
-	if (vLight->localInteractions) {
-		for (const drawSurf_t* walk = vLight->localInteractions; walk != NULL; walk = walk->nextOnLight)
-		{
-			const dxObjectIndex_t index = dxRenderer.GetIndexFromEntityHandle(walk->entityHandle);
-			objects.emplace_back(index);
-		}
-	}
-	//dxRenderer.EndTopLevelRayTracingSetup(objects);
-	//CYCLE_COMMAND_LIST();
-}
-
 static void RB_CastRayTracedStencilShadows(const viewLight_t* vLight)
 {
-	if (true) return;
-	dxRenderer.GenerateRaytracedStencilShadows();
+	dxRenderer.GenerateRaytracedStencilShadows(dxRenderer.GetHandle(vLight));
 	CYCLE_COMMAND_LIST();
 }
 
@@ -1840,12 +1821,6 @@ static void RB_DrawInteractions() {
 		// set the depth bounds for the whole light
 		if (useLightDepthBounds) {
 			GL_DepthBoundsTest(vLight->scissorRect.zmin, vLight->scissorRect.zmax);
-		}
-
-		// Setup Raytracing structure
-		if (dxRenderer.IsRaytracingEnabled())
-		{
-			RB_FillTopLevelAccelerationStructure(vLight);
 		}
 
 		// only need to clear the stencil buffer and perform stencil testing if there are shadows

@@ -10,7 +10,7 @@ namespace DX12Rendering {
 	BottomLevelAccelerationStructure::~BottomLevelAccelerationStructure()
 	{}
 
-	DX12AccelerationObject* BottomLevelAccelerationStructure::AddAccelerationObject(const dxObjectIndex_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount)
+	DX12AccelerationObject* BottomLevelAccelerationStructure::AddAccelerationObject(const dxHandle_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount)
 	{
 		if (GetAccelerationObject(key) != nullptr) 
 		{
@@ -33,12 +33,12 @@ namespace DX12Rendering {
 			: D3D12_RAYTRACING_GEOMETRY_FLAG_NONE; //TODO: Eventually add support for opaque geometry.
 
 		m_vertexBuffers.emplace_back(geometryDesc);
-		m_objectMap.emplace(key, &m_vertexBuffers.back());
+		m_objectMap.try_emplace(key, &m_vertexBuffers.back(), static_cast<UINT>(m_vertexBuffers.size() - 1));
 
 		m_isDirty = true;
 	}
 
-	DX12AccelerationObject* BottomLevelAccelerationStructure::GetAccelerationObject(const dxObjectIndex_t& key) {
+	DX12AccelerationObject* BottomLevelAccelerationStructure::GetAccelerationObject(const dxHandle_t& key) {
 		auto result = m_objectMap.find(key);
 
 		if (result != m_objectMap.end()) {
@@ -143,35 +143,80 @@ namespace DX12Rendering {
 #pragma endregion
 
 #pragma region TopLevelAccelerationStructure
-	TopLevelAccelerationStructure::TopLevelAccelerationStructure(ID3D12Device5* device)
-		: m_device(device)
+	TopLevelAccelerationStructure::TopLevelAccelerationStructure(BottomLevelAccelerationStructure* blas)
+		: m_blas(blas)
 	{
-		UINT64 scratchSizeInBytes;
-		UINT64 resultSizeInBytes;
-		UINT64 instanceDescsSize;
-
-		CacluateBufferSizes(&scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
-		assert(scratchSizeInBytes < DEFAULT_SCRATCH_SIZE, "The generated objects scratch size is too large.");
-
-		if (m_result == nullptr) {
-			m_result = CreateBuffer(m_device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
-			m_result->SetName(L"TLAS Result Buffer");
-		}
 	}
 
-	TopLevelAccelerationStructure::~TopLevelAccelerationStructure() {
-
+	TopLevelAccelerationStructure::~TopLevelAccelerationStructure() 
+	{
+		Reset();
+		m_blas = nullptr;
+		m_result = nullptr;
+		m_instanceDesc = nullptr;
 	}
 
 	void TopLevelAccelerationStructure::Reset() {
 		m_instances.clear();
 	}
 
-	void TopLevelAccelerationStructure::AddInstance(const dxObjectIndex_t& index) {
-		// TODO: include the BottomLevelAccelerationStructure to get the resource referenced by the input entity.
+	void TopLevelAccelerationStructure::AddInstance(const dxHandle_t& index, const DirectX::XMMATRIX& transform) {
+		auto* object = m_blas->GetAccelerationObject(index);
+
+		if (object == nullptr)
+		{
+			assert("Tried adding an invalid object handle to TLAS.");
+			return;
+		}
+
+		m_instances.emplace_back(transform, object->index, 0 /* TODO: Find the hit group index containing the normal map of the surface. */);
 	}
 
-	void TopLevelAccelerationStructure::UpdateResources(ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer) {
+	void TopLevelAccelerationStructure::FillInstanceDescriptor(ID3D12Device5* device, UINT64 instanceDescsSize)
+	{
+		bool shouldCleanMemory = m_lastInstanceCount > m_instances.size();
+
+		if (m_instanceDesc == nullptr || m_instanceDescsSize < instanceDescsSize) {
+			m_instanceDescsSize = instanceDescsSize;
+			m_instanceDesc = CreateBuffer(device, instanceDescsSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, kUploadHeapProps);
+			shouldCleanMemory = true;
+		}
+
+		D3D12_RAYTRACING_INSTANCE_DESC* instanceDescs;
+		m_instanceDesc->Map(0, nullptr, reinterpret_cast<void**>(&instanceDescs));
+		if (!instanceDescs)
+		{
+			FailMessage("TopLevelAccelerationStructure error: Cannot map instance descriptors.");
+		}
+
+		if (shouldCleanMemory)
+		{
+			// Make sure we're dealing with clean memory.
+			ZeroMemory(instanceDescs, m_instanceDescsSize);
+		}
+
+		m_lastInstanceCount = static_cast<UINT>(m_instances.size());
+		for (UINT32 index = 0; index < m_lastInstanceCount; ++index)
+		{
+			instanceDescs[index].InstanceID = m_instances[index].instanceId;
+			instanceDescs[index].InstanceContributionToHitGroupIndex = m_instances[index].hitGroupIndex;
+			instanceDescs[index].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE; // Should we implement back face culling?
+			
+																			  // Model View Matrix matrix
+			DirectX::XMMATRIX m = XMMatrixTranspose(
+				m_instances[index].transformation); // Matrix is column major, the INSTANCE_DESC is row major
+			memcpy(instanceDescs[index].Transform, &m, sizeof(instanceDescs[index].Transform));
+
+			instanceDescs[index].AccelerationStructure = m_blas->GetGPUVirtualAddress();
+			
+			// Always visible.
+			instanceDescs[index].InstanceMask = 0xFF;
+		}
+
+		m_instanceDesc->Unmap(0, nullptr);
+	}
+
+	bool TopLevelAccelerationStructure::UpdateResources(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT scratchBufferSize) {
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
 			? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
 			: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
@@ -179,16 +224,19 @@ namespace DX12Rendering {
 		UINT64 resultSizeInBytes;
 		UINT64 instanceDescsSize;
 
-		CacluateBufferSizes(&scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
-		assert(scratchSizeInBytes < DEFAULT_SCRATCH_SIZE, "The generated objects scratch size is too large.");
+		CacluateBufferSizes(device, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
+		assert(scratchSizeInBytes < scratchBufferSize);
 
 		if (instanceDescsSize == 0) {
-			return;
+			return false;
 		}
+		
+		FillInstanceDescriptor(device, instanceDescsSize);
 
-		if (m_instanceDesc == nullptr) {
-			// TODO: Check if our descriptor size is too small.
-			m_instanceDesc = CreateBuffer(m_device, instanceDescsSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, kUploadHeapProps);
+		if (resultSizeInBytes > m_resultSize)
+		{
+			CreateBuffer(device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
+			m_resultSize = resultSizeInBytes;
 		}
 
 		D3D12_GPU_VIRTUAL_ADDRESS pSourceAS = 0;// updateOnly ? previousResult->GetGPUVirtualAddress() : 0;
@@ -217,9 +265,11 @@ namespace DX12Rendering {
 		uavBarrier.UAV.pResource = m_result.Get();
 		uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 		commandList->ResourceBarrier(1, &uavBarrier);
+
+		return true;
 	}
 
-	void TopLevelAccelerationStructure::CacluateBufferSizes(UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize) {
+	void TopLevelAccelerationStructure::CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize) {
 		const UINT numDescs = 1000;
 
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
@@ -234,7 +284,7 @@ namespace DX12Rendering {
 
 		// Calculate the space needed to generate the Acceleration Structure
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
-		m_device->GetRaytracingAccelerationStructurePrebuildInfo(&description, &info);
+		device->GetRaytracingAccelerationStructurePrebuildInfo(&description, &info);
 
 		// 256 Align the storage size.
 		*scratchSizeInBytes = DX12_ALIGN(info.ScratchDataSizeInBytes, 256);

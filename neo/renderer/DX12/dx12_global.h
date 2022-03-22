@@ -11,14 +11,15 @@
 #include <DirectXMath.h>
 #include <vector>
 
-// Will be automatically enabled with preprocessor symbols: USE_PIX, DBG, _DEBUG, PROFILE, or PROFILE_BUILD
-/*#include <pix3.h>
-#include <DXProgrammableCapture.h>*/
-
 #pragma comment (lib, "dxguid.lib")
 #pragma comment (lib, "d3d12.lib")
 #pragma comment (lib, "dxgi.lib")
 #pragma comment (lib, "dxcompiler.lib")
+
+#ifdef USE_PIX
+#include <pix3.h>
+//#include <DXProgrammableCapture.h>
+#endif
 
 #define DX12_FRAME_COUNT 2
 
@@ -32,9 +33,18 @@
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
-typedef UINT64 dxObjectIndex_t;
+typedef UINT64 dxHandle_t;
 
 namespace DX12Rendering {
+#ifdef USE_PIX
+MARK figue out why pix is not working.
+	void CaptureEventStart(ID3D12CommandList* commandList, std::string message) { PIXBeginEvent(commandList, PIX_COLOR(128, 255, 128), message.c_str()); };
+	void CaptureEventEnd(ID3D12CommandList* commandList) { PIXEndEvent(commandList); }
+#else
+	void CaptureEventStart(ID3D12CommandList* commandList, std::string message) {};
+	void CaptureEventEnd(ID3D12CommandList* commandList) {}
+#endif
+
 	void FailMessage(LPCSTR message);
 	void WarnMessage(LPCSTR message);
 	void ThrowIfFailed(HRESULT hr);

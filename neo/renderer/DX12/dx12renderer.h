@@ -95,14 +95,22 @@ public:
 	void UpdateEntityInBLAS(const qhandle_t entityHandle, const renderEntity_t* re);
 	void UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
 
-	void BeginTopLevelRayTracingSetup();
-	void EndTopLevelRayTracingSetup(const std::vector<dxObjectIndex_t>& objectIds);
+	// Top Level Acceleration structure
+	template<typename K>
+	DX12Rendering::TopLevelAccelerationStructure* GetOrGenerateAccelerationStructure(const K* keyHandle);
+
+	template<typename K, typename T>
+	void AddEntityAccelerationStructure(const K* keyHandle, const T* entity);
+
+	template<typename K>
+	void UpdateAccelerationStructure(const K* keyHandle);
 
 	bool IsRaytracingEnabled() const { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
-	void GenerateRaytracedStencilShadows();
+	void GenerateRaytracedStencilShadows(const dxHandle_t lightHandle);
 
 	// Converters
-	const dxObjectIndex_t GetIndexFromEntityHandle(const qhandle_t entityHandle) { return static_cast<dxObjectIndex_t>(entityHandle); };
+	template<typename T>
+	inline const dxHandle_t GetHandle(const T* qEntity);
 
 private:
 	UINT m_width;

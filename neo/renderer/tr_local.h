@@ -113,7 +113,6 @@ struct drawSurf_t {
 	idScreenRect			scissorRect;		// for scissor clipping, local inside renderView viewport
 	int						renderZFail;
 	volatile shadowVolumeState_t shadowVolumeState;
-	qhandle_t				entityHandle;		// used per frame to track the entities for raytracing.
 };
 
 // areas have references to hold all the lights and entities in them
@@ -318,6 +317,7 @@ struct viewLight_t {
 
 	// R_AddSingleLight will build a chain of parameters here to setup shadow volumes
 	preLightShadowVolumeParms_t *	preLightShadowVolumes;
+	void*					shadowAccelerationStructure; // acceleration structure used for shadow ray casting.
 };
 
 // a viewEntity is created whenever a idRenderEntityLocal is considered for inclusion

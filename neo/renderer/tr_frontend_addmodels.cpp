@@ -372,6 +372,9 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 				if ( vLight->entityInteractionState[entityIndex] == viewLight_t::INTERACTION_YES ) {
 					contactedLights[numContactedLights] = vLight;
 					staticInteractions[numContactedLights] = world->interactionTable[vLight->lightDef->index * world->interactionTableWidth + entityIndex];
+
+					dxRenderer.AddEntityAccelerationStructure(vLight, vEntity);
+
 					if ( ++numContactedLights == MAX_CONTACTED_LIGHTS ) {
 						break;
 					}
@@ -1068,9 +1071,6 @@ void R_AddModels() {
 	for ( viewEntity_t * vEntity = tr.viewDef->viewEntitys; vEntity != NULL; vEntity = vEntity->next ) {
 		for ( drawSurf_t * ds = vEntity->drawSurfs; ds != NULL; ) {
 			drawSurf_t * next = ds->nextOnLight;
-
-			// Add entity handle
-			ds->entityHandle = vEntity->entityDef->index;
 
 			if ( ds->linkChain == NULL ) {
 				R_LinkDrawSurfToView( ds, tr.viewDef );
