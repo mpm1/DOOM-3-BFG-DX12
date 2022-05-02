@@ -82,8 +82,12 @@ static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value)
 
 static void RB_CastRayTracedStencilShadows(const viewLight_t* vLight)
 {
-	dxRenderer.GenerateRaytracedStencilShadows(dxRenderer.GetHandle(vLight));
-	CYCLE_COMMAND_LIST();
+	const dxHandle_t handle = dxRenderer.GetHandle(vLight);
+	if (dxRenderer.GenerateRaytracedStencilShadows(handle))
+	{
+		dxRenderer.SetCommandListDefaults();
+		//CYCLE_COMMAND_LIST();
+	}
 }
 
 /*
@@ -1828,7 +1832,7 @@ static void RB_DrawInteractions() {
 
 		// mirror flips the sense of the stencil select, and I don't want to risk accidentally breaking it
 		// in the normal case, so simply disable the stencil select in the mirror case
-		const bool useLightStencilSelect = !dxRenderer.IsRaytracingEnabled() && r_useLightStencilSelect.GetBool() && backEnd.viewDef->isMirror == false;
+		const bool useLightStencilSelect = !dxRenderer.IsRaytracingEnabled() && backEnd.viewDef->isMirror == false;//&& r_useLightStencilSelect.GetBool() && backEnd.viewDef->isMirror == false;
 
 		if (performStencilTest) {
 			if (useLightStencilSelect) {
@@ -1854,10 +1858,11 @@ static void RB_DrawInteractions() {
 				GL_Clear(false, false, true, STENCIL_SHADOW_TEST_VALUE, 0.0f, 0.0f, 0.0f, 0.0f);
 			}
 
-			if (dxRenderer.IsRaytracingEnabled())
-			{
-				RB_CastRayTracedStencilShadows(vLight);
-			}
+		if (dxRenderer.IsRaytracingEnabled()) {
+			//dxRenderer.Clear(false, false, true, 0, nullptr); // Only 0 works for the stencil value?
+			//GL_Clear(false, false, true, 0, 0.0f, 0.0f, 0.0f, 0.0f); // For some reason this is killing the device
+			RB_CastRayTracedStencilShadows(vLight);
+		}
 		}
 
 		if (vLight->globalShadows != NULL) {

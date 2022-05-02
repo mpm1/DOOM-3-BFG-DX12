@@ -36,14 +36,14 @@ using namespace Microsoft::WRL;
 typedef UINT64 dxHandle_t;
 
 namespace DX12Rendering {
-#ifdef USE_PIX
-MARK figue out why pix is not working.
-	void CaptureEventStart(ID3D12CommandList* commandList, std::string message) { PIXBeginEvent(commandList, PIX_COLOR(128, 255, 128), message.c_str()); };
-	void CaptureEventEnd(ID3D12CommandList* commandList) { PIXEndEvent(commandList); }
-#else
-	void CaptureEventStart(ID3D12CommandList* commandList, std::string message) {};
-	void CaptureEventEnd(ID3D12CommandList* commandList) {}
-#endif
+//#ifdef USE_PIX
+//MARK figue out why pix is not working.
+//	void CaptureEventStart(ID3D12CommandList* commandList, std::string message) { PIXBeginEvent(commandList, PIX_COLOR(128, 255, 128), message.c_str()); };
+//	void CaptureEventEnd(ID3D12CommandList* commandList) { PIXEndEvent(commandList); }
+//#else
+//	void CaptureEventStart(ID3D12CommandList* commandList, std::string message) {};
+//	void CaptureEventEnd(ID3D12CommandList* commandList) {}
+//#endif
 
 	void FailMessage(LPCSTR message);
 	void WarnMessage(LPCSTR message);

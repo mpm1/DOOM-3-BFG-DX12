@@ -169,7 +169,8 @@ namespace DX12Rendering {
 			return;
 		}
 
-		m_instances.emplace_back(transform, object->index, 0 /* TODO: Find the hit group index containing the normal map of the surface. */);
+
+		m_instances.emplace_back(XMMATRIX(transform), object->index, 0 /* TODO: Find the hit group index containing the normal map of the surface. */);
 	}
 
 	void TopLevelAccelerationStructure::FillInstanceDescriptor(ID3D12Device5* device, UINT64 instanceDescsSize)
@@ -224,13 +225,17 @@ namespace DX12Rendering {
 		UINT64 resultSizeInBytes;
 		UINT64 instanceDescsSize;
 
+		if (m_instances.size() == 0) {
+			return false;
+		}
+
 		CacluateBufferSizes(device, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
 		assert(scratchSizeInBytes < scratchBufferSize);
-
+		
 		if (instanceDescsSize == 0) {
 			return false;
 		}
-		
+
 		FillInstanceDescriptor(device, instanceDescsSize);
 
 		if (resultSizeInBytes > m_resultSize)

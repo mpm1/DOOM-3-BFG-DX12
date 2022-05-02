@@ -90,8 +90,8 @@ namespace DX12Rendering {
 	}
 
 	void Raytracing::CreateOutputBuffers()
-	{Mark start here. We need to move this info into the tlas?
-		// Create the test shadow resource
+	{
+		// Create the resource to draw raytraced shadows to.
 		D3D12_RESOURCE_DESC shadowDesc = {};
 		shadowDesc.DepthOrArraySize = 1;
 		shadowDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
@@ -210,10 +210,10 @@ namespace DX12Rendering {
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.RaytracingAccelerationStructure.Location = tlas->GetGPUVirtualAddress(); // Write the acceleration structure view in the heap 
 
-		m_device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
+		m_device->CreateShaderResourceView(m_shadowResource.Get(), &srvDesc, shadowHandle);
 	}
 
-	void Raytracing::CastShadowRays(ID3D12GraphicsCommandList4* commandList, 
+	bool Raytracing::CastShadowRays(ID3D12GraphicsCommandList4* commandList, 
 		const dxHandle_t lightHandle,
 		const CD3DX12_VIEWPORT& viewport, 
 		const CD3DX12_RECT& scissorRect, 
@@ -221,6 +221,11 @@ namespace DX12Rendering {
 		UINT32 stencilIndex)
 	{
 		DX12Rendering::TopLevelAccelerationStructure* tlas = GetShadowTLAS(lightHandle);
+
+		if (tlas == nullptr || tlas->IsEmpty()) {
+			// No objects to cast shadows.
+			return false;
+		}
 
 		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
 		std::vector<ID3D12DescriptorHeap*> heaps = { m_shadowUavHeaps.Get() };
@@ -250,7 +255,7 @@ namespace DX12Rendering {
 
 		desc.Height = viewport.Height;
 		desc.Width = viewport.Width;
-		desc.Depth = 1; // TODO: Calculate this based on the FOV
+		desc.Depth = 1; 
 
 		// Generate the ray traced image.
 		commandList->SetPipelineState1(m_shadowStateObject.Get());
@@ -258,7 +263,7 @@ namespace DX12Rendering {
 
 		// Output to resource.
 		// TODO: Copy this to the stencil buffer.
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(tlas->GetResult(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowResource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 		commandList->ResourceBarrier(1, &transition);
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COPY_DEST);
@@ -266,11 +271,13 @@ namespace DX12Rendering {
 
 		// TODO: Should we limit this to the scissor window?
 		CD3DX12_TEXTURE_COPY_LOCATION dst(depthStencilBuffer, stencilIndex);
-		CD3DX12_TEXTURE_COPY_LOCATION src(tlas->GetResult());
+		CD3DX12_TEXTURE_COPY_LOCATION src(m_shadowResource.Get());
 		commandList->CopyTextureRegion(&dst, viewport.TopLeftX, viewport.TopLeftY, 0, &src, nullptr);
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE);
 		commandList->ResourceBarrier(1, &transition);
+
+		return true;
 	}
 
 	void Raytracing::AddObjectToAllTopLevelAS() {

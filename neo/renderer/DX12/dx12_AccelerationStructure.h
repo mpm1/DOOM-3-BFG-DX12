@@ -85,6 +85,9 @@ public:
 
 	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() { return m_result->GetGPUVirtualAddress(); }
 	ID3D12Resource* GetResult() { return m_result.Get(); }
+
+	const size_t Count() const { return m_instances.size(); }
+	const bool IsEmpty() const { return Count() == 0; }
 private:
 	BottomLevelAccelerationStructure* m_blas;
 

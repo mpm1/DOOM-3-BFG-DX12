@@ -70,19 +70,19 @@ DX12Renderer::~DX12Renderer() {
 }
 
 template<typename T>
-inline const dxHandle_t DX12Renderer::GetHandle(const T* entityHandle)
+const dxHandle_t DX12Renderer::GetHandle(const T* entityHandle)
 {
 	std::static_assert(false, "Invalid type used for entity handle");
 }
 
 template<>
-inline const dxHandle_t DX12Renderer::GetHandle<qhandle_t>(const qhandle_t* entityHandle)
+const dxHandle_t DX12Renderer::GetHandle<qhandle_t>(const qhandle_t* entityHandle)
 {
 	return static_cast<dxHandle_t>(*entityHandle);
 }
 
 template<>
-inline const dxHandle_t DX12Renderer::GetHandle<viewLight_t>(const viewLight_t* vLight)
+const dxHandle_t DX12Renderer::GetHandle<viewLight_t>(const viewLight_t* vLight)
 {
 	return static_cast<dxHandle_t>(vLight->lightDef->index);
 }
@@ -475,13 +475,21 @@ void DX12Renderer::ResetCommandList(bool waitForBackBuffer) {
 		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 	}
 
+	SetCommandListDefaults(false);
+}
+
+void DX12Renderer::SetCommandListDefaults(const bool resetPipelineState) {
+	if (m_activePipelineState != nullptr) {
+		m_commandList->SetPipelineState(m_activePipelineState);
+	}
+
 	m_commandList->RSSetViewports(1, &m_viewport);
 	m_commandList->RSSetScissorRects(1, &m_scissorRect);
 
 	m_commandList->OMSetStencilRef(m_stencilRef);
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
-	CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+	const CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
+	const CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 	m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
 
 	// Setup the initial heap location
@@ -508,7 +516,7 @@ void DX12Renderer::BeginDraw() {
 		return;
 	}
 
-	DX12Rendering::CaptureEventStart(m_commandList.Get(), "Begin Frame");
+	//DX12Rendering::CaptureEventStart(m_commandList.Get(), "Begin Frame");
 
 	WaitForPreviousFrame();
 	++m_fenceValue;
@@ -538,7 +546,7 @@ void DX12Renderer::EndDraw() {
 	
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
 
-	DX12Rendering::CaptureEventEnd(m_commandList.Get());
+	//DX12Rendering::CaptureEventEnd(m_commandList.Get());
 }
 
 UINT DX12Renderer::StartSurfaceSettings() {
@@ -563,7 +571,7 @@ bool DX12Renderer::EndSurfaceSettings() {
 		return false;
 	}
 	
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, m_frameIndex, m_commandList.Get());
+	const D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, m_frameIndex, m_commandList.Get());
 
 	// Copy the Textures
 	DX12TextureBuffer* currentTexture;
@@ -605,16 +613,15 @@ void DX12Renderer::DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, 
 	m_commandList->DrawIndexedInstanced(indexCount, 1, indexOffset, vertexOffset, 0); // TODO: Multiply by 16 for index?
 }
 
-void DX12Renderer::Clear(bool color, bool depth, bool stencil, byte stencilValue, float* colorRGBA) {
+void DX12Renderer::Clear(const bool color, const bool depth, const bool stencil, byte stencilValue, const float colorRGBA[4]) {
 	if (!m_isDrawing) {
 		return;
 	}
 
 	uint8 clearFlags = 0;
-	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
-	
 
 	if (color) {
+		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
 		m_commandList->ClearRenderTargetView(rtvHandle, colorRGBA, 0, nullptr);
 	}
 
@@ -696,7 +703,9 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			return false;
 		}
 
-		m_raytracing->Resize(m_width, m_height);
+		if (m_raytracing != nullptr) {
+			m_raytracing->Resize(m_width, m_height);
+		}
 
 		UpdateViewport(0.0f, 0.0f, width, height);
 		UpdateScissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height));
@@ -1017,7 +1026,7 @@ void DX12Renderer::AddEntityAccelerationStructure(const viewLight_t* keyHandle, 
 	const dxHandle_t entityHandle = GetHandle(&static_cast<qhandle_t>(entity->entityDef->index));
 
 	if (m_raytracing->blas.GetAccelerationObject(entityHandle) == nullptr) {
-		common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
+		//common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
 		return;
 	}
 
@@ -1045,8 +1054,8 @@ void DX12Renderer::UpdateAccelerationStructure(const viewLight_t* keyHandle)
 	m_raytracing->GenerateTLAS(tlas);
 }
 
-void DX12Renderer::GenerateRaytracedStencilShadows(const dxHandle_t lightHandle)
+bool DX12Renderer::GenerateRaytracedStencilShadows(const dxHandle_t lightHandle)
 {
 	const UINT32 stencilIndex = 11; // TODO: Calculate this earlier
-	m_raytracing->CastShadowRays(m_commandList.Get(), m_viewport, m_scissorRect, m_depthBuffer.Get(), 11);
+	return m_raytracing->CastShadowRays(m_commandList.Get(), lightHandle, m_viewport, m_scissorRect, m_depthBuffer.Get(), stencilIndex);
 }

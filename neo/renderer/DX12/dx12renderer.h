@@ -81,10 +81,11 @@ public:
 
 	// Draw commands
 	void BeginDraw();
-	void Clear(bool color, bool depth, bool stencil, byte stencilValue, float* colorRGBA);
+	void Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4]);
 	void EndDraw();
 	void PresentBackbuffer();
 	void ResetCommandList(bool waitForBackBuffer = false);
+	void SetCommandListDefaults(const bool resetPipelineState = true);
 	void ExecuteCommandList();
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
 	bool EndSurfaceSettings(); // Records the the surface entry into the heap.
@@ -106,11 +107,11 @@ public:
 	void UpdateAccelerationStructure(const K* keyHandle);
 
 	bool IsRaytracingEnabled() const { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
-	void GenerateRaytracedStencilShadows(const dxHandle_t lightHandle);
+	bool GenerateRaytracedStencilShadows(const dxHandle_t lightHandle);
 
 	// Converters
 	template<typename T>
-	inline const dxHandle_t GetHandle(const T* qEntity);
+	const dxHandle_t GetHandle(const T* qEntity);
 
 private:
 	UINT m_width;

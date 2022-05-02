@@ -58,7 +58,8 @@ public:
 	/// <param name="commandList"></param>
 	/// <param name="viewport"></param>
 	/// <param name="scissorRect"></param>
-	void CastShadowRays(
+	/// <returns>True if the raytracing shader was called.</returns>
+	bool CastShadowRays(
 		ID3D12GraphicsCommandList4* commandList,
 		const dxHandle_t lightHandle,
 		const CD3DX12_VIEWPORT& viewport, 
