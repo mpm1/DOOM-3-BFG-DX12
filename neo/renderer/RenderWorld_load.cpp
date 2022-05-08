@@ -653,7 +653,7 @@ Sets up for a single area world
 =================
 */
 void idRenderWorldLocal::ClearWorld() {
-	dxRenderer.ResetBLAS(); // If raytracing is enabled, this will begin the setup for the bottom level acceleration structure.
+	dxRenderer.ResetAccelerationStructure(); // If raytracing is enabled, this will begin the setup for the bottom level acceleration structure.
 
 	numPortalAreas = 1;
 	portalAreas = (portalArea_t *)R_ClearedStaticAlloc( sizeof( portalAreas[0] ) );

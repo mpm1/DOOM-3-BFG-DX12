@@ -56,7 +56,7 @@ namespace DX12Rendering {
 		m_isDirty = true;
 	}
 
-	void BottomLevelAccelerationStructure::Generate(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT64 inputScratchSizeInBytes)
+	void BottomLevelAccelerationStructure::Generate(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT64 inputScratchSizeInBytes, LPCWSTR name)
 	{
 		if (!m_isDirty) {
 			return;
@@ -64,16 +64,23 @@ namespace DX12Rendering {
 
 		m_isDirty = false;
 		bool isUpdate = m_result.Get() != nullptr;
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = isUpdate ? 
-			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE :
-			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
+		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = isUpdate ?
+			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE :
+			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE; // For now we will always allow updates in our BLAS
 
 		UINT64 testScratchSizeInBytes;
 		UINT64 resultSizeInBytes;
 
+
 		CalculateBufferSize(device, &testScratchSizeInBytes, &resultSizeInBytes, flags);
 
-		if (resultSizeInBytes > m_resultSizeInBytes)
+		if (resultSizeInBytes > m_defaultResultSizeInBytes)
+		{
+			FailMessage("BottomLevelAccelerationStructure: Invalid calculated buffer size.");
+			return;
+		}
+
+		if (!isUpdate)
 		{
 			// Create the result buffer
 			D3D12_RESOURCE_DESC description = {};
@@ -87,12 +94,14 @@ namespace DX12Rendering {
 			description.MipLevels = 1;
 			description.SampleDesc.Count = 1;
 			description.SampleDesc.Quality = 0;
-			description.Width = resultSizeInBytes;
+			description.Width = m_defaultResultSizeInBytes;
 
 			ThrowIfFailed(device->CreateCommittedResource(&kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nullptr, IID_PPV_ARGS(&m_result)));
 			
 			m_resultSizeInBytes = resultSizeInBytes;
 			isUpdate = false; // Since we built a new resource, all objects will be updated inside.
+
+			m_result->SetName(name);
 		}
 
 		assert(inputScratchSizeInBytes >= testScratchSizeInBytes);

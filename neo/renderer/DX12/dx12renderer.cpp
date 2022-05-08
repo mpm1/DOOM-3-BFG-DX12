@@ -99,8 +99,7 @@ void DX12Renderer::Init(HWND hWnd) {
 }
 
 void DX12Renderer::LoadPipeline(HWND hWnd) {
-#if defined(_DEBUG)
-#if !defined(USE_PIX)
+#if defined(DEBUG_GPU)
 	{
 		ComPtr<ID3D12Debug> debugController;
 		if (SUCCEEDED(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)))) {
@@ -114,7 +113,6 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 			pDredSettings->SetPageFaultEnablement(D3D12_DRED_ENABLEMENT_FORCED_ON);
 		}
 	}
-#endif
 #endif
 
 	ComPtr<IDXGIFactory4> factory;
@@ -294,7 +292,7 @@ void DX12Renderer::LoadAssets() {
 		}
 
 		// Attach event for device removal
-#if defined(_DEBUG)
+#ifdef DEBUG_GPU
 		m_removeDeviceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_removeDeviceEvent == nullptr) {
 			DX12Rendering::ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
@@ -437,6 +435,7 @@ void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset) {
 }
 
 void DX12Renderer::SignalNextFrame() {
+	++m_fenceValue;
 	DX12Rendering::ThrowIfFailed(m_directCommandQueue->Signal(m_fence.Get(), m_fenceValue));
 }
 
@@ -519,7 +518,6 @@ void DX12Renderer::BeginDraw() {
 	//DX12Rendering::CaptureEventStart(m_commandList.Get(), "Begin Frame");
 
 	WaitForPreviousFrame();
-	++m_fenceValue;
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
@@ -677,7 +675,6 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 	if (m_device && m_swapChain && m_directCommandAllocator[m_frameIndex]) {
 		if (!m_isDrawing) {
 			WaitForPreviousFrame();
-			++m_fenceValue;
 
 			if (FAILED(m_directCommandAllocator[m_frameIndex]->Reset())) {
 				common->Warning("DX12Renderer::SetScreenParams: Error resetting command allocator.");
@@ -887,13 +884,15 @@ void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
 	WaitForCopyToComplete();
 }
 
-void DX12Renderer::ResetBLAS()
+void DX12Renderer::ResetAccelerationStructure()
 {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
 
 	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
+
+	m_raytracing->ResetAllShadowTLAS();
 
 	m_raytracing->blas.Reset();
 	m_raytracing->ResetFrame();
@@ -981,7 +980,7 @@ void DX12Renderer::UpdateBLAS()
 
 	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
 
-	m_raytracing->blas.Generate(m_device.Get(), m_raytracing->GetCommandList(), m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE);
+	m_raytracing->blas.Generate(m_device.Get(), m_raytracing->GetCommandList(), m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE, L"Main Raytracing BLAS");
 	
 	m_raytracing->ExecuteCommandList();
 	m_raytracing->ResetCommandList();
@@ -1021,14 +1020,14 @@ void DX12Renderer::AddEntityAccelerationStructure(const viewLight_t* keyHandle, 
 		return;
 	}
 
-	DX12Rendering::TopLevelAccelerationStructure* tlas = GetOrGenerateAccelerationStructure(keyHandle);
-
 	const dxHandle_t entityHandle = GetHandle(&static_cast<qhandle_t>(entity->entityDef->index));
 
 	if (m_raytracing->blas.GetAccelerationObject(entityHandle) == nullptr) {
 		//common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
 		return;
 	}
+
+	DX12Rendering::TopLevelAccelerationStructure* tlas = GetOrGenerateAccelerationStructure(keyHandle);
 
 	tlas->AddInstance(entityHandle, DirectX::XMMATRIX(entity->modelViewMatrix));
 }
@@ -1056,6 +1055,6 @@ void DX12Renderer::UpdateAccelerationStructure(const viewLight_t* keyHandle)
 
 bool DX12Renderer::GenerateRaytracedStencilShadows(const dxHandle_t lightHandle)
 {
-	const UINT32 stencilIndex = 11; // TODO: Calculate this earlier
+	constexpr UINT32 stencilIndex = 11; // TODO: Calculate this earlier
 	return m_raytracing->CastShadowRays(m_commandList.Get(), lightHandle, m_viewport, m_scissorRect, m_depthBuffer.Get(), stencilIndex);
 }

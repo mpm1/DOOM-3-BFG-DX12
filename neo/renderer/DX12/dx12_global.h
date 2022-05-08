@@ -16,9 +16,15 @@
 #pragma comment (lib, "dxgi.lib")
 #pragma comment (lib, "dxcompiler.lib")
 
-#ifdef USE_PIX
-#include <pix3.h>
-//#include <DXProgrammableCapture.h>
+#ifdef _DEBUG
+
+#ifdef DEBUG_PIX
+//#include <pix3.h>
+#include <DXProgrammableCapture.h>
+#else
+#define DEBUG_GPU
+#endif
+
 #endif
 
 #define DX12_FRAME_COUNT 2

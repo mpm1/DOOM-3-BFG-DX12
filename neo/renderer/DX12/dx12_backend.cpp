@@ -2836,7 +2836,7 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 	dxRenderer.EndDraw();
 	dxRenderer.PresentBackbuffer();
 
-	uint64 backEndFinishTime = Sys_Microseconds();
+	const uint64 backEndFinishTime = Sys_Microseconds();
 	backEnd.pc.totalMicroSec = backEndFinishTime - backEndStartTime;
 
 	if (r_debugRenderToTexture.GetInteger() == 1) {

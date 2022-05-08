@@ -104,6 +104,7 @@ namespace DX12Rendering {
 		shadowDesc.SampleDesc.Count = 1;
 
 		DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(&kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &shadowDesc, D3D12_RESOURCE_STATE_COPY_SOURCE, nullptr, IID_PPV_ARGS(&m_shadowResource)));
+		m_shadowResource->SetName(L"DXR Shadow Output");
 	}
 
 	void Raytracing::Resize(UINT width, UINT height)
@@ -190,6 +191,11 @@ namespace DX12Rendering {
 		return tlas;
 	}
 
+	void Raytracing::ResetAllShadowTLAS()
+	{
+		m_shadowTlas.clear();
+	}
+
 	void Raytracing::GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas)
 	{
 		assert(tlas != nullptr);
@@ -266,16 +272,16 @@ namespace DX12Rendering {
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowResource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 		commandList->ResourceBarrier(1, &transition);
 
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COPY_DEST);
-		commandList->ResourceBarrier(1, &transition);
+		//transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COPY_DEST);
+		//commandList->ResourceBarrier(1, &transition);
 
-		// TODO: Should we limit this to the scissor window?
-		CD3DX12_TEXTURE_COPY_LOCATION dst(depthStencilBuffer, stencilIndex);
-		CD3DX12_TEXTURE_COPY_LOCATION src(m_shadowResource.Get());
-		commandList->CopyTextureRegion(&dst, viewport.TopLeftX, viewport.TopLeftY, 0, &src, nullptr);
+		//// TODO: Should we limit this to the scissor window?
+		//CD3DX12_TEXTURE_COPY_LOCATION dst(depthStencilBuffer, stencilIndex);
+		//CD3DX12_TEXTURE_COPY_LOCATION src(m_shadowResource.Get());
+		//commandList->CopyTextureRegion(&dst, viewport.TopLeftX, viewport.TopLeftY, 0, &src, nullptr);
 
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		commandList->ResourceBarrier(1, &transition);
+		//transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+		//commandList->ResourceBarrier(1, &transition);
 
 		return true;
 	}
@@ -342,6 +348,7 @@ namespace DX12Rendering {
 		pipeline.SetMaxAttributeSize(4 * sizeof(float)); // x, y, z, w corrdinates.
 
 		m_shadowStateObject = pipeline.Generate();
+		m_shadowStateObject->SetName(L"DXR Shadow Pipeline State");
 		
 		// Copy the shader property data.
 		ThrowIfFailed(m_shadowStateObject->QueryInterface(IID_PPV_ARGS(&m_shadowStateObjectProps)));

@@ -284,6 +284,10 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 					c_callbackUpdate++;
 					R_ClearEntityDefDynamicModel( def );
 					def->parms = *re;
+
+					// Add the entity to the raytracing acceleration structure.
+					dxRenderer.UpdateEntityInBLAS(entityHandle, re);
+
 					return;
 				}
 			}

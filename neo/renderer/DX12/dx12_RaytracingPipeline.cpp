@@ -163,10 +163,10 @@ namespace DX12Rendering {
 
 		HRESULT hr = m_device->CreateStateObject(&pipelineDesc, IID_PPV_ARGS(&rayTracingStateObject));
 		DX12Rendering::ThrowIfFailed(hr);
-		/*if (FAILED(hr)) 
+		if (FAILED(hr)) 
 		{
 			DX12Rendering::FailMessage("Could not create raytracing pipeline state object.");
-		}*/
+		}
 
 		return rayTracingStateObject;
 	}

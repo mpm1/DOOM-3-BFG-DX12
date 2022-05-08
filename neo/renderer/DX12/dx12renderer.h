@@ -92,7 +92,7 @@ public:
 	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 
 	// Raytracing
-	void ResetBLAS(); // Resets the bottom level acceleration structure to an empty state.
+	void ResetAccelerationStructure(); // Resets the bottom level acceleration structure to an empty state.
 	void UpdateEntityInBLAS(const qhandle_t entityHandle, const renderEntity_t* re);
 	void UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
 

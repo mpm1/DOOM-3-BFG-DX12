@@ -50,6 +50,7 @@ public:
 
 	DX12Rendering::TopLevelAccelerationStructure* GetShadowTLAS(const dxHandle_t& handle);
 	DX12Rendering::TopLevelAccelerationStructure* EmplaceShadowTLAS(const dxHandle_t& handle);
+	void ResetAllShadowTLAS();
 	void GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas);
 
 	/// <summary>
