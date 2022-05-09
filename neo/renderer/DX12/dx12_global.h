@@ -18,6 +18,8 @@
 
 #ifdef _DEBUG
 
+#include "dx12_imgui.h"
+
 #ifdef DEBUG_PIX
 //#include <pix3.h>
 #include <DXProgrammableCapture.h>

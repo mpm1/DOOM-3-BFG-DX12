@@ -53,6 +53,8 @@ public:
 	void ResetAllShadowTLAS();
 	void GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas);
 
+	void CleanUpAccelerationStructure();
+
 	/// <summary>
 	/// Cast the rays to the stencil buffer to store for shadow generation.
 	/// </summary>
@@ -72,6 +74,11 @@ public:
 	/// Adds the desired object to the various top level acceleration structures.
 	/// </summary>
 	void AddObjectToAllTopLevelAS(); //TODO: Add matrix and bone information.
+
+#ifdef DEBUG_IMGUI
+	void ImGuiDebug();
+#endif
+
 private:
 	UINT32 m_state;
 	ID3D12Device5* m_device;

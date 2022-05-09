@@ -91,6 +91,10 @@ void DX12Renderer::Init(HWND hWnd) {
 	LoadPipeline(hWnd);
 	LoadAssets();
 
+#ifdef DEBUG_IMGUI
+	InitializeImGui(hWnd);
+#endif
+
 	if (r_useRaytracedShadows.GetBool() || r_useRaytracedReflections.GetBool() || r_useGlobalIllumination.GetBool()) {
 		m_raytracing = new DX12Rendering::Raytracing(m_device.Get(), m_width, m_height);
 	}
@@ -535,6 +539,12 @@ void DX12Renderer::EndDraw() {
 		return;
 	}
 
+#ifdef DEBUG_IMGUI
+	DX12Rendering::ImGui_StartFrame();
+	ImGuiDebugWindows();
+	DX12Rendering::ImGui_EndFrame(m_commandList.Get() , m_imguiSrvDescHeap.Get());
+#endif
+
 	// present the backbuffer
 	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 
@@ -642,6 +652,10 @@ void DX12Renderer::OnDestroy() {
 	WaitForPreviousFrame();
 
 	CloseHandle(m_fenceEvent);
+
+#ifdef DEBUG_IMGUI
+	ReleaseImGui();
+#endif
 
 	if (m_raytracing != nullptr) {
 		delete m_raytracing;
@@ -984,6 +998,8 @@ void DX12Renderer::UpdateBLAS()
 	
 	m_raytracing->ExecuteCommandList();
 	m_raytracing->ResetCommandList();
+
+	m_raytracing->CleanUpAccelerationStructure();
 }
 
 template<typename K>
@@ -1046,7 +1062,6 @@ void DX12Renderer::UpdateAccelerationStructure(const viewLight_t* keyHandle)
 	}
 
 	DX12Rendering::TopLevelAccelerationStructure* tlas = GetOrGenerateAccelerationStructure(keyHandle);
-	tlas->Reset();
 
 	// Generate the TLAS resource
 	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
@@ -1058,3 +1073,53 @@ bool DX12Renderer::GenerateRaytracedStencilShadows(const dxHandle_t lightHandle)
 	constexpr UINT32 stencilIndex = 11; // TODO: Calculate this earlier
 	return m_raytracing->CastShadowRays(m_commandList.Get(), lightHandle, m_viewport, m_scissorRect, m_depthBuffer.Get(), stencilIndex);
 }
+
+#ifdef DEBUG_IMGUI
+
+void DX12Renderer::InitializeImGui(HWND hWnd)
+{
+	{
+		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
+		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		desc.NumDescriptors = 1;
+		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		if (m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_imguiSrvDescHeap)) != S_OK)
+		{
+			DX12Rendering::WarnMessage("Failed to create ImGui Descriptor heap.");
+			return;
+		}
+	}
+
+	DX12Rendering::ImGui_InitForGame(hWnd, m_device.Get(), DX12_FRAME_COUNT, m_imguiSrvDescHeap.Get());
+}
+
+void DX12Renderer::ReleaseImGui()
+{
+	if (m_imguiSrvDescHeap != nullptr) 
+	{
+		m_imguiSrvDescHeap->Release();
+		m_imguiSrvDescHeap = nullptr;
+	}
+
+	ImGui_ImplDX12_Shutdown();
+	ImGui_ImplWin32_Shutdown();
+	ImGui::DestroyContext();
+}
+
+void DX12Renderer::ImGuiDebugWindows()
+{
+	ImGui::SetNextWindowSize({ 400, 500 });
+	if (ImGui::Begin("DirectX 12 Debug", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+
+		// Draw the base information
+
+		if (m_raytracing != nullptr)
+		{
+			m_raytracing->ImGuiDebug();
+		}
+	}
+
+	ImGui::End();
+}
+
+#endif

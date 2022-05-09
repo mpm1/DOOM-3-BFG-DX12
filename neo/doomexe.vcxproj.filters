@@ -67,6 +67,9 @@
     <Filter Include="Shaders">
       <UniqueIdentifier>{4691cec9-dae7-45dc-a842-8d1cba4550d9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Renderer\DX12\imgui">
+      <UniqueIdentifier>{5104f725-89bf-49db-b885-15fa5a6a3c3f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cm\CollisionModel.h">
@@ -578,6 +581,33 @@
     </ClInclude>
     <ClInclude Include="renderer\DX12\dx12_AccelerationStructure.h">
       <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_imgui.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imconfig.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui_impl_dx12.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui_impl_win32.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui_internal.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imstb_rectpack.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imstb_textedit.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imstb_truetype.h">
+      <Filter>Renderer\DX12\imgui</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -1227,6 +1257,27 @@
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_AccelerationStructure.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_draw.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_impl_dx12.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_impl_win32.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_tables.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_widgets.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_imgui.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
   </ItemGroup>

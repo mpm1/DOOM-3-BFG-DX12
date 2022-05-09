@@ -196,6 +196,22 @@ namespace DX12Rendering {
 		m_shadowTlas.clear();
 	}
 
+	void Raytracing::CleanUpAccelerationStructure()
+	{
+		// Remove all Empty Shadow TLAS
+		for (auto tlas = m_shadowTlas.begin(); tlas != m_shadowTlas.end();)
+		{
+			if (tlas->second.Count() == 0)
+			{
+				tlas = m_shadowTlas.erase(tlas);
+			}
+			else
+			{
+				++tlas;
+			}
+		}
+	}
+
 	void Raytracing::GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas)
 	{
 		assert(tlas != nullptr);
@@ -216,7 +232,7 @@ namespace DX12Rendering {
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.RaytracingAccelerationStructure.Location = tlas->GetGPUVirtualAddress(); // Write the acceleration structure view in the heap 
 
-		m_device->CreateShaderResourceView(m_shadowResource.Get(), &srvDesc, shadowHandle);
+		m_device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
 	}
 
 	bool Raytracing::CastShadowRays(ID3D12GraphicsCommandList4* commandList, 
@@ -384,4 +400,33 @@ namespace DX12Rendering {
 		// Fill the SBT
 		m_shadowSBTDesc.Generate(m_shadowSBTData.Get(), m_shadowStateObjectProps.Get());
 	}
+
+#ifdef DEBUG_IMGUI
+	void Raytracing::ImGuiDebug()
+	{
+		if (ImGui::CollapsingHeader("Raytracing", ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			char fmtTitle[50];
+
+			// BLAS information
+			if (ImGui::CollapsingHeader("Bottom Level Acceleration Structor", ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				blas.ImGuiDebug();
+			}
+
+			// TLAS information
+			ImGui::Text("Shadow TLAS Count: %d", m_shadowTlas.size());
+			for (auto tlas = m_shadowTlas.cbegin(); tlas != m_shadowTlas.cend(); ++tlas)
+			{
+				sprintf(fmtTitle, "Shadow TLAS: %d", tlas->first);
+				if (ImGui::CollapsingHeader(fmtTitle, ImGuiTreeNodeFlags_DefaultOpen))
+				{
+					
+					TopLevelAccelerationStructure shadowTlas = tlas->second;
+					shadowTlas.ImGuiDebug();
+				}
+			}
+		}
+	}
+#endif
 }

@@ -57,6 +57,10 @@ public:
 	void Reset();
 	void Generate(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT64 scratchBufferSize, LPCWSTR name);
 	void CalculateBufferSize(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags);
+
+#ifdef DEBUG_IMGUI
+	const void ImGuiDebug();
+#endif
 private:
 	std::map<dxHandle_t, DX12AccelerationObject> m_objectMap = {};
 	std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> m_vertexBuffers = {};
@@ -89,6 +93,10 @@ public:
 
 	const size_t Count() const { return m_instances.size(); }
 	const bool IsEmpty() const { return Count() == 0; }
+
+#ifdef DEBUG_IMGUI
+	const void ImGuiDebug();
+#endif
 private:
 	BottomLevelAccelerationStructure* m_blas;
 
@@ -103,5 +111,7 @@ private:
 
 	void CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize);
 	void FillInstanceDescriptor(ID3D12Device5* device, UINT64 instanceDescsSize);
+
+	std::vector<DX12Rendering::Instance>::iterator GetInstance(const UINT& index);
 };
 #endif

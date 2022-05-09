@@ -184,6 +184,14 @@ private:
 	bool CreateBackBuffer();
 
 	bool IsScissorWindowValid();
+
+#ifdef DEBUG_IMGUI
+	ComPtr<ID3D12DescriptorHeap> m_imguiSrvDescHeap;
+
+	void InitializeImGui(HWND hWnd);
+	void ReleaseImGui();
+	void ImGuiDebugWindows();
+#endif
 };
 
 extern DX12Renderer dxRenderer;

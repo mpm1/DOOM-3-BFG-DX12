@@ -149,6 +149,20 @@ namespace DX12Rendering {
 		*scratchSizeInBytes = DX12_ALIGN(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
 	}
+
+#ifdef DEBUG_IMGUI
+	const void BottomLevelAccelerationStructure::ImGuiDebug()
+	{
+		if (m_result == nullptr)
+		{
+			ImGui::TextColored(ImGui_Color_Error, "Result - None");
+		}
+		else
+		{
+			ImGui::Text("Result GPU Addr: 0x%08x", m_result->GetGPUVirtualAddress());
+		}
+	}
+#endif
 #pragma endregion
 
 #pragma region TopLevelAccelerationStructure
@@ -160,13 +174,33 @@ namespace DX12Rendering {
 	TopLevelAccelerationStructure::~TopLevelAccelerationStructure() 
 	{
 		Reset();
+
 		m_blas = nullptr;
-		m_result = nullptr;
-		m_instanceDesc = nullptr;
+
+		if (m_result != nullptr)
+		{
+			m_result = nullptr;
+		}
+
+		if (m_instanceDesc != nullptr)
+		{
+			m_instanceDesc = nullptr;
+		}
 	}
 
 	void TopLevelAccelerationStructure::Reset() {
 		m_instances.clear();
+	}
+
+	std::vector<DX12Rendering::Instance>::iterator TopLevelAccelerationStructure::GetInstance(const UINT& index) {
+		for (auto instance = m_instances.begin(); instance != m_instances.end(); ++instance) {
+			if (instance->instanceId == index)
+			{
+				return instance;
+			}
+		}
+
+		return m_instances.end();
 	}
 
 	void TopLevelAccelerationStructure::AddInstance(const dxHandle_t& index, const DirectX::XMMATRIX& transform) {
@@ -178,6 +212,12 @@ namespace DX12Rendering {
 			return;
 		}
 
+		auto instance = GetInstance(object->index);
+		if (instance != m_instances.end())
+		{
+			instance->transformation = XMMATRIX(transform);
+			return;
+		}
 
 		m_instances.emplace_back(XMMATRIX(transform), object->index, 0 /* TODO: Find the hit group index containing the normal map of the surface. */);
 	}
@@ -249,7 +289,12 @@ namespace DX12Rendering {
 
 		if (resultSizeInBytes > m_resultSize)
 		{
-			CreateBuffer(device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
+			if (m_result != nullptr)
+			{
+				m_result = nullptr;
+			}
+
+			m_result = CreateBuffer(device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
 			m_resultSize = resultSizeInBytes;
 		}
 
@@ -306,5 +351,36 @@ namespace DX12Rendering {
 
 		*instanceDescsSize = DX12_ALIGN(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * static_cast<UINT64>(m_instances.size()), 256);
 	}
+
+
+#ifdef DEBUG_IMGUI
+	const void TopLevelAccelerationStructure::ImGuiDebug()
+	{
+		// Result
+		if (m_result == nullptr)
+		{
+			ImGui::TextColored(ImGui_Color_Error, "Result - None");
+		}
+		else
+		{
+			ImGui::Text("Result GPU Addr: 0x%08x", m_result->GetGPUVirtualAddress());
+		}
+
+		ImGui::Text("Result Size (In Bytes): %d", m_resultSize);
+
+		// Instances
+		if (m_instanceDesc == nullptr)
+		{
+			ImGui::TextColored(ImGui_Color_Error, "Instance: None");
+		}
+		else
+		{
+			ImGui::Text("Instance GPU Addr: 0x%08x", m_instanceDesc->GetGPUVirtualAddress());
+		}
+
+		ImGui::Text("Instance Size (In Bytes): %d", m_instanceDescsSize);
+		ImGui::Text("Instance Count: %d, Last Instance Count: %d", m_instances.size(), m_lastInstanceCount);
+	}
+#endif
 #pragma endregion
 }

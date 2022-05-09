@@ -275,12 +275,45 @@
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
     <ClInclude Include="renderer\DX12\dx12_AccelerationStructure.h" />
     <ClInclude Include="renderer\DX12\dx12_global.h" />
+    <ClInclude Include="renderer\DX12\dx12_imgui.h" />
     <ClInclude Include="renderer\DX12\dx12_raytracing.h" />
     <ClInclude Include="renderer\DX12\dx12_RaytracingPipeline.h" />
     <ClInclude Include="renderer\DX12\dx12_RootSignature.h" />
     <ClInclude Include="renderer\DX12\dx12_shader.h" />
     <ClInclude Include="renderer\DX12\dx12_ShaderBindingTable.h" />
     <ClInclude Include="renderer\DX12\dx12_TextureManager.h" />
+    <ClInclude Include="renderer\DX12\imgui\imconfig.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui_impl_dx12.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui_impl_win32.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui_internal.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imstb_rectpack.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imstb_textedit.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imstb_truetype.h">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </ClInclude>
     <ClInclude Include="renderer\DX12\RaytracingRootSignature.h" />
     <ClInclude Include="renderer\DXT\DXTCodec.h" />
     <ClInclude Include="renderer\DXT\DXTCodec_local.h" />
@@ -499,6 +532,7 @@
     <ClCompile Include="renderer\DX12\dx12_backend.cpp" />
     <ClCompile Include="renderer\DX12\dx12_BufferObject.cpp" />
     <ClCompile Include="renderer\DX12\dx12_global.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_imgui.cpp" />
     <ClCompile Include="renderer\DX12\dx12_raytracing.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RaytracingPipeline.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RenderTools.cpp" />
@@ -518,6 +552,36 @@
     <ClCompile Include="renderer\DX12\dx12_shader.cpp" />
     <ClCompile Include="renderer\DX12\dx12_ShaderBindingTable.cpp" />
     <ClCompile Include="renderer\DX12\dx12_TextureManager.cpp" />
+    <ClCompile Include="renderer\DX12\imgui\imgui.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_draw.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_impl_dx12.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_impl_win32.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_tables.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_widgets.cpp">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <PrecompiledHeader Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="renderer\DX12\RaytracingRootSignature.cpp" />
     <ClCompile Include="renderer\DXT\DXTDecoder.cpp" />
     <ClCompile Include="renderer\DXT\DXTEncoder.cpp" />
