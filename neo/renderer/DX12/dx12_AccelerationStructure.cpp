@@ -160,6 +160,7 @@ namespace DX12Rendering {
 		else
 		{
 			ImGui::Text("Result GPU Addr: 0x%08x", m_result->GetGPUVirtualAddress());
+			ImGui::Text("Total Elements: %d", m_objectMap.size());
 		}
 	}
 #endif
@@ -273,7 +274,7 @@ namespace DX12Rendering {
 		UINT64 scratchSizeInBytes;
 		UINT64 resultSizeInBytes;
 		UINT64 instanceDescsSize;
-
+		
 		if (m_instances.size() == 0) {
 			return false;
 		}
@@ -299,7 +300,7 @@ namespace DX12Rendering {
 		}
 
 		D3D12_GPU_VIRTUAL_ADDRESS pSourceAS = 0;// updateOnly ? previousResult->GetGPUVirtualAddress() : 0;
-
+		
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC descriptor = {};
 		descriptor.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 		descriptor.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
@@ -328,7 +329,7 @@ namespace DX12Rendering {
 		return true;
 	}
 
-	void TopLevelAccelerationStructure::CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize) {
+	void TopLevelAccelerationStructure::CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize) { 
 		const UINT numDescs = 1000;
 
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false

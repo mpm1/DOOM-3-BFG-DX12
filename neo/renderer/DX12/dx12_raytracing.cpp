@@ -284,20 +284,19 @@ namespace DX12Rendering {
 		commandList->DispatchRays(&desc);
 
 		// Output to resource.
-		// TODO: Copy this to the stencil buffer.
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowResource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
 		commandList->ResourceBarrier(1, &transition);
 
-		//transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COPY_DEST);
-		//commandList->ResourceBarrier(1, &transition);
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COPY_DEST);
+		commandList->ResourceBarrier(1, &transition);
 
-		//// TODO: Should we limit this to the scissor window?
-		//CD3DX12_TEXTURE_COPY_LOCATION dst(depthStencilBuffer, stencilIndex);
-		//CD3DX12_TEXTURE_COPY_LOCATION src(m_shadowResource.Get());
-		//commandList->CopyTextureRegion(&dst, viewport.TopLeftX, viewport.TopLeftY, 0, &src, nullptr);
+		// TODO: Should we limit this to the scissor window?
+		CD3DX12_TEXTURE_COPY_LOCATION dst(depthStencilBuffer, stencilIndex);
+		CD3DX12_TEXTURE_COPY_LOCATION src(m_shadowResource.Get());
+		commandList->CopyTextureRegion(&dst, viewport.TopLeftX, viewport.TopLeftY, 0, &src, nullptr);
 
-		//transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		//commandList->ResourceBarrier(1, &transition);
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE);
+		commandList->ResourceBarrier(1, &transition);
 
 		return true;
 	}

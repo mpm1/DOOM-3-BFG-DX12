@@ -373,7 +373,11 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 					contactedLights[numContactedLights] = vLight;
 					staticInteractions[numContactedLights] = world->interactionTable[vLight->lightDef->index * world->interactionTableWidth + entityIndex];
 
-					dxRenderer.AddEntityAccelerationStructure(vLight, vEntity);
+					if (vLight->lightDef->LightCastsShadows())
+					{
+						// Only updates light TLAS if the light will cast shadows.
+						dxRenderer.AddEntityAccelerationStructure(vLight, vEntity);
+					}
 
 					if ( ++numContactedLights == MAX_CONTACTED_LIGHTS ) {
 						break;
