@@ -95,7 +95,7 @@ namespace DX12Rendering {
 		D3D12_RESOURCE_DESC shadowDesc = {};
 		shadowDesc.DepthOrArraySize = 1;
 		shadowDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		shadowDesc.Format = DXGI_FORMAT_R8_UINT;
+		shadowDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; //DXGI_FORMAT_R8_UINT;
 		shadowDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 		shadowDesc.Width = GetShadowWidth();
 		shadowDesc.Height = GetShadowHeight();
@@ -283,20 +283,54 @@ namespace DX12Rendering {
 		commandList->SetPipelineState1(m_shadowStateObject.Get());
 		commandList->DispatchRays(&desc);
 
-		// Output to resource.
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowResource.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		return true;
+	}
+
+	bool Raytracing::CastRays(ID3D12GraphicsCommandList4* commandList,
+		const CD3DX12_VIEWPORT& viewport,
+		const CD3DX12_RECT& scissorRect
+	)
+	{
+		DX12Rendering::TopLevelAccelerationStructure* tlas = &m_shadowTlas.begin()->second;
+
+		if (tlas == nullptr || tlas->IsEmpty()) {
+			// No objects to cast shadows.
+			return false;
+		}
+
+		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
+		std::vector<ID3D12DescriptorHeap*> heaps = { m_shadowUavHeaps.Get() };
+		commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
+
+		// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
+		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowResource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList->ResourceBarrier(1, &transition);
 
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_DEPTH_WRITE, D3D12_RESOURCE_STATE_COPY_DEST);
-		commandList->ResourceBarrier(1, &transition);
+		// Create the ray dispatcher
+		const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_shadowSBTData->GetGPUVirtualAddress();
+		const UINT32 generatorSize = m_shadowSBTDesc.GetGeneratorSectorSize();
+		const UINT32 missSize = m_shadowSBTDesc.GetMissSectorSize();
+		const UINT32 hitSize = m_shadowSBTDesc.GetHitGroupSectorSize();
 
-		// TODO: Should we limit this to the scissor window?
-		CD3DX12_TEXTURE_COPY_LOCATION dst(depthStencilBuffer, stencilIndex);
-		CD3DX12_TEXTURE_COPY_LOCATION src(m_shadowResource.Get());
-		commandList->CopyTextureRegion(&dst, viewport.TopLeftX, viewport.TopLeftY, 0, &src, nullptr);
+		D3D12_DISPATCH_RAYS_DESC desc = {};
+		desc.RayGenerationShaderRecord.StartAddress = gpuAddress;
+		desc.RayGenerationShaderRecord.SizeInBytes = generatorSize;
 
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(depthStencilBuffer, D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_DEPTH_WRITE);
-		commandList->ResourceBarrier(1, &transition);
+		desc.MissShaderTable.StartAddress = gpuAddress + generatorSize;
+		desc.MissShaderTable.SizeInBytes = missSize;
+		desc.MissShaderTable.StrideInBytes = m_shadowSBTDesc.GetMissEntrySize();
+
+		desc.HitGroupTable.StartAddress = gpuAddress + generatorSize + missSize;
+		desc.HitGroupTable.SizeInBytes = hitSize;
+		desc.HitGroupTable.StrideInBytes = m_shadowSBTDesc.GetHitGroupEntrySize();
+
+		desc.Height = viewport.Height;
+		desc.Width = viewport.Width;
+		desc.Depth = 1;
+
+		// Generate the ray traced image.
+		commandList->SetPipelineState1(m_shadowStateObject.Get());
+		commandList->DispatchRays(&desc);
 
 		return true;
 	}

@@ -96,6 +96,12 @@ public:
 	void UpdateEntityInBLAS(const qhandle_t entityHandle, const renderEntity_t* re);
 	void UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
 
+	bool DXR_CastRays(); // Sets the appropriate matricies and casts the rays to the scene.
+
+	void DXR_DenoiseResult(); // Performs a Denoise pass on all rendering channels.
+	void DXR_GenerateResult(); // Collapses all channels into a single image.
+	void DXR_CopyResultToDisplay(); // Copies the resulting image to the user display.
+
 	// Top Level Acceleration structure
 	template<typename K>
 	DX12Rendering::TopLevelAccelerationStructure* GetOrGenerateAccelerationStructure(const K* keyHandle);
@@ -180,6 +186,19 @@ private:
 	void SignalNextFrame();
     void WaitForPreviousFrame();
 	void WaitForCopyToComplete();
+
+	/// <summary>
+	/// Copies a resource to the display buffer.
+	/// </summary>
+	/// <param name="resource"></param>
+	/// <param name="sx">The source x location</param>
+	/// <param name="sy">The source y location</param>
+	/// <param name="rx">The result x location</param>
+	/// <param name="ry">The result y location</param>
+	/// <param name="width">The width of pixels to copy</param>
+	/// <param name="height">The height of the pixels to copy</param>
+	/// <param name="sourceState">The initial state of the source resource to create resource barriers</param>
+	void CopyResourceToDisplay(ID3D12Resource* resource, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height, D3D12_RESOURCE_STATES sourceState);
 
 	bool CreateBackBuffer();
 

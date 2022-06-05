@@ -1074,6 +1074,50 @@ bool DX12Renderer::GenerateRaytracedStencilShadows(const dxHandle_t lightHandle)
 	return m_raytracing->CastShadowRays(m_commandList.Get(), lightHandle, m_viewport, m_scissorRect, m_depthBuffer.Get(), stencilIndex);
 }
 
+bool DX12Renderer::DXR_CastRays()
+{
+	return m_raytracing->CastRays(m_commandList.Get(), m_viewport, m_scissorRect);
+}
+
+void DX12Renderer::DXR_DenoiseResult()
+{
+	// TODO
+}
+
+void DX12Renderer::DXR_GenerateResult()
+{
+	// TODO
+}
+
+void DX12Renderer::DXR_CopyResultToDisplay()
+{
+	// TODO: Get the desired resource to display
+	ID3D12Resource* resource = m_raytracing->GetOutputResource();
+	D3D12_RESOURCE_STATES transitionState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+
+	CopyResourceToDisplay(resource, 0, 0, 0, 0, m_width, m_height, transitionState);
+}
+
+void DX12Renderer::CopyResourceToDisplay(ID3D12Resource* resource, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height, D3D12_RESOURCE_STATES sourceState)
+{
+	CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(resource, sourceState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+	m_commandList->ResourceBarrier(1, &transition);
+
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
+	m_commandList->ResourceBarrier(1, &transition);
+
+	CD3DX12_TEXTURE_COPY_LOCATION dst(m_renderTargets[m_frameIndex].Get());
+	CD3DX12_TEXTURE_COPY_LOCATION src(resource);
+	CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
+	m_commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
+
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
+	m_commandList->ResourceBarrier(1, &transition);
+
+	transition = CD3DX12_RESOURCE_BARRIER::Transition(resource, D3D12_RESOURCE_STATE_COPY_SOURCE, sourceState);
+	m_commandList->ResourceBarrier(1, &transition);
+}
+
 #ifdef DEBUG_IMGUI
 
 void DX12Renderer::InitializeImGui(HWND hWnd)

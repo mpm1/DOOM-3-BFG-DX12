@@ -70,6 +70,14 @@ public:
 		ID3D12Resource* depthStencilBuffer,
 		UINT32 stencilIndex);
 
+	bool CastRays(
+		ID3D12GraphicsCommandList4* commandList,
+		const CD3DX12_VIEWPORT& viewport,
+		const CD3DX12_RECT& scissorRect
+	);
+
+	ID3D12Resource* GetOutputResource() { return m_shadowResource.Get(); }
+
 	/// <summary>
 	/// Adds the desired object to the various top level acceleration structures.
 	/// </summary>
