@@ -10,12 +10,14 @@ RaytracingAccelerationStructure SceneBVH :register(t0);
 void RayGen() {
 	// Initialize the ray payload
 	HitInfo payload;
-	payload.light = 1.0f;
+	payload.diffuse = float3(0.0f, 1.0f, 0.0f);
+	payload.indirect = float3(0.0f, 0.0f, 0.0f);
+	payload.specular = float3(0.0f, 0.0f, 0.0f);
 
 	// Get the location within the dispatched 2D grid of work items
 	// (often maps to pixels, so this could represent a pixel coordinate).
 	uint2 launchIndex = DispatchRaysIndex();
 
-	gOutput[launchIndex].rgb = payload.light * float3(1.0f, 1.0f, 1.0f);
+	gOutput[launchIndex].rgb = payload.diffuse;
 	gOutput[launchIndex].a = 1.0f;
 }

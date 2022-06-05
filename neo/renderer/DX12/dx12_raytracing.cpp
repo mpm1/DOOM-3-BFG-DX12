@@ -393,7 +393,7 @@ namespace DX12Rendering {
 
 		pipeline.AddHitGroup(L"HitGroup", L"ClosestHit");
 		
-		pipeline.SetMaxPayloadSize(4 * sizeof(float)); // Normal.xyz, and light amount.
+		pipeline.SetMaxPayloadSize(9 * sizeof(float)); // diffuse, indirect, specular lighting.
 		pipeline.SetMaxAttributeSize(4 * sizeof(float)); // x, y, z, w corrdinates.
 
 		m_shadowStateObject = pipeline.Generate();

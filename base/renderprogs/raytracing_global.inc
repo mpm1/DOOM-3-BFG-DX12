@@ -4,8 +4,9 @@
 // Basic infor for a hit.
 struct HitInfo
 {
-	float	light; // Used to calculate the ammount of light. 0 - In Shadow, 1 - In light
-	float3	normal; // Used to calculate any ray bounces.
+	float3 diffuse;
+	float3 indirect;
+	float3 specular;
 };
 
 // Attributes output by the raytracing when hitting a surface:

@@ -1572,7 +1572,11 @@
     <FxCompile Include="..\base\renderprogs\shadow_generator.ray">
       <Filter>Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="..\base\renderprogs\general_hit.ray" />
-    <FxCompile Include="..\base\renderprogs\general_miss.ray" />
+    <FxCompile Include="..\base\renderprogs\general_hit.ray">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\general_miss.ray">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

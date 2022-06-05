@@ -4,5 +4,5 @@
 [shader("miss")]
 void Miss(inout HitInfo payload : SV_RayPayload)
 {
-    payload.light = 1.0f;
+    payload.diffuse = float3(0.0f, 0.0f, 1.0f);
 }
