@@ -14,3 +14,12 @@ struct Attributes
 {
   float4	location; // Location of the hit.
 };
+
+struct SceneConstants {
+	float4 rpGlobalEyePos;
+
+ 	float4 rpProjectionMatrixX;
+ 	float4 rpProjectionMatrixY;
+ 	float4 rpProjectionMatrixZ;
+ 	float4 rpProjectionMatrixW;
+};

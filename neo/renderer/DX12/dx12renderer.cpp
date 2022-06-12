@@ -7,10 +7,7 @@
 #include <comdef.h>
 #include <type_traits>
 
-idCVar r_useRaytracedShadows("r_useRaytracedShadows", "1", CVAR_RENDERER | CVAR_BOOL, "use raytracing for shadows instead of stencil or baked shadows.");
-//TODO: Implement the other raytraced effects.
-idCVar r_useRaytracedReflections("r_useRaytracedReflections", "0", CVAR_RENDERER | CVAR_BOOL, "use raytracing for reflections instead of environment maps.");
-idCVar r_useGlobalIllumination("r_useGlobalIllumination", "0", CVAR_RENDERER | CVAR_BOOL, "use raytraced global illumination for ambient lighting.");
+idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
@@ -95,7 +92,7 @@ void DX12Renderer::Init(HWND hWnd) {
 	InitializeImGui(hWnd);
 #endif
 
-	if (r_useRaytracedShadows.GetBool() || r_useRaytracedReflections.GetBool() || r_useGlobalIllumination.GetBool()) {
+	if (r_useRayTraycing.GetBool()) {
 		m_raytracing = new DX12Rendering::Raytracing(m_device.Get(), m_width, m_height);
 	}
 
@@ -906,7 +903,7 @@ void DX12Renderer::ResetAccelerationStructure()
 
 	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
 
-	m_raytracing->ResetAllShadowTLAS();
+	m_raytracing->ResetGeneralTLAS();
 
 	m_raytracing->blas.Reset();
 	m_raytracing->ResetFrame();
@@ -1003,34 +1000,37 @@ void DX12Renderer::UpdateBLAS()
 }
 
 template<typename K>
-DX12Rendering::TopLevelAccelerationStructure* DX12Renderer::GetOrGenerateAccelerationStructure(const K* keyHandle)
+DX12Rendering::TopLevelAccelerationStructure* DX12Renderer::DXR_GetOrGenerateAccelerationStructure(const K& keyHandle)
 {
 	std::static_assert(false, "Invalid key  handle for TLAS");
 	return nullptr;
 }
 
 template<>
-DX12Rendering::TopLevelAccelerationStructure* DX12Renderer::GetOrGenerateAccelerationStructure(const viewLight_t* keyHandle)
+DX12Rendering::TopLevelAccelerationStructure* DX12Renderer::DXR_GetOrGenerateAccelerationStructure(const std::nullptr_t& nullKey)
 {
-	const dxHandle_t handle = GetHandle(keyHandle);
-	DX12Rendering::TopLevelAccelerationStructure* tlas = m_raytracing->GetShadowTLAS(handle);
+	return m_raytracing->GetGeneralTLAS();
+}
+
+template<>
+DX12Rendering::TopLevelAccelerationStructure* DX12Renderer::DXR_GetOrGenerateAccelerationStructure(const viewLight_t& keyHandle)
+{
+	idassert(false);// Light based TLAS no longer supported.
+	return nullptr;
+
+	/*const dxHandle_t handle = GetHandle(keyHandle);
+	DX12Rendering::TopLevelAccelerationStructure* tlas = m_raytracing->GetGeneralTLAS(handle);
 
 	if (tlas == nullptr)
 	{
 		tlas = m_raytracing->EmplaceShadowTLAS(handle);
 	}
 
-	return tlas;
+	return tlas;*/
 }
 
 template<typename K, typename T>
-void DX12Renderer::AddEntityAccelerationStructure(const K* keyHandle, const T* entity)
-{
-	std::static_assert(false, "Invalid key and entity handle combination for TLAS");
-}
-
-template<>
-void DX12Renderer::AddEntityAccelerationStructure(const viewLight_t* keyHandle, const viewEntity_t* entity)
+void DX12Renderer::DXR_AddEntityAccelerationStructure(const K& keyHandle, const T* entity)
 {
 	if (!IsRaytracingEnabled()) {
 		return;
@@ -1043,40 +1043,86 @@ void DX12Renderer::AddEntityAccelerationStructure(const viewLight_t* keyHandle, 
 		return;
 	}
 
-	DX12Rendering::TopLevelAccelerationStructure* tlas = GetOrGenerateAccelerationStructure(keyHandle);
+	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
 
 	tlas->AddInstance(entityHandle, DirectX::XMMATRIX(entity->modelViewMatrix));
 }
 
-template<typename K>
-void DX12Renderer::UpdateAccelerationStructure(const K* keyHandle)
-{
-	std::static_assert(false, "Invalid key used for TLAS.");
-}
-
 template<>
-void DX12Renderer::UpdateAccelerationStructure(const viewLight_t* keyHandle)
+void DX12Renderer::DXR_AddEntityAccelerationStructure(const std::nullptr_t& keyHandle, const viewEntity_t* entity)
 {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
 
-	DX12Rendering::TopLevelAccelerationStructure* tlas = GetOrGenerateAccelerationStructure(keyHandle);
+	const dxHandle_t entityHandle = GetHandle(&static_cast<qhandle_t>(entity->entityDef->index));
+
+	if (m_raytracing->blas.GetAccelerationObject(entityHandle) == nullptr) {
+		//common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
+		return;
+	}
+
+	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
+
+	tlas->AddInstance(entityHandle, DirectX::XMMATRIX(entity->modelViewMatrix));
+}
+
+
+
+template<typename K>
+void DX12Renderer::DXR_UpdateAccelerationStructure(const K& keyHandle)
+{
+	if (!IsRaytracingEnabled()) {
+		return;
+	}
+
+	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
 
 	// Generate the TLAS resource
 	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
 	m_raytracing->GenerateTLAS(tlas);
 }
 
-bool DX12Renderer::GenerateRaytracedStencilShadows(const dxHandle_t lightHandle)
+template<>
+void DX12Renderer::DXR_UpdateAccelerationStructure(const std::nullptr_t& keyHandle)
 {
-	constexpr UINT32 stencilIndex = 11; // TODO: Calculate this earlier
-	return m_raytracing->CastShadowRays(m_commandList.Get(), lightHandle, m_viewport, m_scissorRect, m_depthBuffer.Get(), stencilIndex);
+	if (!IsRaytracingEnabled()) {
+		return;
+	}
+
+	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
+
+	// Generate the TLAS resource
+	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
+	m_raytracing->GenerateTLAS(tlas);
+}
+
+void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)
+{
+	if (m_raytracing != nullptr)
+	{
+		assert("DX12Renderer::DXR_Uniform4f called with no active raytracing object.");
+	}
+
+	m_raytracing->Uniform4f(param, uniform);
+}
+
+void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count)
+{
+	if (m_raytracing != nullptr)
+	{
+		assert("DX12Renderer::DXR_Uniform4f called with no active raytracing object.");
+	}
+
+	for (UINT i = 0; i < count; ++i)
+	{
+		m_raytracing->Uniform4f(static_cast<DX12Rendering::dxr_renderParm_t>(param + i), uniform + (i * 4));
+	}
 }
 
 bool DX12Renderer::DXR_CastRays()
 {
-	return m_raytracing->CastRays(m_commandList.Get(), m_viewport, m_scissorRect);
+	return m_raytracing->CastRays(m_commandList.Get(), m_frameIndex, m_viewport, m_scissorRect);
 }
 
 void DX12Renderer::DXR_DenoiseResult()

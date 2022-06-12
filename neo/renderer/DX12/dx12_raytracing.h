@@ -7,17 +7,23 @@
 #include "./dx12_ShaderBindingTable.h"
 #include "./dx12_AccelerationStructure.h"
 
-#define BIT_RAYTRACED_NONE			0x00000000
-#define BIT_RAYTRACED_SHADOWS		0x00000001
-#define BIT_RAYTRACED_REFLECTIONS	0x00000002
-#define BIT_RAYTRACED_ILLUMINATION	0x00000004
-
 #define DEFAULT_SCRATCH_SIZE 262144 // 256 * 1024. We need to check if this is big enough.
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
 namespace DX12Rendering {
+	enum dxr_renderParm_t {
+		RENDERPARM_GLOBALEYEPOS = 0,
+
+		RENDERPARM_PROJMATRIX_X,
+		RENDERPARM_PROJMATRIX_Y,
+		RENDERPARM_PROJMATRIX_Z,
+		RENDERPARM_PROJMATRIX_W,
+
+		COUNT
+	};
+
 	class TopLevelAccelerationStructure;
 
 	class Raytracing;
@@ -44,39 +50,29 @@ public:
 	void ResetCommandList();
 	ID3D12GraphicsCommandList4* GetCommandList() const { return m_commandList.Get();  }
 
-	// TODO: Possibly remove these.
-	//void StartAccelerationStructure(bool raytracedShadows, bool raytracedReflections, bool raytracedIllumination);
-	//void EndAccelerationStructure();
+	void Uniform4f(dxr_renderParm_t param, const float* uniform);
 
-	DX12Rendering::TopLevelAccelerationStructure* GetShadowTLAS(const dxHandle_t& handle);
-	DX12Rendering::TopLevelAccelerationStructure* EmplaceShadowTLAS(const dxHandle_t& handle);
-	void ResetAllShadowTLAS();
+	DX12Rendering::TopLevelAccelerationStructure* GetGeneralTLAS() { return &m_generalTlas; }
+	void ResetGeneralTLAS();
 	void GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas);
 
 	void CleanUpAccelerationStructure();
 
 	/// <summary>
-	/// Cast the rays to the stencil buffer to store for shadow generation.
+	/// Cast rays into the scene through the general TLAS.
 	/// </summary>
-	/// <param name="commandList"></param>
-	/// <param name="viewport"></param>
-	/// <param name="scissorRect"></param>
-	/// <returns>True if the raytracing shader was called.</returns>
-	bool CastShadowRays(
-		ID3D12GraphicsCommandList4* commandList,
-		const dxHandle_t lightHandle,
-		const CD3DX12_VIEWPORT& viewport, 
-		const CD3DX12_RECT& scissorRect,
-		ID3D12Resource* depthStencilBuffer,
-		UINT32 stencilIndex);
-
+	/// <param name="commandList">The command list to use for casting.</param>
+	/// <param name="viewport">The viewport size.</param>
+	/// <param name="scissorRect">Any scissor rectable size.</param>
+	/// <returns></returns>
 	bool CastRays(
 		ID3D12GraphicsCommandList4* commandList,
+		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect
 	);
 
-	ID3D12Resource* GetOutputResource() { return m_shadowResource.Get(); }
+	ID3D12Resource* GetOutputResource() { return m_diffuseResource.Get(); }
 
 	/// <summary>
 	/// Adds the desired object to the various top level acceleration structures.
@@ -88,7 +84,6 @@ public:
 #endif
 
 private:
-	UINT32 m_state;
 	ID3D12Device5* m_device;
 	UINT m_width;
 	UINT m_height;
@@ -97,17 +92,22 @@ private:
 	DX12Rendering::RaytracingRootSignature m_missSignature;
 	DX12Rendering::RaytracingRootSignature m_hitSignature;
 
+	ComPtr<ID3D12Resource> m_cbvUploadHeap[DX12_FRAME_COUNT];
+	UINT m_cbvHeapIncrementor;
+
 	ComPtr<ID3D12StateObject> m_shadowStateObject; // Raytracing pipeline state.
 	ComPtr<ID3D12StateObjectProperties> m_shadowStateObjectProps;
 
 	ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
-	std::map<const dxHandle_t, TopLevelAccelerationStructure> m_shadowTlas = {};
-	ComPtr<ID3D12Resource> m_shadowResource; // For testing right now, we will acutally copy to the stencil buffer when needed.
-	ComPtr<ID3D12DescriptorHeap> m_shadowUavHeaps;
-	ComPtr<ID3D12Resource> m_shadowSBTData;
+	XMFLOAT4 m_constantBuffer[DX12Rendering::dxr_renderParm_t::COUNT];
 
-	ShaderBindingTable m_shadowSBTDesc;
+	TopLevelAccelerationStructure m_generalTlas;
+	ComPtr<ID3D12Resource> m_diffuseResource;
+	ComPtr<ID3D12DescriptorHeap> m_generalUavHeaps;
+	ComPtr<ID3D12Resource> m_generalSBTData;
+
+	ShaderBindingTable m_generalSBTDesc;
 
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	ComPtr<ID3D12CommandAllocator> m_commandAllocator;
@@ -121,15 +121,18 @@ private:
 	void CreateShaderBindingTables();
 	void CreateShadowBindingTable();
 
+	void CreateCBVHeap(const size_t constantBufferSize);
+	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(
+		ID3D12GraphicsCommandList* commandList, 
+		const size_t constantBufferSize, 
+		const XMFLOAT4* constantBuffer, 
+		const UINT frameIndex);
+
 	// Command List
 	void CreateCommandList();
 	void ResetCommandAllocator();
 
 	// Acceleration Structure
-
-	bool IsReflectiveEnabled() const;
-	bool IsShadowEnabled() const;
-	bool IsIlluminationEnabled() const;
 
 	// Custom width and height selectors will be set based on definded scalers.
 	UINT GetShadowWidth() const { return m_width; };

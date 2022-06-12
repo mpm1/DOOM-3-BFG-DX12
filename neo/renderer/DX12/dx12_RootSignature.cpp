@@ -94,7 +94,7 @@ void DX12RootSignature::OnDestroy()
 
 void DX12RootSignature::BeginFrame(UINT frameIndex)
 {
-	assert(frameIndex >= 0 && frameIndex < DX12_FRAME_COUNT, "A positive freame index less than the specified Frame Count must be defined.");
+	assert(frameIndex >= 0 && frameIndex < DX12_FRAME_COUNT, "A positive frame index less than the specified Frame Count must be defined.");
 
 	m_cbvHeapIndex = 0;
 }

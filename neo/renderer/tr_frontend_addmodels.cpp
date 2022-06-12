@@ -362,6 +362,10 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 	if ( renderEntity->hModel == NULL ||
 			renderEntity->hModel->ModelHasInteractingSurfaces() ||
 			renderEntity->hModel->ModelHasShadowCastingSurfaces() ) {
+
+		// Add the object to the general tlas
+		dxRenderer.DXR_AddEntityAccelerationStructure(nullptr, vEntity);
+
 		SCOPED_PROFILE_EVENT( "Find lights" );
 		for ( viewLight_t * vLight = viewDef->viewLights; vLight != NULL; vLight = vLight->next ) {
 			if ( vLight->scissorRect.IsEmpty() ) {
@@ -372,12 +376,6 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 				if ( vLight->entityInteractionState[entityIndex] == viewLight_t::INTERACTION_YES ) {
 					contactedLights[numContactedLights] = vLight;
 					staticInteractions[numContactedLights] = world->interactionTable[vLight->lightDef->index * world->interactionTableWidth + entityIndex];
-
-					if (vLight->lightDef->LightCastsShadows())
-					{
-						// Only updates light TLAS if the light will cast shadows.
-						dxRenderer.AddEntityAccelerationStructure(vLight, vEntity);
-					}
 
 					if ( ++numContactedLights == MAX_CONTACTED_LIGHTS ) {
 						break;

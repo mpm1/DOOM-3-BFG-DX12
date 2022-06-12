@@ -26,7 +26,8 @@ namespace DX12Rendering {
 		m_missSignature(device, NONE),
 		m_hitSignature(device, NONE),
 		m_width(screenWidth),
-		m_height(screenHeight)
+		m_height(screenHeight),
+		m_generalTlas(&blas)
 	{
 		const UINT64 scratchSize = DX12_ALIGN(DEFAULT_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
 		scratchBuffer = CreateBuffer(
@@ -39,10 +40,67 @@ namespace DX12Rendering {
 
 		CreateCommandList();
 		CreateShadowPipeline();
+		CreateCBVHeap(sizeof(m_constantBuffer));
 	}
 
 	Raytracing::~Raytracing()
 	{
+	}
+
+	void Raytracing::CreateCBVHeap(const size_t constantBufferSize)
+	{
+		// Create the buffer size.
+		constexpr UINT resourceAlignment = (1024 * 64) - 1; // Resource must be a multible of 64KB
+		const UINT entrySize = (constantBufferSize + 255) & ~255; // Size is required to be 256 byte aligned
+		const UINT heapSize = ((entrySize * MAX_OBJECT_COUNT) + resourceAlignment) & ~resourceAlignment;
+		WCHAR heapName[30];
+
+		// Create Descriptor Heaps
+		{
+			// Describe and create the constant buffer view (CBV) descriptor for each frame
+			for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
+				// Create the Constant buffer heap for each frame
+				DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
+					&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+					D3D12_HEAP_FLAG_NONE,
+					&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
+					D3D12_RESOURCE_STATE_GENERIC_READ,
+					nullptr, // Currently not clear value needed
+					IID_PPV_ARGS(&m_cbvUploadHeap[frameIndex])
+				));
+
+				wsprintfW(heapName, L"Raytracing CBV Upload Heap %d", frameIndex);
+				m_cbvUploadHeap[frameIndex]->SetName(heapName);
+			}
+
+			m_cbvHeapIncrementor = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		}
+	}
+
+	D3D12_CONSTANT_BUFFER_VIEW_DESC Raytracing::SetCBVDescriptorTable(ID3D12GraphicsCommandList* commandList, const size_t constantBufferSize, const XMFLOAT4* constantBuffer, const UINT frameIndex) {
+		// Copy the CBV value to the upload heap
+		UINT8* buffer;
+		const UINT bufferSize = ((constantBufferSize + 255) & ~255);
+		const UINT offset = 0; // Each entry is 256 byte aligned.
+		CD3DX12_RANGE readRange(offset, bufferSize);
+
+		DX12Rendering::ThrowIfFailed(m_cbvUploadHeap[frameIndex]->Map(0, &readRange, reinterpret_cast<void**>(&buffer)));
+		memcpy(&buffer[offset], constantBuffer, constantBufferSize);
+		m_cbvUploadHeap[frameIndex]->Unmap(0, &readRange);
+
+		// Create the constant buffer view for the object
+		CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart(), 2, m_cbvHeapIncrementor);
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
+		cbvDesc.BufferLocation = m_cbvUploadHeap[frameIndex]->GetGPUVirtualAddress() + offset;
+		cbvDesc.SizeInBytes = bufferSize;
+		m_device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
+
+		// Define the Descriptor Table to use.
+		const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart(), 2, m_cbvHeapIncrementor);
+		commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
+
+		return cbvDesc;
 	}
 
 	void Raytracing::CreateCommandList()
@@ -103,8 +161,8 @@ namespace DX12Rendering {
 		shadowDesc.MipLevels = 1;
 		shadowDesc.SampleDesc.Count = 1;
 
-		DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(&kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &shadowDesc, D3D12_RESOURCE_STATE_COPY_SOURCE, nullptr, IID_PPV_ARGS(&m_shadowResource)));
-		m_shadowResource->SetName(L"DXR Shadow Output");
+		DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(&kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &shadowDesc, D3D12_RESOURCE_STATE_COPY_SOURCE, nullptr, IID_PPV_ARGS(&m_diffuseResource)));
+		m_diffuseResource->SetName(L"DXR Shadow Output");
 	}
 
 	void Raytracing::Resize(UINT width, UINT height)
@@ -120,96 +178,26 @@ namespace DX12Rendering {
 
 	void Raytracing::CreateShaderResourceHeap()
 	{
-		// Create a SRV/UAV/CBV descriptor heap. We need 2 entries - 1 UAV for the 
-		// raytracing output and 1 SRV for the TLAS 
-		m_shadowUavHeaps = CreateDescriptorHeap(m_device, 2, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
-		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_shadowUavHeaps->GetCPUDescriptorHandleForHeapStart();
+		// Create a SRV/UAV/CBV descriptor heap. We need 3 entries - 
+		// 1 UAV for the raytracing output
+		// 1 SRV for the TLAS 
+		// 1 CBV for the Camera properties
+		m_generalUavHeaps = CreateDescriptorHeap(m_device, 3, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-		m_device->CreateUnorderedAccessView(m_shadowResource.Get(), nullptr, &uavDesc, shadowHandle);
+		m_device->CreateUnorderedAccessView(m_diffuseResource.Get(), nullptr, &uavDesc, shadowHandle);
 	}
 
-	//void Raytracing::StartAccelerationStructure(bool raytracedShadows, bool raytracedReflections, bool raytracedIllumination) 
-	//{
-	//	m_state = BIT_RAYTRACED_NONE;
-
-	//	if (raytracedShadows) {
-	//		m_state |= BIT_RAYTRACED_SHADOWS;
-	//		shadowTlas.Reset();
-	//	}
-
-	//	if (raytracedReflections) {
-	//		m_state |= BIT_RAYTRACED_REFLECTIONS;
-	//		reflectionTlas.Reset();
-	//	}
-
-	//	if (raytracedIllumination) {
-	//		m_state |= BIT_RAYTRACED_ILLUMINATION;
-	//		emmisiveTlas.Reset();
-	//	}
-	//}
-
-	//void Raytracing::EndAccelerationStructure() {
-	//	if (IsShadowEnabled()) {
-	//		shadowTlas.UpdateResources(m_commandList.Get(), scratchBuffer.Get());
-	//	}
-	//	if (IsReflectiveEnabled()) {
-	//		reflectionTlas.UpdateResources(m_commandList.Get(), scratchBuffer.Get());
-	//	}
-	//	if (IsIlluminationEnabled()) {
-	//		emmisiveTlas.UpdateResources(m_commandList.Get(), scratchBuffer.Get());
-	//	}
-
-	//	// TODO: UpdateResources does not work yet for the TLAS, this is throwing a setup error.
-	//		// Add matricies to the TLAS data
-	//		// Add bone information to the TLAS data.
-	//}
-
-	TopLevelAccelerationStructure* Raytracing::GetShadowTLAS(const dxHandle_t& handle)
+	void Raytracing::ResetGeneralTLAS()
 	{
-		try 
-		{
-			return &m_shadowTlas.at(handle);
-		}
-		catch (std::out_of_range e)
-		{
-			return nullptr;
-		}
-	}
-
-	TopLevelAccelerationStructure* Raytracing::EmplaceShadowTLAS(const dxHandle_t& handle)
-	{
-		TopLevelAccelerationStructure* tlas = GetShadowTLAS(handle);
-
-		if (tlas == nullptr) 
-		{
-			m_shadowTlas.emplace(handle, &blas);
-			tlas = &m_shadowTlas.at(handle);
-		}
-
-		return tlas;
-	}
-
-	void Raytracing::ResetAllShadowTLAS()
-	{
-		m_shadowTlas.clear();
+		m_generalTlas.Reset();
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
 	{
-		// Remove all Empty Shadow TLAS
-		for (auto tlas = m_shadowTlas.begin(); tlas != m_shadowTlas.end();)
-		{
-			if (tlas->second.Count() == 0)
-			{
-				tlas = m_shadowTlas.erase(tlas);
-			}
-			else
-			{
-				++tlas;
-			}
-		}
+		// TODO: Add any acceleration structure cleanup.
 	}
 
 	void Raytracing::GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas)
@@ -223,7 +211,7 @@ namespace DX12Rendering {
 		}
 
 		// Write the acceleration structure to the view.
-		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_shadowUavHeaps->GetCPUDescriptorHandleForHeapStart();
+		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 		shadowHandle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -235,63 +223,18 @@ namespace DX12Rendering {
 		m_device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
 	}
 
-	bool Raytracing::CastShadowRays(ID3D12GraphicsCommandList4* commandList, 
-		const dxHandle_t lightHandle,
-		const CD3DX12_VIEWPORT& viewport, 
-		const CD3DX12_RECT& scissorRect, 
-		ID3D12Resource* depthStencilBuffer,
-		UINT32 stencilIndex)
+	void Raytracing::Uniform4f(dxr_renderParm_t param, const float* uniform)
 	{
-		DX12Rendering::TopLevelAccelerationStructure* tlas = GetShadowTLAS(lightHandle);
-
-		if (tlas == nullptr || tlas->IsEmpty()) {
-			// No objects to cast shadows.
-			return false;
-		}
-
-		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
-		std::vector<ID3D12DescriptorHeap*> heaps = { m_shadowUavHeaps.Get() };
-		commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
-
-		// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
-		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowResource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		commandList->ResourceBarrier(1, &transition);
-
-		// Create the ray dispatcher
-		const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_shadowSBTData->GetGPUVirtualAddress();
-		const UINT32 generatorSize = m_shadowSBTDesc.GetGeneratorSectorSize();
-		const UINT32 missSize = m_shadowSBTDesc.GetMissSectorSize();
-		const UINT32 hitSize = m_shadowSBTDesc.GetHitGroupSectorSize();
-
-		D3D12_DISPATCH_RAYS_DESC desc = {};
-		desc.RayGenerationShaderRecord.StartAddress = gpuAddress;
-		desc.RayGenerationShaderRecord.SizeInBytes = generatorSize;
-
-		desc.MissShaderTable.StartAddress = gpuAddress + generatorSize;
-		desc.MissShaderTable.SizeInBytes = missSize;
-		desc.MissShaderTable.StrideInBytes = m_shadowSBTDesc.GetMissEntrySize();
-
-		desc.HitGroupTable.StartAddress = gpuAddress + generatorSize + missSize;
-		desc.HitGroupTable.SizeInBytes = hitSize;
-		desc.HitGroupTable.StrideInBytes = m_shadowSBTDesc.GetHitGroupEntrySize();
-
-		desc.Height = viewport.Height;
-		desc.Width = viewport.Width;
-		desc.Depth = 1; 
-
-		// Generate the ray traced image.
-		commandList->SetPipelineState1(m_shadowStateObject.Get());
-		commandList->DispatchRays(&desc);
-
-		return true;
+		memcpy(&m_constantBuffer[param], uniform, sizeof(XMFLOAT4));
 	}
 
 	bool Raytracing::CastRays(ID3D12GraphicsCommandList4* commandList,
+		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect
 	)
 	{
-		DX12Rendering::TopLevelAccelerationStructure* tlas = &m_shadowTlas.begin()->second;
+		DX12Rendering::TopLevelAccelerationStructure* tlas = GetGeneralTLAS();
 
 		if (tlas == nullptr || tlas->IsEmpty()) {
 			// No objects to cast shadows.
@@ -299,18 +242,22 @@ namespace DX12Rendering {
 		}
 
 		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
-		std::vector<ID3D12DescriptorHeap*> heaps = { m_shadowUavHeaps.Get() };
+
+		// Copy the CBV data to the heap
+		SetCBVDescriptorTable(commandList, sizeof(m_constantBuffer), m_constantBuffer, frameIndex);
+
+		std::vector<ID3D12DescriptorHeap*> heaps = { m_generalUavHeaps.Get() };
 		commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
 
 		// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
-		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(m_shadowResource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(m_diffuseResource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
 		commandList->ResourceBarrier(1, &transition);
 
 		// Create the ray dispatcher
-		const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_shadowSBTData->GetGPUVirtualAddress();
-		const UINT32 generatorSize = m_shadowSBTDesc.GetGeneratorSectorSize();
-		const UINT32 missSize = m_shadowSBTDesc.GetMissSectorSize();
-		const UINT32 hitSize = m_shadowSBTDesc.GetHitGroupSectorSize();
+		const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_generalSBTData->GetGPUVirtualAddress();
+		const UINT32 generatorSize = m_generalSBTDesc.GetGeneratorSectorSize();
+		const UINT32 missSize = m_generalSBTDesc.GetMissSectorSize();
+		const UINT32 hitSize = m_generalSBTDesc.GetHitGroupSectorSize();
 
 		D3D12_DISPATCH_RAYS_DESC desc = {};
 		desc.RayGenerationShaderRecord.StartAddress = gpuAddress;
@@ -318,11 +265,11 @@ namespace DX12Rendering {
 
 		desc.MissShaderTable.StartAddress = gpuAddress + generatorSize;
 		desc.MissShaderTable.SizeInBytes = missSize;
-		desc.MissShaderTable.StrideInBytes = m_shadowSBTDesc.GetMissEntrySize();
+		desc.MissShaderTable.StrideInBytes = m_generalSBTDesc.GetMissEntrySize();
 
 		desc.HitGroupTable.StartAddress = gpuAddress + generatorSize + missSize;
 		desc.HitGroupTable.SizeInBytes = hitSize;
-		desc.HitGroupTable.StrideInBytes = m_shadowSBTDesc.GetHitGroupEntrySize();
+		desc.HitGroupTable.StrideInBytes = m_generalSBTDesc.GetHitGroupEntrySize();
 
 		desc.Height = viewport.Height;
 		desc.Width = viewport.Width;
@@ -344,18 +291,6 @@ namespace DX12Rendering {
 
 		//	// TODO: Add to all other instance lists.
 		//}
-	}
-
-	bool Raytracing::IsReflectiveEnabled() const {
-		return m_state & BIT_RAYTRACED_REFLECTIONS > 0;
-	}
-
-	bool Raytracing::IsShadowEnabled() const {
-		return m_state & BIT_RAYTRACED_SHADOWS > 0;
-	}
-
-	bool Raytracing::IsIlluminationEnabled() const {
-		return m_state & BIT_RAYTRACED_ILLUMINATION > 0;
 	}
 
 	ID3D12RootSignature* Raytracing::GetGlobalRootSignature() {
@@ -410,28 +345,28 @@ namespace DX12Rendering {
 
 	void Raytracing::CreateShadowBindingTable()
 	{
-		m_shadowSBTDesc.Reset();
-		D3D12_GPU_DESCRIPTOR_HANDLE srvUavHandle = m_shadowUavHeaps->GetGPUDescriptorHandleForHeapStart();
+		m_generalSBTDesc.Reset();
+		D3D12_GPU_DESCRIPTOR_HANDLE srvUavHandle = m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart();
 		void* heapPointer = reinterpret_cast<void*>(srvUavHandle.ptr);
 
 		// Create the SBT structure
-		m_shadowSBTDesc.AddRayGeneratorProgram(L"RayGen", { heapPointer });
-		m_shadowSBTDesc.AddRayMissProgram(L"Miss", {});
-		m_shadowSBTDesc.AddRayHitGroupProgram(L"HitGroup", {});
+		m_generalSBTDesc.AddRayGeneratorProgram(L"RayGen", { heapPointer });
+		m_generalSBTDesc.AddRayMissProgram(L"Miss", {});
+		m_generalSBTDesc.AddRayHitGroupProgram(L"HitGroup", {});
 
 		// Create the SBT resource
-		UINT32 tableSize = m_shadowSBTDesc.CalculateTableSize();
+		UINT32 tableSize = m_generalSBTDesc.CalculateTableSize();
 		ThrowIfFailed(m_device->CreateCommittedResource(
 			&kUploadHeapProps,
 			D3D12_HEAP_FLAG_NONE,
 			&CD3DX12_RESOURCE_DESC::Buffer(tableSize),
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
-			IID_PPV_ARGS(&m_shadowSBTData)
+			IID_PPV_ARGS(&m_generalSBTData)
 		));
 
 		// Fill the SBT
-		m_shadowSBTDesc.Generate(m_shadowSBTData.Get(), m_shadowStateObjectProps.Get());
+		m_generalSBTDesc.Generate(m_generalSBTData.Get(), m_shadowStateObjectProps.Get());
 	}
 
 #ifdef DEBUG_IMGUI
@@ -448,16 +383,14 @@ namespace DX12Rendering {
 			}
 
 			// TLAS information
-			ImGui::Text("Shadow TLAS Count: %d", m_shadowTlas.size());
-			for (auto tlas = m_shadowTlas.cbegin(); tlas != m_shadowTlas.cend(); ++tlas)
+			ImGui::CollapsingHeader("General TLAS", ImGuiTreeNodeFlags_DefaultOpen);
+			m_generalTlas.ImGuiDebug();
+
+			// Constant Information
+			ImGui::CollapsingHeader("Shader Constants", ImGuiTreeNodeFlags_DefaultOpen);
+			for (int i = 0; i < dxr_renderParm_t::COUNT; ++i)
 			{
-				sprintf(fmtTitle, "Shadow TLAS: %d", tlas->first);
-				if (ImGui::CollapsingHeader(fmtTitle, ImGuiTreeNodeFlags_DefaultOpen))
-				{
-					
-					TopLevelAccelerationStructure shadowTlas = tlas->second;
-					shadowTlas.ImGuiDebug();
-				}
+				ImGui::Text("%s: %f, %f, %f, %f", "TODO", m_constantBuffer[i].x, m_constantBuffer[i].y, m_constantBuffer[i].z, m_constantBuffer[i].w);
 			}
 		}
 	}

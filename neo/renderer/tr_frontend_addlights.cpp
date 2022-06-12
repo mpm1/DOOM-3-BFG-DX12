@@ -542,10 +542,6 @@ void R_OptimizeViewLightsList() {
 			vLight->localShadows = NULL;
 			vLight->globalShadows = NULL;
 		}
-		else {
-			// Setup raytraced shadows.
-			dxRenderer.UpdateAccelerationStructure(vLight);
-		}
 	}
 
 	if ( r_useShadowSurfaceScissor.GetBool() ) {

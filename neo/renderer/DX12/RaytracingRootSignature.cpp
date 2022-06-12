@@ -11,17 +11,6 @@ namespace DX12Rendering {
 		// Build the descriptor table.
 		std::vector<D3D12_DESCRIPTOR_RANGE1> descriptorRanges;
 
-		if (flags & WRITE_OUTPUT > 0) {
-			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
-				D3D12_DESCRIPTOR_RANGE_TYPE_UAV /* UAV representing the output buffer*/,
-				1 /*1 descriptor */,
-				0 /*u0*/,
-				0 /*use the implicit register space 0*/,
-				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				0 /*heap slot where the UAV is defined*/
-			));
-		}
-
 		if (flags & READ_ENVIRONMENT > 0) {
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /*Top-level acceleration structure*/,
@@ -30,6 +19,26 @@ namespace DX12Rendering {
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
 				1
+			));
+
+			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
+				D3D12_DESCRIPTOR_RANGE_TYPE_CBV /*Camera constant buffer*/,
+				1,
+				0 /*b0*/,
+				0,
+				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+				2
+			));
+		}
+
+		if (flags & WRITE_OUTPUT > 0) {
+			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
+				D3D12_DESCRIPTOR_RANGE_TYPE_UAV /* UAV representing the output buffer*/,
+				1 /*1 descriptor */,
+				0 /*u0*/,
+				0 /*use the implicit register space 0*/,
+				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+				0 /*heap slot where the UAV is defined*/
 			));
 		}
 		

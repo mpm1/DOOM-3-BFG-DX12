@@ -80,16 +80,6 @@ static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value)
 	renderProgManager.SetUniformValue(rp, value);
 }
 
-static void RB_CastRayTracedStencilShadows(const viewLight_t* vLight)
-{
-	const dxHandle_t handle = dxRenderer.GetHandle(vLight);
-	if (dxRenderer.GenerateRaytracedStencilShadows(handle))
-	{
-		dxRenderer.SetCommandListDefaults();
-		//CYCLE_COMMAND_LIST();
-	}
-}
-
 /*
 ================
 RB_SetMVP
@@ -1832,7 +1822,7 @@ static void RB_DrawInteractions() {
 
 		// mirror flips the sense of the stencil select, and I don't want to risk accidentally breaking it
 		// in the normal case, so simply disable the stencil select in the mirror case
-		const bool useLightStencilSelect = !dxRenderer.IsRaytracingEnabled() && backEnd.viewDef->isMirror == false;//&& r_useLightStencilSelect.GetBool() && backEnd.viewDef->isMirror == false;
+		const bool useLightStencilSelect = backEnd.viewDef->isMirror == false;//&& r_useLightStencilSelect.GetBool() && backEnd.viewDef->isMirror == false;
 
 		if (performStencilTest) {
 			if (useLightStencilSelect) {
@@ -1857,12 +1847,6 @@ static void RB_DrawInteractions() {
 				GL_State(GLS_DEFAULT);	// make sure stencil mask passes for the clear
 				GL_Clear(false, false, true, STENCIL_SHADOW_TEST_VALUE, 0.0f, 0.0f, 0.0f, 0.0f);
 			}
-
-		if (dxRenderer.IsRaytracingEnabled()) {
-			//dxRenderer.Clear(false, false, true, 0, nullptr); // Only 0 works for the stencil value?
-			//GL_Clear(false, false, true, 0, 0.0f, 0.0f, 0.0f, 0.0f); // For some reason this is killing the device
-			RB_CastRayTracedStencilShadows(vLight);
-		}
 		}
 
 		if (vLight->globalShadows != NULL) {
@@ -2726,7 +2710,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 		// render the remaining surfaces
 		renderLog.OpenMainBlock(MRB_DRAW_SHADER_PASSES_POST);
-		RB_DrawShaderPasses(drawSurfs + processed, numDrawSurfs - processed, 0.0f /* definitely not a gui */, stereoEye);
+		//RB_DrawShaderPasses(drawSurfs + processed, numDrawSurfs - processed, 0.0f /* definitely not a gui */, stereoEye);
 		renderLog.CloseMainBlock();
 	}	
 
@@ -2800,6 +2784,9 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 	//	- Accumulate light based off of emissive textures.
 	//-------------------------------------------------
 
+	// Verify the acceleration structure is properly updated
+	dxRenderer.DXR_UpdateAccelerationStructure(nullptr);
+
 	// set the window clipping
 	GL_Viewport(viewDef->viewport.x1,
 		viewDef->viewport.y1,
@@ -2837,6 +2824,7 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 		parm[2] = backEnd.viewDef->renderView.vieworg[2];
 		parm[3] = 1.0f;
 		SetVertexParm(RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
+		dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
 
 		// sets overbright to make world brighter
 		// This value is baked into the specularScale and diffuseScale values so
@@ -2854,6 +2842,7 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 		float projMatrixTranspose[16];
 		R_MatrixTranspose(backEnd.viewDef->projectionMatrix, projMatrixTranspose);
 		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
+		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
 	}
 
 	//-------------------------------------------------

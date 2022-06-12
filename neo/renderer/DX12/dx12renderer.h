@@ -91,10 +91,13 @@ public:
 	bool EndSurfaceSettings(); // Records the the surface entry into the heap.
 	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 
-	// Raytracing
+#pragma region RayTracing
 	void ResetAccelerationStructure(); // Resets the bottom level acceleration structure to an empty state.
 	void UpdateEntityInBLAS(const qhandle_t entityHandle, const renderEntity_t* re);
 	void UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
+
+	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
+	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);
 
 	bool DXR_CastRays(); // Sets the appropriate matricies and casts the rays to the scene.
 
@@ -102,18 +105,26 @@ public:
 	void DXR_GenerateResult(); // Collapses all channels into a single image.
 	void DXR_CopyResultToDisplay(); // Copies the resulting image to the user display.
 
-	// Top Level Acceleration structure
+#pragma region Top Level Acceleration Structure
 	template<typename K>
-	DX12Rendering::TopLevelAccelerationStructure* GetOrGenerateAccelerationStructure(const K* keyHandle);
+	DX12Rendering::TopLevelAccelerationStructure* DXR_GetOrGenerateAccelerationStructure(const K& keyHandle);
 
+	/// <summary>
+	/// 
+	/// </summary>
+	/// <typeparam name="K"></typeparam>
+	/// <typeparam name="T"></typeparam>
+	/// <param name="keyHandle"></param>
+	/// <param name="entity"></param>
 	template<typename K, typename T>
-	void AddEntityAccelerationStructure(const K* keyHandle, const T* entity);
+	void DXR_AddEntityAccelerationStructure(const K& keyHandle, const T* entity);
 
 	template<typename K>
-	void UpdateAccelerationStructure(const K* keyHandle);
+	void DXR_UpdateAccelerationStructure(const K& keyHandle);
+#pragma endregion
 
 	bool IsRaytracingEnabled() const { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
-	bool GenerateRaytracedStencilShadows(const dxHandle_t lightHandle);
+#pragma endregion
 
 	// Converters
 	template<typename T>
