@@ -9,38 +9,48 @@ RaytracingAccelerationStructure SceneBVH :register(t0);
 // Constants used to define the camera state
 ConstantBuffer<SceneConstants> sceneConstants : register(b0, space0);
 
+bool IsInsideViewport(float2 p, float4 viewport)
+{
+	return (p.x >= viewport.x && p.x <= viewport.z)
+		&& (p.y >= viewport.y && p.y <= viewport.w);
+
+	return true;
+}
+
 [shader("raygeneration")]
 void RayGen() {
 	// Initialize the ray payload
 	HitInfo payload;
-	payload.diffuse = float3(0.0f, 1.0f, 0.0f);
+	payload.diffuse = float3(0.0f, 0.0f, 0.0f);
 	payload.indirect = float3(0.0f, 0.0f, 0.0f);
 	payload.specular = float3(0.0f, 0.0f, 0.0f);
 
-	// Get the location within the dispatched 2D grid of work items
-	// (often maps to pixels, so this could represent a pixel coordinate).
-	uint2 launchIndex = DispatchRaysIndex();
-	float2 dims = float2(DispatchRaysDimensions().xy);
-	float2 d = (((launchIndex.xy + 0.5f) / dims.xy) * 2.f - 1.f);
+	// Get the ray location on the screen
+	float2 lerpValues = (float2)DispatchRaysIndex() / (float2)DispatchRaysDimensions();
+	float3 screenLocation = float3(
+		lerp(sceneConstants.rpViewport.x, sceneConstants.rpViewport.z, lerpValues.x),
+		lerp(sceneConstants.rpViewport.y, sceneConstants.rpViewport.w, lerpValues.y),
+		0.0f);
 
-	// Define a ray, consisting of origin, direction, and the min-max distance values
-	RayDesc ray;
-	ray.Origin = sceneConstants.rpGlobalEyePos.xyz; //float3(d.x, -d.y, 1);
-	ray.Direction = float3(0, 0, -1);
-	ray.TMin = 0;
-	ray.TMax = 100000;
+	if (IsInsideViewport(screenLocation.xy, sceneConstants.rpScissor))
+	{
+		// Define a ray, consisting of origin, direction, and the min-max distance values
+		RayDesc ray = GenerateCameraRay(DispatchRaysIndex().xy, sceneConstants);
+		ray.TMin = 0;
+		ray.TMax = 100000;
 
-	TraceRay(
-		SceneBVH,
-		RAY_FLAG_NONE,
-		0xFF,
-		0.0,
-		0, // Hit Shader
-		0, // Miss Shader
-		ray,
-		payload
+		TraceRay(
+			SceneBVH,
+			RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+			0xFF,
+			0.0,
+			0, // Hit Shader
+			0, // Miss Shader
+			ray,
+			payload
 		);
-
-	gOutput[launchIndex].rgb = payload.diffuse;
-	gOutput[launchIndex].a = 1.0f;
+	}
+	
+	gOutput[DispatchRaysIndex().xy].rgb = payload.diffuse;
+	gOutput[DispatchRaysIndex().xy].a = 1.0f;
 }

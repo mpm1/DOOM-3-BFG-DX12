@@ -79,6 +79,12 @@ const dxHandle_t DX12Renderer::GetHandle<qhandle_t>(const qhandle_t* entityHandl
 }
 
 template<>
+const dxHandle_t DX12Renderer::GetHandle<idRenderEntityLocal>(const idRenderEntityLocal* entity)
+{
+	return static_cast<dxHandle_t>(entity->index);
+}
+
+template<>
 const dxHandle_t DX12Renderer::GetHandle<viewLight_t>(const viewLight_t* vLight)
 {
 	return static_cast<dxHandle_t>(vLight->lightDef->index);
@@ -468,7 +474,12 @@ void DX12Renderer::ResetCommandList(bool waitForBackBuffer) {
 	}
 
 	DX12Rendering::ThrowIfFailed(m_commandList->Reset(m_directCommandAllocator[m_frameIndex].Get(), m_activePipelineState));
-	m_commandList->SetGraphicsRootSignature(m_rootSignature->GetRootSignature());
+	
+	auto rootSignature = m_rootSignature->GetRootSignature();
+	if (rootSignature != nullptr)
+	{
+		m_commandList->SetGraphicsRootSignature(rootSignature);
+	}
 
 	if (waitForBackBuffer) {
 		// Indicate that we will be rendering to the back buffer
@@ -527,6 +538,11 @@ void DX12Renderer::BeginDraw() {
 	m_objectIndex = 0;
 	m_isDrawing = true;
 	DX12Rendering::ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
+
+	if (IsRaytracingEnabled())
+	{
+		m_raytracing->BeginFrame();
+	}
 
 	ResetCommandList(true);
 }
@@ -895,7 +911,7 @@ void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
 	WaitForCopyToComplete();
 }
 
-void DX12Renderer::ResetAccelerationStructure()
+void DX12Renderer::DXR_ResetAccelerationStructure()
 {
 	if (!IsRaytracingEnabled()) {
 		return;
@@ -909,7 +925,7 @@ void DX12Renderer::ResetAccelerationStructure()
 	m_raytracing->ResetFrame();
 }
 
-void DX12Renderer::UpdateEntityInBLAS(qhandle_t entityHandle, const renderEntity_t* re)
+void DX12Renderer::DXR_UpdateEntityInBLAS(qhandle_t entityHandle, const renderEntity_t* re)
 {
 	if (!IsRaytracingEnabled() || re == nullptr) {
 		return;
@@ -923,7 +939,7 @@ void DX12Renderer::UpdateEntityInBLAS(qhandle_t entityHandle, const renderEntity
 	// For now we are only supporting objects that can receive shadows.
 	if (re->noShadow)
 	{
-		return;
+		//return;
 	}
 
 	if (re->hModel->NumSurfaces() <= 0) {
@@ -937,40 +953,48 @@ void DX12Renderer::UpdateEntityInBLAS(qhandle_t entityHandle, const renderEntity
 	idVertexBuffer* vertexBuffer = nullptr;
 	idIndexBuffer* indexBuffer = nullptr;
 
+	const modelSurface_t surf = *re->hModel->Surface(0);
+	const vertCacheHandle_t vbHandle = surf.geometry->ambientCache;
+	const vertCacheHandle_t ibHandle = surf.geometry->indexCache;
+
+	// Get vertex buffer
+	if (vertexCache.CacheIsStatic(vbHandle))
+	{
+		vertexBuffer = &vertexCache.staticData.vertexBuffer;
+	}
+	else
+	{
+		const uint64 frameNum = (int)(vbHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
+		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
+			//idLib::Warning("DXR_UpdateEntityInBLAS, vertexBuffer == NULL");
+			return;
+		}
+		vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
+	}
+	const int vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+
+	// Get the index buffer
+	if (vertexCache.CacheIsStatic(ibHandle))
+	{
+		indexBuffer = &vertexCache.staticData.indexBuffer;
+	}
+	else
+	{
+		const uint64 frameNum = (int)(ibHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
+		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
+			//idLib::Warning("DXR_UpdateEntityInBLAS, indexBuffer == NULL");
+			return;
+		}
+		indexBuffer = &vertexCache.frameData[vertexCache.drawListNum].indexBuffer;
+	}
+	const int indexOffset = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+
 	if (result != nullptr)
 	{
 		//TODO: update
 	}
 	else
 	{
-		const modelSurface_t surf = *re->hModel->Surface(0);
-		const vertCacheHandle_t vbHandle = surf.geometry->ambientCache;
-		const vertCacheHandle_t ibHandle = surf.geometry->indexCache;
-
-		// Get vertex buffer
-		if (vertexCache.CacheIsStatic(vbHandle))
-		{
-			vertexBuffer = &vertexCache.staticData.vertexBuffer;
-		}
-		else 
-		{ 
-			// TODO: add support for dynamic vertecies.
-			return; 
-		}
-		const int vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
-
-		// Get the index buffer
-		if (vertexCache.CacheIsStatic(ibHandle))
-		{
-			indexBuffer = &vertexCache.staticData.indexBuffer;
-		}
-		else
-		{
-			// TODO: add support for dynamic indexes.
-			return;
-		}
-		const int indexOffset = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
-
 		m_raytracing->blas.AddAccelerationObject(
 			index,
 			reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
@@ -983,7 +1007,7 @@ void DX12Renderer::UpdateEntityInBLAS(qhandle_t entityHandle, const renderEntity
 	}
 }
 
-void DX12Renderer::UpdateBLAS()
+void DX12Renderer::DXR_UpdateBLAS()
 {
 	if (!IsRaytracingEnabled()) {
 		return;
@@ -1029,14 +1053,12 @@ DX12Rendering::TopLevelAccelerationStructure* DX12Renderer::DXR_GetOrGenerateAcc
 	return tlas;*/
 }
 
-template<typename K, typename T>
-void DX12Renderer::DXR_AddEntityAccelerationStructure(const K& keyHandle, const T* entity)
+template<typename K>
+void DX12Renderer::DXR_AddEntityAccelerationStructure(const K& keyHandle, const dxHandle_t entityHandle, const float modelMatrix[16])
 {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
-
-	const dxHandle_t entityHandle = GetHandle(&static_cast<qhandle_t>(entity->entityDef->index));
 
 	if (m_raytracing->blas.GetAccelerationObject(entityHandle) == nullptr) {
 		//common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
@@ -1045,17 +1067,15 @@ void DX12Renderer::DXR_AddEntityAccelerationStructure(const K& keyHandle, const 
 
 	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
 
-	tlas->AddInstance(entityHandle, DirectX::XMMATRIX(entity->modelViewMatrix));
+	tlas->AddInstance(entityHandle, modelMatrix);
 }
 
 template<>
-void DX12Renderer::DXR_AddEntityAccelerationStructure(const std::nullptr_t& keyHandle, const viewEntity_t* entity)
+void DX12Renderer::DXR_AddEntityAccelerationStructure(const std::nullptr_t& keyHandle, const dxHandle_t entityHandle, const float modelMatrix[16])
 {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
-
-	const dxHandle_t entityHandle = GetHandle(&static_cast<qhandle_t>(entity->entityDef->index));
 
 	if (m_raytracing->blas.GetAccelerationObject(entityHandle) == nullptr) {
 		//common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
@@ -1064,10 +1084,8 @@ void DX12Renderer::DXR_AddEntityAccelerationStructure(const std::nullptr_t& keyH
 
 	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
 
-	tlas->AddInstance(entityHandle, DirectX::XMMATRIX(entity->modelViewMatrix));
+	tlas->AddInstance(entityHandle, modelMatrix);
 }
-
-
 
 template<typename K>
 void DX12Renderer::DXR_UpdateAccelerationStructure(const K& keyHandle)

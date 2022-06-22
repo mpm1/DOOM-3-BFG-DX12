@@ -189,22 +189,40 @@ namespace DX12Rendering {
 		}
 	}
 
-	void TopLevelAccelerationStructure::Reset() {
-		m_instances.clear();
+	void TopLevelAccelerationStructure::IncrementFrameIndex()
+	{
+		m_readFrameIndex = m_writeFrameIndex;
+		++m_writeFrameIndex;
+
+		if (m_writeFrameIndex >= DX12_FRAME_COUNT)
+		{
+			m_writeFrameIndex = 0;
+		}
 	}
 
-	std::vector<DX12Rendering::Instance>::iterator TopLevelAccelerationStructure::GetInstance(const UINT& index) {
-		for (auto instance = m_instances.begin(); instance != m_instances.end(); ++instance) {
-			if (instance->instanceId == index)
+	void TopLevelAccelerationStructure::Reset() 
+	{
+		m_readFrameIndex = 0;
+		m_writeFrameIndex = 1;
+		
+		m_instances[m_readFrameIndex].clear();
+		m_instances[m_writeFrameIndex].clear();
+	}
+
+	const bool TopLevelAccelerationStructure::TryGetWriteInstance(const UINT& index, DX12Rendering::Instance **outInstance) 
+	{
+		for (auto instance : m_instances[m_writeFrameIndex]) {
+			if (instance.instanceId == index)
 			{
-				return instance;
+				*outInstance = &instance;
+				return true;
 			}
 		}
 
-		return m_instances.end();
+		return false;
 	}
 
-	void TopLevelAccelerationStructure::AddInstance(const dxHandle_t& index, const DirectX::XMMATRIX& transform) {
+	void TopLevelAccelerationStructure::AddInstance(const dxHandle_t& index, const float transform[16]) {
 		auto* object = m_blas->GetAccelerationObject(index);
 
 		if (object == nullptr)
@@ -213,19 +231,20 @@ namespace DX12Rendering {
 			return;
 		}
 
-		auto instance = GetInstance(object->index);
-		if (instance != m_instances.end())
+		DX12Rendering::Instance *instance;
+		if (TryGetWriteInstance(object->index, &instance))
 		{
-			instance->transformation = XMMATRIX(transform);
+			memcpy(instance->transformation, transform, sizeof(float[16]));
 			return;
 		}
 
-		m_instances.emplace_back(XMMATRIX(transform), object->index, 0 /* TODO: Find the hit group index containing the normal map of the surface. */);
+		m_instances[m_writeFrameIndex].emplace_back(transform, object->index, 0 /* TODO: Find the hit group index containing the normal map of the surface. */);
 	}
 
 	void TopLevelAccelerationStructure::FillInstanceDescriptor(ID3D12Device5* device, UINT64 instanceDescsSize)
 	{
-		bool shouldCleanMemory = m_lastInstanceCount > m_instances.size();
+		auto instances = m_instances[m_readFrameIndex];
+		bool shouldCleanMemory = m_lastInstanceCount > instances.size();
 
 		if (m_instanceDesc == nullptr || m_instanceDescsSize < instanceDescsSize) {
 			m_instanceDescsSize = instanceDescsSize;
@@ -246,17 +265,15 @@ namespace DX12Rendering {
 			ZeroMemory(instanceDescs, m_instanceDescsSize);
 		}
 
-		m_lastInstanceCount = static_cast<UINT>(m_instances.size());
+		m_lastInstanceCount = static_cast<UINT>(instances.size());
 		for (UINT32 index = 0; index < m_lastInstanceCount; ++index)
 		{
-			instanceDescs[index].InstanceID = m_instances[index].instanceId;
-			instanceDescs[index].InstanceContributionToHitGroupIndex = m_instances[index].hitGroupIndex;
+			instanceDescs[index].InstanceID = instances[index].instanceId;
+			instanceDescs[index].InstanceContributionToHitGroupIndex = instances[index].hitGroupIndex;
 			instanceDescs[index].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE; // Should we implement back face culling?
 			
-																			  // Model View Matrix matrix
-			DirectX::XMMATRIX m = XMMatrixTranspose(
-				m_instances[index].transformation); // Matrix is column major, the INSTANCE_DESC is row major
-			memcpy(instanceDescs[index].Transform, &m, sizeof(instanceDescs[index].Transform));
+			// Model View Matrix matrix
+			memcpy(instanceDescs[index].Transform, &instances[index].transformation, sizeof(instanceDescs[index].Transform));
 
 			instanceDescs[index].AccelerationStructure = m_blas->GetGPUVirtualAddress();
 			
@@ -275,7 +292,7 @@ namespace DX12Rendering {
 		UINT64 resultSizeInBytes;
 		UINT64 instanceDescsSize;
 		
-		if (m_instances.size() == 0) {
+		if (m_instances[m_readFrameIndex].size() == 0) {
 			return false;
 		}
 
@@ -305,7 +322,7 @@ namespace DX12Rendering {
 		descriptor.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 		descriptor.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
 		descriptor.Inputs.InstanceDescs = m_instanceDesc->GetGPUVirtualAddress();
-		descriptor.Inputs.NumDescs = static_cast<UINT>(m_instances.size());
+		descriptor.Inputs.NumDescs = static_cast<UINT>(m_instances[m_readFrameIndex].size());
 		descriptor.Inputs.Flags = flags;
 
 		descriptor.DestAccelerationStructureData = {
@@ -350,7 +367,7 @@ namespace DX12Rendering {
 		*scratchSizeInBytes = DX12_ALIGN(info.ScratchDataSizeInBytes, 256);
 		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, 256);
 
-		*instanceDescsSize = DX12_ALIGN(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * static_cast<UINT64>(m_instances.size()), 256);
+		*instanceDescsSize = DX12_ALIGN(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * static_cast<UINT64>(m_instances[m_readFrameIndex].size()), 256);
 	}
 
 
@@ -380,7 +397,7 @@ namespace DX12Rendering {
 		}
 
 		ImGui::Text("Instance Size (In Bytes): %d", m_instanceDescsSize);
-		ImGui::Text("Instance Count: %d, Last Instance Count: %d", m_instances.size(), m_lastInstanceCount);
+		ImGui::Text("Instance Count: %d, Last Instance Count: %d", m_instances[m_readFrameIndex].size(), m_lastInstanceCount);
 	}
 #endif
 #pragma endregion

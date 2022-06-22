@@ -2842,7 +2842,31 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 		float projMatrixTranspose[16];
 		R_MatrixTranspose(backEnd.viewDef->projectionMatrix, projMatrixTranspose);
 		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
-		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
+
+		// Set the inverse prokection matrix
+		idRenderMatrix inverseProjection;
+		/*idRenderMatrix projectionMatrix(
+			backEnd.viewDef->projectionMatrix[0], backEnd.viewDef->projectionMatrix[1], backEnd.viewDef->projectionMatrix[2], backEnd.viewDef->projectionMatrix[3],
+			backEnd.viewDef->projectionMatrix[4], backEnd.viewDef->projectionMatrix[5], backEnd.viewDef->projectionMatrix[6], backEnd.viewDef->projectionMatrix[7],
+			backEnd.viewDef->projectionMatrix[8], backEnd.viewDef->projectionMatrix[9], backEnd.viewDef->projectionMatrix[10], backEnd.viewDef->projectionMatrix[11],
+			backEnd.viewDef->projectionMatrix[12], backEnd.viewDef->projectionMatrix[13], backEnd.viewDef->projectionMatrix[14], backEnd.viewDef->projectionMatrix[15]
+		);*/
+		idRenderMatrix projectionMatrix(
+			projMatrixTranspose[0], projMatrixTranspose[1], projMatrixTranspose[2], projMatrixTranspose[3],
+			projMatrixTranspose[4], projMatrixTranspose[5], projMatrixTranspose[6], projMatrixTranspose[7],
+			projMatrixTranspose[8], projMatrixTranspose[9], projMatrixTranspose[10], projMatrixTranspose[11],
+			projMatrixTranspose[12], projMatrixTranspose[13], projMatrixTranspose[14], projMatrixTranspose[15]
+		);
+		idRenderMatrix::Inverse(projectionMatrix, inverseProjection);
+		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_PROJMATRIX_X, inverseProjection[0], 4);
+		
+
+		// Set the Inverse View Matrix
+		idRenderMatrix viewRenderMatrix;
+		idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrix);
+		float viewMatrixTranspose[16];
+		R_MatrixTranspose(viewRenderMatrix[0], viewMatrixTranspose);
+		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, viewRenderMatrix[0], 4);
 	}
 
 	//-------------------------------------------------

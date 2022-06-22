@@ -364,7 +364,9 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 			renderEntity->hModel->ModelHasShadowCastingSurfaces() ) {
 
 		// Add the object to the general tlas
-		dxRenderer.DXR_AddEntityAccelerationStructure(nullptr, vEntity);
+		float modelMatrix[16];
+		R_AxisToModelMatrix(renderEntity->axis, renderEntity->origin, modelMatrix);
+		dxRenderer.DXR_AddEntityAccelerationStructure(nullptr, dxRenderer.GetHandle(entityDef), modelMatrix);
 
 		SCOPED_PROFILE_EVENT( "Find lights" );
 		for ( viewLight_t * vLight = viewDef->viewLights; vLight != NULL; vLight = vLight->next ) {

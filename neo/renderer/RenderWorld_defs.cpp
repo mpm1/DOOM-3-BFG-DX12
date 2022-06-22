@@ -54,6 +54,9 @@ void R_DeriveEntityData( idRenderEntityLocal * entity ) {
 
 	// calculate the global model bounds by inverse projecting the unit cube with the 'inverseBaseModelProject'
 	idRenderMatrix::ProjectedBounds( entity->globalReferenceBounds, entity->inverseBaseModelProject, bounds_unitCube, false );
+
+	// Add the entity to the raytracing acceleration structure.
+	dxRenderer.DXR_UpdateEntityInBLAS(entity->index, &entity->parms);
 }
 
 /*

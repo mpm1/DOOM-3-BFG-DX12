@@ -15,11 +15,18 @@ using namespace Microsoft::WRL;
 namespace DX12Rendering {
 	enum dxr_renderParm_t {
 		RENDERPARM_GLOBALEYEPOS = 0,
+		RENDERPARM_VIEWPORT, // {left, top, right, bottom}
+		RENDERPARAM_SCISSOR, // {left, top, right, bottom}
 
-		RENDERPARM_PROJMATRIX_X,
-		RENDERPARM_PROJMATRIX_Y,
-		RENDERPARM_PROJMATRIX_Z,
-		RENDERPARM_PROJMATRIX_W,
+		RENDERPARM_INVERSE_VIEWMATRIX_X,
+		RENDERPARM_INVERSE_VIEWMATRIX_Y,
+		RENDERPARM_INVERSE_VIEWMATRIX_Z,
+		RENDERPARM_INVERSE_VIEWMATRIX_W,
+
+		RENDERPARM_INVERSE_PROJMATRIX_X,
+		RENDERPARM_INVERSE_PROJMATRIX_Y,
+		RENDERPARM_INVERSE_PROJMATRIX_Z,
+		RENDERPARM_INVERSE_PROJMATRIX_W,
 
 		COUNT
 	};
@@ -57,6 +64,8 @@ public:
 	void GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas);
 
 	void CleanUpAccelerationStructure();
+
+	void BeginFrame(){ GetGeneralTLAS()->IncrementFrameIndex(); }
 
 	/// <summary>
 	/// Cast rays into the scene through the general TLAS.

@@ -92,9 +92,9 @@ public:
 	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 
 #pragma region RayTracing
-	void ResetAccelerationStructure(); // Resets the bottom level acceleration structure to an empty state.
-	void UpdateEntityInBLAS(const qhandle_t entityHandle, const renderEntity_t* re);
-	void UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
+	void DXR_ResetAccelerationStructure(); // Resets the bottom level acceleration structure to an empty state.
+	void DXR_UpdateEntityInBLAS(const qhandle_t entityHandle, const renderEntity_t* re);
+	void DXR_UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
 
 	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
 	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);
@@ -113,11 +113,11 @@ public:
 	/// 
 	/// </summary>
 	/// <typeparam name="K"></typeparam>
-	/// <typeparam name="T"></typeparam>
 	/// <param name="keyHandle"></param>
 	/// <param name="entity"></param>
-	template<typename K, typename T>
-	void DXR_AddEntityAccelerationStructure(const K& keyHandle, const T* entity);
+	/// <param name="modelMatrix"></param>
+	template<typename K>
+	void DXR_AddEntityAccelerationStructure(const K& keyHandle, const dxHandle_t entityHandle, const float modelMatrix[16]);
 
 	template<typename K>
 	void DXR_UpdateAccelerationStructure(const K& keyHandle);
@@ -225,5 +225,4 @@ private:
 };
 
 extern DX12Renderer dxRenderer;
-
 #endif

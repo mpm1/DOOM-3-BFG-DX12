@@ -21,16 +21,18 @@ namespace DX12Rendering
 	};
 
 	struct Instance {
-		XMMATRIX		transformation;
+		float			transformation[16];
 		UINT			instanceId;
 		UINT			hitGroupIndex; // TODO: We will change this to point to the hitGroup in the stack that contains the normal map for the surface.
 		//TODO: Add support for bone information.
 
-		Instance(XMMATRIX transformation, UINT instanceId, UINT hitGroupIndex) :
-			transformation(transformation),
+		Instance(const float srcTransformation[16], UINT instanceId, UINT hitGroupIndex) :
 			instanceId(instanceId),
-			hitGroupIndex(hitGroupIndex)
-		{}
+			hitGroupIndex(hitGroupIndex),
+			transformation()
+		{
+			std::memcpy(transformation, srcTransformation, sizeof(float[16]));
+		}
 	};
 
 	/// <summary>
@@ -75,8 +77,11 @@ public:
 	TopLevelAccelerationStructure(BottomLevelAccelerationStructure* blas);
 	~TopLevelAccelerationStructure();
 
-	void AddInstance(const dxHandle_t& index, const DirectX::XMMATRIX& transform);
+	void AddInstance(const dxHandle_t& index, const float transform[16]);
 	void Reset(); // Clears the acceleration structure.
+	void IncrementFrameIndex();
+
+	bool IsReadEmpty() { return m_instances[m_readFrameIndex].size() == 0; }
 
 	/// <summary>
 	/// Updates the TLAS resource structure.
@@ -91,9 +96,6 @@ public:
 	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() { return m_result->GetGPUVirtualAddress(); }
 	ID3D12Resource* GetResult() { return m_result.Get(); }
 
-	const size_t Count() const { return m_instances.size(); }
-	const bool IsEmpty() const { return Count() == 0; }
-
 #ifdef DEBUG_IMGUI
 	const void ImGuiDebug();
 #endif
@@ -107,11 +109,13 @@ private:
 	UINT64 m_instanceDescsSize = 0;
 	UINT32 m_lastInstanceCount = 0;
 
-	std::vector<DX12Rendering::Instance> m_instances;
+	std::vector<DX12Rendering::Instance> m_instances[DX12_FRAME_COUNT];
+	UINT16 m_readFrameIndex = 0;
+	UINT16 m_writeFrameIndex = 1;
 
 	void CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize);
 	void FillInstanceDescriptor(ID3D12Device5* device, UINT64 instanceDescsSize);
 
-	std::vector<DX12Rendering::Instance>::iterator GetInstance(const UINT& index);
+	const bool TryGetWriteInstance(const UINT& index, DX12Rendering::Instance **outInstance);
 };
 #endif

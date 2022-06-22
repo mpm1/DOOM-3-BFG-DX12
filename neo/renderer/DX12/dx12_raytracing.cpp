@@ -236,7 +236,7 @@ namespace DX12Rendering {
 	{
 		DX12Rendering::TopLevelAccelerationStructure* tlas = GetGeneralTLAS();
 
-		if (tlas == nullptr || tlas->IsEmpty()) {
+		if (tlas == nullptr || tlas->IsReadEmpty()) {
 			// No objects to cast shadows.
 			return false;
 		}
@@ -244,6 +244,12 @@ namespace DX12Rendering {
 		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
 
 		// Copy the CBV data to the heap
+		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
+		Uniform4f(RENDERPARAM_SCISSOR, scissorVector);
+
+		float viewportVector[4] = { viewport.TopLeftX, viewport.TopLeftY, viewport.TopLeftX + viewport.Width, viewport.TopLeftY + viewport.Height };
+		Uniform4f(RENDERPARM_VIEWPORT, viewportVector);
+
 		SetCBVDescriptorTable(commandList, sizeof(m_constantBuffer), m_constantBuffer, frameIndex);
 
 		std::vector<ID3D12DescriptorHeap*> heaps = { m_generalUavHeaps.Get() };
