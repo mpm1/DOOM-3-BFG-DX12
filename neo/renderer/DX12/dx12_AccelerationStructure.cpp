@@ -38,14 +38,26 @@ namespace DX12Rendering {
 		m_isDirty = true;
 	}
 
-	DX12AccelerationObject* BottomLevelAccelerationStructure::GetAccelerationObject(const dxHandle_t& key) {
+	DX12AccelerationObject* BottomLevelAccelerationStructure::GetAccelerationObject(const dxHandle_t& key) 
+	{
 		auto result = m_objectMap.find(key);
 
-		if (result != m_objectMap.end()) {
+		if (result != m_objectMap.end()) 
+		{
 			return &result->second;
 		}
 
 		return nullptr;
+	}
+
+	void BottomLevelAccelerationStructure::RemoveAccelerationObject(const dxHandle_t& key) 
+	{
+		DX12AccelerationObject* result = GetAccelerationObject(key);
+
+		if (result != nullptr)
+		{
+			m_objectMap.erase(key);
+		}
 	}
 
 	void BottomLevelAccelerationStructure::Reset()
@@ -58,7 +70,13 @@ namespace DX12Rendering {
 
 	void BottomLevelAccelerationStructure::Generate(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT64 inputScratchSizeInBytes, LPCWSTR name)
 	{
-		if (!m_isDirty) {
+		static UINT count = 0;
+		const UINT countMax = 1; // NOTE: TEMP TO DELAY BLAS CONSTRUCTION
+		if (!m_isDirty && count > countMax) {
+			return;
+		}
+		else if (count < countMax) {
+			++count;
 			return;
 		}
 
@@ -102,6 +120,12 @@ namespace DX12Rendering {
 			isUpdate = false; // Since we built a new resource, all objects will be updated inside.
 
 			m_result->SetName(name);
+		} 
+		else
+		{
+			// Provide a barrier to make sure we are done using the resource.
+			D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_result.Get());
+			commandList->ResourceBarrier(1, &uavBarrier);
 		}
 
 		assert(inputScratchSizeInBytes >= testScratchSizeInBytes);
@@ -110,9 +134,9 @@ namespace DX12Rendering {
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasDesc;
 		blasDesc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
 		blasDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		blasDesc.Inputs.NumDescs = m_vertexBuffers.size();
+		blasDesc.Inputs.NumDescs = static_cast<UINT>(m_vertexBuffers.size());
 		blasDesc.Inputs.pGeometryDescs = m_vertexBuffers.data();
-		blasDesc.Inputs.Flags = flags;
+		blasDesc.Inputs.Flags = flags | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
 		blasDesc.DestAccelerationStructureData = { m_result->GetGPUVirtualAddress() };
 		blasDesc.ScratchAccelerationStructureData = { scratchBuffer->GetGPUVirtualAddress() };
 		blasDesc.SourceAccelerationStructureData = isUpdate ? m_result->GetGPUVirtualAddress() : NULL;
@@ -120,7 +144,6 @@ namespace DX12Rendering {
 		// Build the acceleration structure.
 		commandList->BuildRaytracingAccelerationStructure(&blasDesc, 0, nullptr);
 
-		// TODO: Possibly remove this.
 		// Wait for the building of the blas to complete.
 		D3D12_RESOURCE_BARRIER uavBarrier;
 		uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
@@ -170,6 +193,10 @@ namespace DX12Rendering {
 	TopLevelAccelerationStructure::TopLevelAccelerationStructure(BottomLevelAccelerationStructure* blas)
 		: m_blas(blas)
 	{
+		for (UINT i = 0; i < DX12_FRAME_COUNT; ++i)
+		{
+			m_instances[i].reserve(512); //TODO: Setup an object to make this the max size.
+		}
 	}
 
 	TopLevelAccelerationStructure::~TopLevelAccelerationStructure() 

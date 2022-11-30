@@ -1059,7 +1059,7 @@ void idMenuScreen_HUD::UpdateLocation( idPlayer * player ) {
 
 	idPlayer * playertoLoc = player;
 	if( player->spectating && player->spectator != player->entityNumber ) {
-		playertoLoc = static_cast< idPlayer* >( gameLocal.entities[ player->spectator ] );
+		playertoLoc = static_cast< idPlayer* >( gameLocal.m_entities[ player->spectator ] );
 		if( playertoLoc == NULL ) {
 			playertoLoc = player;
 		}

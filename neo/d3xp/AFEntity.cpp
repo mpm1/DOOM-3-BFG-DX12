@@ -1142,7 +1142,7 @@ bool idAFEntity_Gibbable::Collide( const trace_t &collision, const idVec3 &veloc
 		if ( spawnArgs.GetBool( "gib" ) ) {
 			idEntity	*ent;
 
-			ent = gameLocal.entities[ collision.c.entityNum ];
+			ent = gameLocal.m_entities[ collision.c.entityNum ];
 			if ( ent->fl.takedamage ) {
 				ent->Damage( this, gameLocal.GetLocalPlayer(), collision.c.normal, "damage_thrown_ragdoll", 1.f, CLIPMODEL_ID_TO_JOINT_HANDLE( collision.c.id ) );
 			}

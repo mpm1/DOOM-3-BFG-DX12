@@ -119,7 +119,7 @@ private:
 	float				windForce;
 	int					windUpdateTime;
 
-	idList<BSEntity*>	entities;
+	idList<BSEntity*>	m_entities;
 
 	BSEntity			*turret;
 	BSEntity			*bear;

@@ -997,7 +997,7 @@ void idPhysics_Player::CheckGround() {
 	}
 
 	groundMaterial = groundTrace.c.material;
-	groundEntityPtr = gameLocal.entities[ groundTrace.c.entityNum ];
+	groundEntityPtr = gameLocal.m_entities[ groundTrace.c.entityNum ];
 
 	// check if getting thrown off the ground
 	if ( (current.velocity * -gravityNormal) > 0.0f && ( current.velocity * groundTrace.c.normal ) > 10.0f ) {
@@ -2068,7 +2068,7 @@ bool idPhysics_Player::ClientPusherLocked( bool & justBecameUnlocked ) {
 	bool hasGroundContact = false;
 	for ( int i = 0; i < contacts.Num(); i++ ) {
 
-		idEntity * ent = gameLocal.entities[ contacts[i].entityNum ];
+		idEntity * ent = gameLocal.m_entities[ contacts[i].entityNum ];
 		if( ent ) {
 			idPhysics * p = ent->GetPhysics();
 			if ( p != NULL ) {

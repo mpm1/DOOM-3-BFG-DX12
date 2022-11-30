@@ -5410,7 +5410,7 @@ bool idPhysics_AF::CollisionImpulse( float timeStep, idAFBody *body, trace_t &co
 	impactInfo_t info;
 	idEntity *ent;
 
-	ent = gameLocal.entities[collision.c.entityNum];
+	ent = gameLocal.m_entities[collision.c.entityNum];
 	if ( ent == self ) {
 		return false;
 	}

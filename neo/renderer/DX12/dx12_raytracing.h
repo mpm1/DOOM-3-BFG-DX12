@@ -7,12 +7,19 @@
 #include "./dx12_ShaderBindingTable.h"
 #include "./dx12_AccelerationStructure.h"
 
-#define DEFAULT_SCRATCH_SIZE 262144 // 256 * 1024. We need to check if this is big enough.
+#include "./dx12_buffermap.h"
+
+#define DEFAULT_SCRATCH_SIZE 3145728 // 1024 * 1024 * 3. We need to check if this is big enough.
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
 namespace DX12Rendering {
+	// Making these caches 256x more than their in frame size
+	const UINT VERTCACHE_INDEX_MEMORY = 31 * 1024 * 1024 * 256;
+	const UINT VERTCACHE_VERTEX_MEMORY = 31 * 1024 * 1024 * 256;
+	const UINT VERTCACHE_JOINT_MEMORY= 256 * 1024 * 256;
+
 	enum dxr_renderParm_t {
 		RENDERPARM_GLOBALEYEPOS = 0,
 		RENDERPARM_VIEWPORT, // {left, top, right, bottom}
@@ -88,6 +95,10 @@ public:
 	/// </summary>
 	void AddObjectToAllTopLevelAS(); //TODO: Add matrix and bone information.
 
+	// Buffer updates
+	BufferEntity<DX12VertexBuffer>* AddOrUpdateVertecies(ID3D12Device5* device, qhandle_t entityHandle, byte* data, UINT size) { return m_localVertexBuffer.AddOrUpdateEntity(device, entityHandle, data, size); }
+	BufferEntity<DX12IndexBuffer>* AddOrUpdateIndecies(ID3D12Device5* device, qhandle_t entityHandle, byte* data, UINT size) { return m_localIndexBuffer.AddOrUpdateEntity(device, entityHandle, data, size); }
+
 #ifdef DEBUG_IMGUI
 	void ImGuiDebug();
 #endif
@@ -96,6 +107,9 @@ private:
 	ID3D12Device5* m_device;
 	UINT m_width;
 	UINT m_height;
+
+	DX12Rendering::VertexBufferMap m_localVertexBuffer;
+	DX12Rendering::IndexBufferMap m_localIndexBuffer;
 
 	DX12Rendering::RaytracingRootSignature m_rayGenSignature;
 	DX12Rendering::RaytracingRootSignature m_missSignature;

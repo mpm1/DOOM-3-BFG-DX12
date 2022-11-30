@@ -171,12 +171,8 @@ private:
 
 	// Synchronization
 	UINT m_frameIndex;
-    HANDLE m_fenceEvent;
-    ComPtr<ID3D12Fence> m_fence;
-    UINT16 m_fenceValue;
-	HANDLE m_copyFenceEvent;
-	ComPtr<ID3D12Fence> m_copyFence;
-	UINT16 m_copyFenceValue;
+	DX12Rendering::Fence m_frameFence;
+	DX12Rendering::Fence m_copyFence;
 
 	// Textures
 	ComPtr<ID3D12Resource> m_textureBufferUploadHeap;
@@ -189,7 +185,7 @@ private:
 
 	// Raytracing
 	DX12Rendering::Raytracing* m_raytracing;
-	std::mutex m_raytracingMutex;
+	DX12Rendering::dx12_lock m_raytracingLock;
 
 	void LoadPipeline(HWND hWnd);
 	void LoadAssets();

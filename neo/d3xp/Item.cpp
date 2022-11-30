@@ -200,7 +200,7 @@ bool idItem::ModelCallback( renderEntity_t *renderEntity, const renderView_t *re
 		return false;
 	}
 
-	ent = static_cast<idItem *>(gameLocal.entities[ renderEntity->entityNum ]);
+	ent = static_cast<idItem *>(gameLocal.m_entities[ renderEntity->entityNum ]);
 	if ( ent == NULL ) {
 		gameLocal.Error( "idItem::ModelCallback: callback with NULL game entity" );
 		return false;
@@ -879,7 +879,7 @@ bool idItemTeam::ClientReceiveEvent( int event, int time, const idBitMsg &msg ) 
 
 	switch ( event ) {
 		case EVENT_TAKEFLAG: {					
-			idPlayer * player = static_cast<idPlayer *>(gameLocal.entities[ msg.ReadBits( GENTITYNUM_BITS ) ]);
+			idPlayer * player = static_cast<idPlayer *>(gameLocal.m_entities[ msg.ReadBits( GENTITYNUM_BITS ) ]);
 			if ( player == NULL ) {
 				gameLocal.Warning( "NULL player takes flag?\n" );
 				return false;
@@ -970,7 +970,7 @@ void idItemTeam::PrivateReturn()
 	if ( common->IsServer() && carried && !dropped ) {
 		int playerIdx = gameLocal.mpGame.GetFlagCarrier( 1-team );
 		if ( playerIdx != -1 ) {
-			idPlayer * player = static_cast<idPlayer*>( gameLocal.entities[ playerIdx ] );
+			idPlayer * player = static_cast<idPlayer*>( gameLocal.m_entities[ playerIdx ] );
 			player->carryingFlag = false;
 		} else {
 			gameLocal.Warning( "BUG: carried flag has no carrier before return" );
@@ -1330,7 +1330,7 @@ void idItemTeam::UpdateGuis() {
     idPlayer *player;
     
 	for ( int i = 0; i < gameLocal.numClients; i++ ) {
-		player = static_cast<idPlayer *>( gameLocal.entities[ i ] );
+		player = static_cast<idPlayer *>( gameLocal.m_entities[ i ] );
 
 		if ( player && player->hud ) {
 
@@ -1438,9 +1438,9 @@ void idObjective::Event_Trigger( idEntity *activator ) {
 
 				// a tad slow but keeps from having to update all objectives in all maps with a name ptr
 				for( int i = 0; i < gameLocal.num_entities; i++ ) {
-					if ( gameLocal.entities[ i ] && gameLocal.entities[ i ]->IsType( idObjectiveComplete::Type ) ) {
-						if ( idStr::Icmp( spawnArgs.GetString( "objectivetitle" ), gameLocal.entities[ i ]->spawnArgs.GetString( "objectivetitle" ) ) == 0 ){
-							gameLocal.entities[ i ]->spawnArgs.SetBool( "objEnabled", true );
+					if ( gameLocal.m_entities[ i ] && gameLocal.m_entities[ i ]->IsType( idObjectiveComplete::Type ) ) {
+						if ( idStr::Icmp( spawnArgs.GetString( "objectivetitle" ), gameLocal.m_entities[ i ]->spawnArgs.GetString( "objectivetitle" ) ) == 0 ){
+							gameLocal.m_entities[ i ]->spawnArgs.SetBool( "objEnabled", true );
 							break;
 						}
 					}

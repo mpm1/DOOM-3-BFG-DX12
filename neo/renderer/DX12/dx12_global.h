@@ -10,6 +10,7 @@
 #include <dxcapi.h>
 #include <DirectXMath.h>
 #include <vector>
+#include <shared_mutex>
 
 #pragma comment (lib, "dxguid.lib")
 #pragma comment (lib, "d3d12.lib")
@@ -23,6 +24,7 @@
 #ifdef DEBUG_PIX
 //#include <pix3.h>
 #include <DXProgrammableCapture.h>
+#elif defined(DEBUG_NSIGHTS)
 #else
 #define DEBUG_GPU
 #endif
@@ -72,6 +74,92 @@ namespace DX12Rendering {
 	ID3D12Resource* CreateBuffer(ID3D12Device5* device, uint64_t size, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps);
 
 	ID3D12DescriptorHeap* CreateDescriptorHeap(ID3D12Device* device, uint32_t count, D3D12_DESCRIPTOR_HEAP_TYPE type, bool shaderVisible);
+
+	// Locking
+	typedef std::shared_mutex dx12_lock;
+	typedef std::unique_lock<dx12_lock> ReadLock;
+	typedef std::shared_lock<dx12_lock> WriteLock;
+
+	class Fence
+	{
+	public:
+		Fence() : 
+			m_value(0), m_fence(nullptr), m_fenceEvent(nullptr)
+		{
+
+		}
+
+		~Fence()
+		{
+			if (m_fenceEvent != nullptr)
+			{
+				CloseHandle(m_fenceEvent);
+			}
+		}
+
+		HRESULT Allocate(ID3D12Device5* device)
+		{
+			HRESULT result = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence));
+			m_value = 1;
+
+			m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+			return result;
+		}
+
+		HRESULT Signal(ID3D12Device5* device, ID3D12CommandQueue* commandQueue)
+		{
+			HRESULT result;
+
+			if (m_fence == nullptr)
+			{
+				result = Allocate(device);
+
+				if (FAILED(result))
+				{
+					return result;
+				}
+			}
+
+			++m_value;
+			return commandQueue->Signal(m_fence.Get(), m_value);
+		}
+
+		HRESULT SetCompletionEvent(UINT64 value, HANDLE completionEvent)
+		{
+			m_fence->SetEventOnCompletion(value, completionEvent);
+		}
+
+		bool IsFenceCompleted()
+		{
+			assert(m_fence != nullptr);
+
+			return m_fence->GetCompletedValue() >= m_value;
+		}
+
+		void Wait()
+		{
+			WaitLimitted(INFINITE);
+		}
+
+		void WaitLimitted(DWORD waitTime)
+		{
+			if (m_fence == nullptr)
+			{
+				return;
+			}
+
+			if (!IsFenceCompleted())
+			{
+				DX12Rendering::WarnIfFailed(SetCompletionEvent(m_value, m_fenceEvent));
+				WaitForSingleObject(m_fenceEvent, waitTime);
+			}
+		}
+	private:
+		UINT16 m_value;
+		ComPtr<ID3D12Fence> m_fence;
+		HANDLE m_fenceEvent;
+	};
 }
 
 struct Vertex
@@ -120,4 +208,5 @@ struct DX12Stage
 
 	// TODO: Include stage information to tell if this is for shadow testing or lighting.
 };
+
 #endif

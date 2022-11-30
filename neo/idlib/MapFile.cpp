@@ -753,7 +753,7 @@ bool idMapFile::Parse( const char *filename, bool ignoreRegion, bool osPath ) {
 
 	version = OLD_MAP_VERSION;
 	fileTime = src.GetFileTime();
-	entities.DeleteContents( true );
+	m_entities.DeleteContents( true );
 
 	if ( src.CheckTokenString( "Version" ) ) {
 		src.ReadTokenOnLine( &token );
@@ -761,30 +761,30 @@ bool idMapFile::Parse( const char *filename, bool ignoreRegion, bool osPath ) {
 	}
 
 	while( 1 ) {
-		mapEnt = idMapEntity::Parse( src, ( entities.Num() == 0 ), version );
+		mapEnt = idMapEntity::Parse( src, ( m_entities.Num() == 0 ), version );
 		if ( !mapEnt ) {
 			break;
 		}
-		entities.Append( mapEnt );
+		m_entities.Append( mapEnt );
 	}
 
 	SetGeometryCRC();
 
 	// if the map has a worldspawn
-	if ( entities.Num() ) {
+	if ( m_entities.Num() ) {
 
 		// "removeEntities" "classname" can be set in the worldspawn to remove all entities with the given classname
-		const idKeyValue *removeEntities = entities[0]->epairs.MatchPrefix( "removeEntities", NULL );
+		const idKeyValue *removeEntities = m_entities[0]->epairs.MatchPrefix( "removeEntities", NULL );
 		while ( removeEntities ) {
 			RemoveEntities( removeEntities->GetValue() );
-			removeEntities = entities[0]->epairs.MatchPrefix( "removeEntities", removeEntities );
+			removeEntities = m_entities[0]->epairs.MatchPrefix( "removeEntities", removeEntities );
 		}
 
 		// "overrideMaterial" "material" can be set in the worldspawn to reset all materials
 		idStr material;
-		if ( entities[0]->epairs.GetString( "overrideMaterial", "", material ) ) {
-			for ( i = 0; i < entities.Num(); i++ ) {
-				mapEnt = entities[i];
+		if ( m_entities[0]->epairs.GetString( "overrideMaterial", "", material ) ) {
+			for ( i = 0; i < m_entities.Num(); i++ ) {
+				mapEnt = m_entities[i];
 				for ( j = 0; j < mapEnt->GetNumPrimitives(); j++ ) {
 					idMapPrimitive *mapPrimitive = mapEnt->GetPrimitive( j );
 					switch( mapPrimitive->GetType() ) {
@@ -805,9 +805,9 @@ bool idMapFile::Parse( const char *filename, bool ignoreRegion, bool osPath ) {
 		}
 
 		// force all entities to have a name key/value pair
-		if ( entities[0]->epairs.GetBool( "forceEntityNames" ) ) {
-			for ( i = 1; i < entities.Num(); i++ ) {
-				mapEnt = entities[i];
+		if ( m_entities[0]->epairs.GetBool( "forceEntityNames" ) ) {
+			for ( i = 1; i < m_entities.Num(); i++ ) {
+				mapEnt = m_entities[i];
 				if ( !mapEnt->epairs.FindKey( "name" ) ) {
 					mapEnt->epairs.Set( "name", va( "%s%d", mapEnt->epairs.GetString( "classname", "forcedName" ), i ) );
 				}
@@ -815,11 +815,11 @@ bool idMapFile::Parse( const char *filename, bool ignoreRegion, bool osPath ) {
 		}
 
 		// move the primitives of any func_group entities to the worldspawn
-		if ( entities[0]->epairs.GetBool( "moveFuncGroups" ) ) {
-			for ( i = 1; i < entities.Num(); i++ ) {
-				mapEnt = entities[i];
+		if ( m_entities[0]->epairs.GetBool( "moveFuncGroups" ) ) {
+			for ( i = 1; i < m_entities.Num(); i++ ) {
+				mapEnt = m_entities[i];
 				if ( idStr::Icmp( mapEnt->epairs.GetString( "classname" ), "func_group" ) == 0 ) {
-					entities[0]->primitives.Append( mapEnt->primitives );
+					m_entities[0]->primitives.Append( mapEnt->primitives );
 					mapEnt->primitives.Clear();
 				}
 			}
@@ -859,8 +859,8 @@ bool idMapFile::Write( const char *fileName, const char *ext, bool fromBasePath 
 
 	fp->WriteFloatString( "Version %f\n", (float) CURRENT_MAP_VERSION );
 
-	for ( i = 0; i < entities.Num(); i++ ) {
-		entities[i]->Write( fp, i );
+	for ( i = 0; i < m_entities.Num(); i++ ) {
+		m_entities[i]->Write( fp, i );
 	}
 
 	idLib::fileSystem->CloseFile( fp );
@@ -877,8 +877,8 @@ void idMapFile::SetGeometryCRC() {
 	int i;
 
 	geometryCRC = 0;
-	for ( i = 0; i < entities.Num(); i++ ) {
-		geometryCRC ^= entities[i]->GetGeometryCRC();
+	for ( i = 0; i < m_entities.Num(); i++ ) {
+		geometryCRC ^= m_entities[i]->GetGeometryCRC();
 	}
 }
 
@@ -888,7 +888,7 @@ idMapFile::AddEntity
 ===============
 */
 int idMapFile::AddEntity( idMapEntity *mapEnt ) {
-	int ret = entities.Append( mapEnt );
+	int ret = m_entities.Append( mapEnt );
 	return ret;
 }
 
@@ -898,8 +898,8 @@ idMapFile::FindEntity
 ===============
 */
 idMapEntity *idMapFile::FindEntity( const char *name ) {
-	for ( int i = 0; i < entities.Num(); i++ ) {
-		idMapEntity *ent = entities[i];
+	for ( int i = 0; i < m_entities.Num(); i++ ) {
+		idMapEntity *ent = m_entities[i];
 		if ( idStr::Icmp( ent->epairs.GetString( "name" ), name ) == 0 ) {
 			return ent;
 		}
@@ -913,7 +913,7 @@ idMapFile::RemoveEntity
 ===============
 */
 void idMapFile::RemoveEntity( idMapEntity *mapEnt ) {
-	entities.Remove( mapEnt );
+	m_entities.Remove( mapEnt );
 	delete mapEnt;
 }
 
@@ -923,11 +923,11 @@ idMapFile::RemoveEntity
 ===============
 */
 void idMapFile::RemoveEntities( const char *classname ) {
-	for ( int i = 0; i < entities.Num(); i++ ) {
-		idMapEntity *ent = entities[i];
+	for ( int i = 0; i < m_entities.Num(); i++ ) {
+		idMapEntity *ent = m_entities[i];
 		if ( idStr::Icmp( ent->epairs.GetString( "classname" ), classname ) == 0 ) {
-			delete entities[i];
-			entities.RemoveIndex( i );
+			delete m_entities[i];
+			m_entities.RemoveIndex( i );
 			i--;
 		}
 	}
@@ -939,7 +939,7 @@ idMapFile::RemoveAllEntities
 ===============
 */
 void idMapFile::RemoveAllEntities() {
-	entities.DeleteContents( true );
+	m_entities.DeleteContents( true );
 	hasPrimitiveData = false;
 }
 
@@ -949,8 +949,8 @@ idMapFile::RemovePrimitiveData
 ===============
 */
 void idMapFile::RemovePrimitiveData() {
-	for ( int i = 0; i < entities.Num(); i++ ) {
-		idMapEntity *ent = entities[i];
+	for ( int i = 0; i < m_entities.Num(); i++ ) {
+		idMapEntity *ent = m_entities[i];
 		ent->RemovePrimitiveData();
 	}
 	hasPrimitiveData = false;

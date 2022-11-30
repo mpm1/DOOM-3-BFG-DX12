@@ -203,7 +203,7 @@ idGameBearShootWindow::idGameBearShootWindow(idUserInterfaceLocal *g) : idWindow
 }
 
 idGameBearShootWindow::~idGameBearShootWindow() {
-	entities.DeleteContents(true);
+	m_entities.DeleteContents(true);
 }
 
 /*
@@ -238,25 +238,25 @@ void idGameBearShootWindow::WriteToSaveGame( idFile *savefile ) {
 	savefile->Write( &windForce, sizeof(windForce) );
 	savefile->Write( &windUpdateTime, sizeof(windUpdateTime) );
 
-	int numberOfEnts = entities.Num();
+	int numberOfEnts = m_entities.Num();
 	savefile->Write( &numberOfEnts, sizeof(numberOfEnts) );
 
 	for ( int i=0; i<numberOfEnts; i++ ) {
-		entities[i]->WriteToSaveGame( savefile );
+		m_entities[i]->WriteToSaveGame( savefile );
 	}
 
 	int index;
-	index = entities.FindIndex( turret );
+	index = m_entities.FindIndex( turret );
 	savefile->Write( &index, sizeof(index) );
-	index = entities.FindIndex( bear );
+	index = m_entities.FindIndex( bear );
 	savefile->Write( &index, sizeof(index) );
-	index = entities.FindIndex( helicopter );
+	index = m_entities.FindIndex( helicopter );
 	savefile->Write( &index, sizeof(index) );
-	index = entities.FindIndex( goal );
+	index = m_entities.FindIndex( goal );
 	savefile->Write( &index, sizeof(index) );
-	index = entities.FindIndex( wind );
+	index = m_entities.FindIndex( wind );
 	savefile->Write( &index, sizeof(index) );
-	index = entities.FindIndex( gunblast );
+	index = m_entities.FindIndex( gunblast );
 	savefile->Write( &index, sizeof(index) );
 }
 
@@ -269,7 +269,7 @@ void idGameBearShootWindow::ReadFromSaveGame( idFile *savefile ) {
 	idWindow::ReadFromSaveGame( savefile );
 
 	// Remove all existing entities
-	entities.DeleteContents(true);
+	m_entities.DeleteContents(true);
 
 	gamerunning.ReadFromSaveGame( savefile );
 	onFire.ReadFromSaveGame( savefile );
@@ -303,22 +303,22 @@ void idGameBearShootWindow::ReadFromSaveGame( idFile *savefile ) {
 
 		ent = new (TAG_OLD_UI) BSEntity( this );
 		ent->ReadFromSaveGame( savefile, this );
-		entities.Append( ent );
+		m_entities.Append( ent );
 	}
 
 	int index;
 	savefile->Read( &index, sizeof(index) );
-	turret = entities[index];
+	turret = m_entities[index];
 	savefile->Read( &index, sizeof(index) );
-	bear = entities[index];
+	bear = m_entities[index];
 	savefile->Read( &index, sizeof(index) );
-	helicopter = entities[index];
+	helicopter = m_entities[index];
 	savefile->Read( &index, sizeof(index) );
-	goal = entities[index];
+	goal = m_entities[index];
 	savefile->Read( &index, sizeof(index) );
-	wind = entities[index];
+	wind = m_entities[index];
 	savefile->Read( &index, sizeof(index) );
-	gunblast = entities[index];
+	gunblast = m_entities[index];
 }
 
 /*
@@ -377,14 +377,14 @@ void idGameBearShootWindow::CommonInit() {
 	ent->SetSize( 272, 144 );
 	ent->position.x = -44;
 	ent->position.y = 260;
-	entities.Append( ent );
+	m_entities.Append( ent );
 
 	ent = new (TAG_OLD_UI) BSEntity( this );
 	ent->SetMaterial( "game/bearshoot/turret_base" );
 	ent->SetSize( 144, 160 );
 	ent->position.x = 16;
 	ent->position.y = 280;
-	entities.Append( ent );
+	m_entities.Append( ent );
 
 	ent = new (TAG_OLD_UI) BSEntity( this );
 	bear = ent;
@@ -393,7 +393,7 @@ void idGameBearShootWindow::CommonInit() {
 	ent->SetVisible( false );
 	ent->position.x = 0;
 	ent->position.y = 0;
-	entities.Append( ent );
+	m_entities.Append( ent );
 
 	ent = new (TAG_OLD_UI) BSEntity( this );
 	helicopter = ent;
@@ -401,7 +401,7 @@ void idGameBearShootWindow::CommonInit() {
 	ent->SetSize( 64, 64 );
 	ent->position.x = 550;
 	ent->position.y = 100;
-	entities.Append( ent );
+	m_entities.Append( ent );
 
 	ent = new (TAG_OLD_UI) BSEntity( this );
 	goal = ent;
@@ -409,7 +409,7 @@ void idGameBearShootWindow::CommonInit() {
 	ent->SetSize( 64, 64 );
 	ent->position.x = 550;
 	ent->position.y = 164;
-	entities.Append( ent );
+	m_entities.Append( ent );
 
 	ent = new (TAG_OLD_UI) BSEntity( this );
 	wind = ent;
@@ -417,14 +417,14 @@ void idGameBearShootWindow::CommonInit() {
 	ent->SetSize( 100, 40 );
 	ent->position.x = 500;
 	ent->position.y = 430;
-	entities.Append( ent );
+	m_entities.Append( ent );
 
 	ent = new (TAG_OLD_UI) BSEntity( this );
 	gunblast = ent;
 	ent->SetMaterial( "game/bearshoot/gun_blast" );
 	ent->SetSize( 64, 64 );
 	ent->SetVisible( false );
-	entities.Append( ent );
+	m_entities.Append( ent );
 }
 
 /*
@@ -524,8 +524,8 @@ void idGameBearShootWindow::Draw(int time, float x, float y) {
 	//Update the game every frame before drawing
 	UpdateGame();
 
-	for( i = entities.Num()-1; i >= 0; i-- ) {
-		entities[i]->Draw();
+	for( i = m_entities.Num()-1; i >= 0; i-- ) {
+		m_entities[i]->Draw();
 	}
 }
 
@@ -871,8 +871,8 @@ void idGameBearShootWindow::UpdateGame() {
 			turret->rotation = turretAngle;
 		}
 
-		for( i = 0; i < entities.Num(); i++ ) {
-			entities[i]->Update( timeSlice );
+		for( i = 0; i < m_entities.Num(); i++ ) {
+			m_entities[i]->Update( timeSlice );
 		}
 
 		// Update countdown timer

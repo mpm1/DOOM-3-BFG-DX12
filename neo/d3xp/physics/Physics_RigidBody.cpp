@@ -119,7 +119,7 @@ bool idPhysics_RigidBody::CollisionImpulse( const trace_t &collision, idVec3 &im
 	idEntity *ent;
 
 	// get info from other entity involved
-	ent = gameLocal.entities[collision.c.entityNum];
+	ent = gameLocal.m_entities[collision.c.entityNum];
 	ent->GetImpactInfo( self, collision.c.id, collision.c.point, &info );
 
 	// collision point relative to the body center of mass
@@ -945,7 +945,7 @@ bool idPhysics_RigidBody::Evaluate( int timeStepMSec, int endTimeMSec ) {
 
 	if ( collided ) {
 		// if the rigid body didn't come to rest or the other entity is not at rest
-		ent = gameLocal.entities[collision.c.entityNum];
+		ent = gameLocal.m_entities[collision.c.entityNum];
 		if ( ent && ( !cameToRest || !ent->IsAtRest() ) ) {
 			// apply impact to other entity
 			ent->ApplyImpulse( self, collision.c.id, collision.c.point, -impulse );

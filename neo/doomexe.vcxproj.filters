@@ -609,6 +609,12 @@
     <ClInclude Include="renderer\DX12\imgui\imstb_truetype.h">
       <Filter>Renderer\DX12\imgui</Filter>
     </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_buffermap.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_resource.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cm\CollisionModel_contacts.cpp">
@@ -1278,6 +1284,12 @@
       <Filter>Renderer\DX12\imgui</Filter>
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_imgui.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_buffermap.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_resource.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
   </ItemGroup>

@@ -1054,7 +1054,7 @@ bool PathTrace( const idEntity *ent, const idAAS *aas, const idVec3 &start, cons
 		trace.fraction = clipTrace.fraction;
 		trace.endPos = clipTrace.endpos;
 		trace.normal = clipTrace.c.normal;
-		trace.blockingEntity = gameLocal.entities[ clipTrace.c.entityNum ];
+		trace.blockingEntity = gameLocal.m_entities[ clipTrace.c.entityNum ];
 	} else {
 		aasTrace.getOutOfSolid = true;
 		if ( stopEvent & SE_ENTER_LEDGE_AREA ) {
@@ -1108,7 +1108,7 @@ bool PathTrace( const idEntity *ent, const idAAS *aas, const idVec3 &start, cons
 			trace.fraction = clipTrace.fraction;
 			trace.endPos = clipTrace.endpos;
 			trace.normal = clipTrace.c.normal;
-			trace.blockingEntity = gameLocal.entities[ clipTrace.c.entityNum ];
+			trace.blockingEntity = gameLocal.m_entities[ clipTrace.c.entityNum ];
 		}
 	}
 

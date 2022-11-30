@@ -1533,7 +1533,7 @@ idEntity::ModelCallback
 bool idEntity::ModelCallback( renderEntity_s *renderEntity, const renderView_t *renderView ) {
 	idEntity *ent;
 
-	ent = gameLocal.entities[ renderEntity->entityNum ];
+	ent = gameLocal.m_entities[ renderEntity->entityNum ];
 	if ( ent == NULL ) {
 		gameLocal.Error( "idEntity::ModelCallback: callback with NULL game entity" );
 		return false;
@@ -3917,7 +3917,7 @@ bool idEntity::TouchTriggers() const {
 		ent->Signal( SIG_TOUCH );
 		ent->ProcessEvent( &EV_Touch, this, &trace );
 
-		if ( !gameLocal.entities[ entityNumber ] ) {
+		if ( !gameLocal.m_entities[ entityNumber ] ) {
 			gameLocal.Printf( "entity was removed while touching triggers\n" );
 			return true;
 		}
@@ -4981,7 +4981,7 @@ void idEntity::ReadBindFromSnapshot( const idBitMsg &msg ) {
 	bindEntityNum = bindInfo & ( ( 1 << GENTITYNUM_BITS ) - 1 );
 
 	if ( ( bindEntityNum != ENTITYNUM_NONE ) && ( bindEntityNum < MAX_GENTITIES ) ) {
-		master = gameLocal.entities[ bindEntityNum ];
+		master = gameLocal.m_entities[ bindEntityNum ];
 
 		bindOrientated = ( bindInfo >> GENTITYNUM_BITS ) & 1;
 		bindPos = ( bindInfo >> ( GENTITYNUM_BITS + 3 ) );

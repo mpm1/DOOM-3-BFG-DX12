@@ -606,7 +606,7 @@ public:
 
 	//All current game data is stored in this structure (except the entity list)
 	SSDGameStats_t				gameStats;
-	idList<SSDEntity*>			entities;
+	idList<SSDEntity*>			m_entities;
 
 	int							currentSound;
 	

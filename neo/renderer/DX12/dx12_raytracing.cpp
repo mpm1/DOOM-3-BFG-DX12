@@ -27,7 +27,9 @@ namespace DX12Rendering {
 		m_hitSignature(device, NONE),
 		m_width(screenWidth),
 		m_height(screenHeight),
-		m_generalTlas(&blas)
+		m_generalTlas(&blas),
+		m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
+		m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
 		const UINT64 scratchSize = DX12_ALIGN(DEFAULT_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
 		scratchBuffer = CreateBuffer(

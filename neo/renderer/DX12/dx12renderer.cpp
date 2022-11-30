@@ -286,17 +286,7 @@ void DX12Renderer::Uniform4f(UINT index, const float* uniform) {
 void DX12Renderer::LoadAssets() {
 	// Create the synchronization objects
 	{
-		DX12Rendering::ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
-		m_fenceValue = 1;
-
-		DX12Rendering::ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_copyFence)));
-		m_copyFenceValue = 1;
-
-		// Create an event handle to use for the frame synchronization
-		m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-		if (m_fenceEvent == nullptr) {
-			DX12Rendering::ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
-		}
+		m_frameFence.Allocate(m_device.Get());
 
 		// Attach event for device removal
 #ifdef DEBUG_GPU
@@ -304,7 +294,7 @@ void DX12Renderer::LoadAssets() {
 		if (m_removeDeviceEvent == nullptr) {
 			DX12Rendering::ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
 		}
-		m_fence->SetEventOnCompletion(UINT64_MAX, m_removeDeviceEvent); // This is done because all fence values are set the to  UINT64_MAX value when the device is removed.
+		m_frameFence.SetCompletionEvent(UINT64_MAX, m_removeDeviceEvent); // This is done because all fence values are set the to  UINT64_MAX value when the device is removed.
 
 		RegisterWaitForSingleObject(
 			&m_deviceRemovedHandle,
@@ -442,30 +432,15 @@ void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset) {
 }
 
 void DX12Renderer::SignalNextFrame() {
-	++m_fenceValue;
-	DX12Rendering::ThrowIfFailed(m_directCommandQueue->Signal(m_fence.Get(), m_fenceValue));
+	m_frameFence.Signal(m_device.Get(), m_directCommandQueue.Get());
 }
 
 void DX12Renderer::WaitForPreviousFrame() {
-	const UINT16 fence = m_fenceValue;
-
-	// Wait for the previous frame to finish
-	if (m_fence->GetCompletedValue() < fence) {
-		DX12Rendering::ThrowIfFailed(m_fence->SetEventOnCompletion(fence, m_fenceEvent));
-		WaitForSingleObject(m_fenceEvent, INFINITE);
-	}
+	m_frameFence.Wait();
 }
 
 void DX12Renderer::WaitForCopyToComplete() {
-	const UINT64 fence = m_copyFenceValue;
-	DX12Rendering::ThrowIfFailed(m_copyCommandQueue->Signal(m_copyFence.Get(), fence));
-	++m_copyFenceValue;
-
-	// Wait for the frame to finish
-	if (m_copyFence->GetCompletedValue() < fence) {
-		DX12Rendering::ThrowIfFailed(m_copyFence->SetEventOnCompletion(fence, m_copyFenceEvent));
-		WaitForSingleObject(m_copyFenceEvent, INFINITE);
-	}
+	m_copyFence.Wait();
 }
 
 void DX12Renderer::ResetCommandList(bool waitForBackBuffer) {
@@ -663,8 +638,6 @@ void DX12Renderer::Clear(const bool color, const bool depth, const bool stencil,
 
 void DX12Renderer::OnDestroy() {
 	WaitForPreviousFrame();
-
-	CloseHandle(m_fenceEvent);
 
 #ifdef DEBUG_IMGUI
 	ReleaseImGui();
@@ -900,6 +873,8 @@ void DX12Renderer::StartTextureWrite(DX12TextureBuffer* buffer) {
 }
 
 void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
+	m_copyFence.Signal(m_device.Get(), m_copyCommandQueue.Get());
+
 	if (FAILED(m_copyCommandList->Close())) {
 		common->Warning("Could not close copy command list.");
 	}
@@ -907,8 +882,6 @@ void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
 	// Execute the command list
 	ID3D12CommandList* ppCommandLists[] = { m_copyCommandList.Get() };
 	m_copyCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
-
-	WaitForCopyToComplete();
 }
 
 void DX12Renderer::DXR_ResetAccelerationStructure()
@@ -917,7 +890,7 @@ void DX12Renderer::DXR_ResetAccelerationStructure()
 		return;
 	}
 
-	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
+	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
 	m_raytracing->ResetGeneralTLAS();
 
@@ -946,48 +919,60 @@ void DX12Renderer::DXR_UpdateEntityInBLAS(qhandle_t entityHandle, const renderEn
 		return;
 	}
 
-	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
+	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 	const dxHandle_t index = GetHandle(&entityHandle);
 	DX12Rendering::DX12AccelerationObject* result = m_raytracing->blas.GetAccelerationObject(index);
 
-	idVertexBuffer* vertexBuffer = nullptr;
+	DX12VertexBuffer* vertexBuffer = nullptr;
 	idIndexBuffer* indexBuffer = nullptr;
 
 	const modelSurface_t surf = *re->hModel->Surface(0);
 	const vertCacheHandle_t vbHandle = surf.geometry->ambientCache;
 	const vertCacheHandle_t ibHandle = surf.geometry->indexCache;
 
+	int vertOffsetBytes;
+	int indexOffset;
+
 	// Get vertex buffer
 	if (vertexCache.CacheIsStatic(vbHandle))
 	{
-		vertexBuffer = &vertexCache.staticData.vertexBuffer;
-	}
-	else
-	{
-		const uint64 frameNum = (int)(vbHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
-		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
-			//idLib::Warning("DXR_UpdateEntityInBLAS, vertexBuffer == NULL");
-			return;
-		}
-		vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
-	}
-	const int vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+		vertexBuffer = reinterpret_cast<DX12VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
+		vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
-	// Get the index buffer
-	if (vertexCache.CacheIsStatic(ibHandle))
-	{
 		indexBuffer = &vertexCache.staticData.indexBuffer;
+		indexOffset = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 	}
 	else
 	{
-		const uint64 frameNum = (int)(ibHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
-		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
-			//idLib::Warning("DXR_UpdateEntityInBLAS, indexBuffer == NULL");
-			return;
+		if (!re->hModel->IsLoaded())
+		{
+			re->hModel->LoadModel();
 		}
-		indexBuffer = &vertexCache.frameData[vertexCache.drawListNum].indexBuffer;
-	}
-	const int indexOffset = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+
+		std::vector<triIndex_t> indecies;
+		std::vector<triIndex_t>::iterator iIterator = indecies.begin();
+		std::vector<idDrawVert> vertecies;
+
+		for (int sIndex = 0; sIndex < re->hModel->NumSurfaces(); ++sIndex)
+		{
+			// TODO: make separate for each material.
+			const modelSurface_t* surf = re->hModel->Surface(sIndex);
+
+			// Add all indecies
+			iIterator = indecies.insert(iIterator, surf->geometry->indexes, surf->geometry->indexes + surf->geometry->numIndexes);
+
+			// Add all vertecies
+			vertecies.reserve(vertecies.size() + surf->geometry->numVerts);
+			for (int vIndex = 0; vIndex < surf->geometry->numVerts; ++vIndex)
+			{
+				idDrawVert* vert = &surf->geometry->verts[vIndex];
+				vertecies.push_back(*vert);
+			}
+		}
+
+		m_raytracing->AddOrUpdateVertecies(m_device.Get(), entityHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
+		return;
+	};
 
 	if (result != nullptr)
 	{
@@ -997,7 +982,7 @@ void DX12Renderer::DXR_UpdateEntityInBLAS(qhandle_t entityHandle, const renderEn
 	{
 		m_raytracing->blas.AddAccelerationObject(
 			index,
-			reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
+			vertexBuffer,
 			vertOffsetBytes,
 			surf.geometry->numVerts,
 			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
@@ -1013,7 +998,7 @@ void DX12Renderer::DXR_UpdateBLAS()
 		return;
 	}
 
-	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
+	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
 	m_raytracing->blas.Generate(m_device.Get(), m_raytracing->GetCommandList(), m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE, L"Main Raytracing BLAS");
 	
@@ -1094,10 +1079,10 @@ void DX12Renderer::DXR_UpdateAccelerationStructure(const K& keyHandle)
 		return;
 	}
 
+	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
 
 	// Generate the TLAS resource
-	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
 	m_raytracing->GenerateTLAS(tlas);
 }
 
@@ -1111,7 +1096,7 @@ void DX12Renderer::DXR_UpdateAccelerationStructure(const std::nullptr_t& keyHand
 	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
 
 	// Generate the TLAS resource
-	std::lock_guard<std::mutex> raytraceLock(m_raytracingMutex);
+	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 	m_raytracing->GenerateTLAS(tlas);
 }
 

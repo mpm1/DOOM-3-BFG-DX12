@@ -53,6 +53,7 @@ public:
 
 	DX12AccelerationObject* AddAccelerationObject(const dxHandle_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 	DX12AccelerationObject* GetAccelerationObject(const dxHandle_t& key);
+	void RemoveAccelerationObject(const dxHandle_t& key);
 
 	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() { return m_result->GetGPUVirtualAddress(); }
 
@@ -69,7 +70,7 @@ private:
 	ComPtr<ID3D12Resource> m_result = nullptr;
 	UINT64 m_resultSizeInBytes = 0;
 	std::atomic_bool m_isDirty = true;
-	const UINT64 m_defaultResultSizeInBytes = 1024 * 512; //TODO: Calculate the best amount for this.
+	const UINT64 m_defaultResultSizeInBytes = 1024 * 1024 * 4; //TODO: Calculate the best amount for this.
 };
 
 class DX12Rendering::TopLevelAccelerationStructure {

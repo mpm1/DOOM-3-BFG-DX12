@@ -183,7 +183,7 @@ void idDragEntity::Update( idPlayer *player ) {
 			gameLocal.clip.TracePoint( trace, viewPoint, viewPoint + viewAxis[0] * MAX_DRAG_TRACE_DISTANCE, (CONTENTS_SOLID|CONTENTS_RENDERMODEL|CONTENTS_BODY), player );
 			if ( trace.fraction < 1.0f ) {
 
-				newEnt = gameLocal.entities[ trace.c.entityNum ];
+				newEnt = gameLocal.m_entities[ trace.c.entityNum ];
 				if ( newEnt ) {
 
 					if ( newEnt->GetBindMaster() ) {

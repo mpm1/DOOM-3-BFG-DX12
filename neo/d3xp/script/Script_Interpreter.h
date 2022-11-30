@@ -234,7 +234,7 @@ idInterpreter::GetEntity
 ID_INLINE idEntity *idInterpreter::GetEntity( short entnum ) const{
 	assert( entnum <= MAX_GENTITIES );
 	if ( ( entnum > 0 ) && ( entnum <= MAX_GENTITIES ) ) {
-		return gameLocal.entities[ entnum - 1 ];
+		return gameLocal.m_entities[ entnum - 1 ];
 	}
 	return NULL;
 }
@@ -249,7 +249,7 @@ ID_INLINE idScriptObject *idInterpreter::GetScriptObject( short entnum ) const {
 
 	assert( entnum <= MAX_GENTITIES );
 	if ( ( entnum > 0 ) && ( entnum <= MAX_GENTITIES ) ) {
-		ent = gameLocal.entities[ entnum - 1 ];
+		ent = gameLocal.m_entities[ entnum - 1 ];
 		if ( ent && ent->scriptObject.data ) {
 			return &ent->scriptObject;
 		}

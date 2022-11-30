@@ -71,7 +71,7 @@ void Cmd_EntityList_f( const idCmdArgs &args ) {
 	gameLocal.Printf( "%-4s  %-20s %-20s %s\n", " Num", "EntityDef", "Class", "Name" );
 	gameLocal.Printf( "--------------------------------------------------------------------\n" );
 	for( e = 0; e < MAX_GENTITIES; e++ ) {
-		check = gameLocal.entities[ e ];
+		check = gameLocal.m_entities[ e ];
 
 		if ( !check ) {
 			continue;
@@ -314,8 +314,8 @@ void Cmd_Give_f( const idCmdArgs &args ) {
 		if ( gameLocal.world->spawnArgs.GetBool( "no_Weapons" ) ) {
 			gameLocal.world->spawnArgs.SetBool( "no_Weapons", false );
 			for( i = 0; i < gameLocal.numClients; i++ ) {
-				if ( gameLocal.entities[ i ] ) {
-					gameLocal.entities[ i ]->PostEventSec( &EV_Player_SelectWeapon, 0.5f, gameLocal.entities[ i ]->spawnArgs.GetString( "def_weapon1" ) );
+				if ( gameLocal.m_entities[ i ] ) {
+					gameLocal.m_entities[ i ]->PostEventSec( &EV_Player_SelectWeapon, 0.5f, gameLocal.m_entities[ i ]->spawnArgs.GetString( "def_weapon1" ) );
 				}
 			}
 		}
@@ -601,7 +601,7 @@ static void Cmd_Say( bool team, const idCmdArgs &args ) {
 		name = session->GetActingGameStateLobbyBase().GetLobbyUserName( gameLocal.lobbyUserIDs[ gameLocal.GetLocalClientNum() ] );
 
 	    // Append the player's location to team chat messages in CTF
-		idPlayer * player = static_cast<idPlayer *>( gameLocal.entities[ gameLocal.GetLocalClientNum() ] );
+		idPlayer * player = static_cast<idPlayer *>( gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] );
         if ( gameLocal.mpGame.IsGametypeFlagBased() && team && player ) {
             idLocationEntity *locationEntity = gameLocal.LocationForPoint( player->GetEyePosition() );
             
@@ -1632,7 +1632,7 @@ static void Cmd_SaveMoveables_f( const idCmdArgs &args ) {
 	}
 
 	for( e = 0; e < MAX_GENTITIES; e++ ) {
-		m = static_cast<idMoveable *>(gameLocal.entities[ e ]);
+		m = static_cast<idMoveable *>(gameLocal.m_entities[ e ]);
 
 		if ( !m || !m->IsType( idMoveable::Type ) ) {
 			continue;
@@ -1648,7 +1648,7 @@ static void Cmd_SaveMoveables_f( const idCmdArgs &args ) {
 	}
 
 	if ( e < MAX_GENTITIES ) {
-		gameLocal.Warning( "map not saved because the moveable entity %s is not at rest", gameLocal.entities[ e ]->name.c_str() );
+		gameLocal.Warning( "map not saved because the moveable entity %s is not at rest", gameLocal.m_entities[ e ]->name.c_str() );
 		return;
 	}
 
@@ -1661,7 +1661,7 @@ static void Cmd_SaveMoveables_f( const idCmdArgs &args ) {
 	}
 
 	for( e = 0; e < MAX_GENTITIES; e++ ) {
-		m = static_cast<idMoveable *>(gameLocal.entities[ e ]);
+		m = static_cast<idMoveable *>(gameLocal.m_entities[ e ]);
 
 		if ( !m || !m->IsType( idMoveable::Type ) ) {
 			continue;
@@ -1723,7 +1723,7 @@ static void Cmd_SaveRagdolls_f( const idCmdArgs &args ) {
 	}
 
 	for( e = 0; e < MAX_GENTITIES; e++ ) {
-		af = static_cast<idAFEntity_Base *>(gameLocal.entities[ e ]);
+		af = static_cast<idAFEntity_Base *>(gameLocal.m_entities[ e ]);
 
 		if ( !af ) {
 			continue;
@@ -1738,7 +1738,7 @@ static void Cmd_SaveRagdolls_f( const idCmdArgs &args ) {
 		}
 
 		if ( !af->IsAtRest() ) {
-			gameLocal.Warning( "the articulated figure for entity %s is not at rest", gameLocal.entities[ e ]->name.c_str() );
+			gameLocal.Warning( "the articulated figure for entity %s is not at rest", gameLocal.m_entities[ e ]->name.c_str() );
 		}
 
 		dict.Clear();
@@ -1840,7 +1840,7 @@ static void Cmd_SaveLights_f( const idCmdArgs &args ) {
 	}
 
 	for( e = 0; e < MAX_GENTITIES; e++ ) {
-		light = static_cast<idLight*>(gameLocal.entities[ e ]);
+		light = static_cast<idLight*>(gameLocal.m_entities[ e ]);
 
 		if ( !light || !light->IsType( idLight::Type ) ) {
 			continue;
@@ -1901,7 +1901,7 @@ static void Cmd_SaveParticles_f( const idCmdArgs &args ) {
 
 	for( e = 0; e < MAX_GENTITIES; e++ ) {
 
-		ent = static_cast<idStaticEntity*> ( gameLocal.entities[ e ] );
+		ent = static_cast<idStaticEntity*> ( gameLocal.m_entities[ e ] );
 
 		if ( !ent ) {
 			continue;
