@@ -134,7 +134,7 @@ namespace DX12Rendering {
 
 		HRESULT SetCompletionEvent(UINT64 value, HANDLE completionEvent)
 		{
-			m_fence->SetEventOnCompletion(value, completionEvent);
+			return m_fence->SetEventOnCompletion(value, completionEvent);
 		}
 
 		bool IsFenceCompleted()
@@ -159,7 +159,8 @@ namespace DX12Rendering {
 
 			if (!IsFenceCompleted())
 			{
-				DX12Rendering::WarnIfFailed(SetCompletionEvent(m_value, m_fenceEvent));
+				HRESULT result = SetCompletionEvent(m_value, m_fenceEvent);
+				DX12Rendering::WarnIfFailed(result);
 				WaitForSingleObject(m_fenceEvent, waitTime);
 			}
 		}
