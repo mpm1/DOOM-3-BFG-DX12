@@ -510,9 +510,9 @@ void idImage::AllocImage() {
 	}
 
 	// Allocate the texture
-	textureResource = dxRenderer.AllocTextureBuffer(new DX12TextureBuffer(), &textureDesc, &imgName);
-	
-	if (textureResource == nullptr) {
+	textureResource = new DX12TextureBuffer();
+
+	if (dxRenderer.AllocTextureBuffer(static_cast<DX12TextureBuffer*>(textureResource), &textureDesc, &imgName) == nullptr) {
 		return;
 	}
 
@@ -563,7 +563,8 @@ void idImage::Resize(int width, int height) {
 
 bool idImage::IsLoaded() const {
 	if (textureResource != nullptr) {
-		return static_cast<DX12TextureBuffer*>(textureResource)->textureBuffer.GetAddressOf() != NULL;
+		auto address = static_cast<DX12TextureBuffer*>(textureResource)->textureBuffer.GetAddressOf();
+		return *address != NULL;
 	}
 
 	return false;

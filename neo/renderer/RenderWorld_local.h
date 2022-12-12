@@ -90,8 +90,6 @@ struct reusableOverlay_t {
 
 struct portalStack_t;
 
-extern DX12Renderer dxRenderer;
-
 class idRenderWorldLocal : public idRenderWorld {
 public:
 							idRenderWorldLocal();

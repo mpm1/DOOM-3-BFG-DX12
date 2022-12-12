@@ -65,18 +65,12 @@ namespace DX12Rendering {
 		m_objectMap.clear();
 		m_vertexBuffers.clear();
 		m_result = nullptr;
-		m_isDirty = true;
+		m_isDirty = false;
 	}
 
 	void BottomLevelAccelerationStructure::Generate(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT64 inputScratchSizeInBytes, LPCWSTR name)
 	{
-		static UINT count = 0;
-		const UINT countMax = 1; // NOTE: TEMP TO DELAY BLAS CONSTRUCTION
-		if (!m_isDirty && count > countMax) {
-			return;
-		}
-		else if (count < countMax) {
-			++count;
+		if (!m_isDirty) {
 			return;
 		}
 
@@ -183,15 +177,16 @@ namespace DX12Rendering {
 		else
 		{
 			ImGui::Text("Result GPU Addr: 0x%08x", m_result->GetGPUVirtualAddress());
-			ImGui::Text("Total Elements: %d", m_objectMap.size());
 		}
+
+		ImGui::Text("Total Elements: %d", m_objectMap.size());
 	}
 #endif
 #pragma endregion
 
 #pragma region TopLevelAccelerationStructure
-	TopLevelAccelerationStructure::TopLevelAccelerationStructure(BottomLevelAccelerationStructure* blas)
-		: m_blas(blas)
+	TopLevelAccelerationStructure::TopLevelAccelerationStructure(BottomLevelAccelerationStructure* m_blas)
+		: m_blas(m_blas)
 	{
 		for (UINT i = 0; i < DX12_FRAME_COUNT; ++i)
 		{
@@ -270,6 +265,11 @@ namespace DX12Rendering {
 
 	void TopLevelAccelerationStructure::FillInstanceDescriptor(ID3D12Device5* device, UINT64 instanceDescsSize)
 	{
+		if (!m_blas->IsReady())
+		{
+			return;
+		}
+
 		auto instances = m_instances[m_readFrameIndex];
 		bool shouldCleanMemory = m_lastInstanceCount > instances.size();
 
@@ -319,7 +319,13 @@ namespace DX12Rendering {
 		UINT64 resultSizeInBytes;
 		UINT64 instanceDescsSize;
 		
-		if (m_instances[m_readFrameIndex].size() == 0) {
+		if (m_instances[m_readFrameIndex].size() == 0) 
+		{
+			return false;
+		}
+
+		if (!m_blas->IsReady())
+		{
 			return false;
 		}
 

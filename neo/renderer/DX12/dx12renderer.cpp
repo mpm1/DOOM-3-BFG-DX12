@@ -186,7 +186,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	}
 
 	DX12Rendering::ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&m_copyCommandAllocator)));
-	m_copyCommandAllocator->SetName(L"Main Command Allocator");
+	m_copyCommandAllocator->SetName(L"Copy Command Allocator");
 }
 
 bool DX12Renderer::CreateBackBuffer() {
@@ -519,6 +519,14 @@ void DX12Renderer::BeginDraw() {
 		m_raytracing->BeginFrame();
 	}
 
+	// Reset Allocators.
+	if (m_copyFence.IsFenceCompleted()) {
+		//if (FAILED(m_copyCommandAllocator->Reset())) {
+		//	common->Warning("Could not reset the copy command allocator.");
+		//	//return;
+		//}
+	}
+
 	ResetCommandList(true);
 }
 
@@ -803,8 +811,9 @@ DX12TextureBuffer* DX12Renderer::AllocTextureBuffer(DX12TextureBuffer* buffer, D
 
 void DX12Renderer::FreeTextureBuffer(DX12TextureBuffer* buffer) {
 	if (buffer != nullptr) {
-		WaitForCopyToComplete();
 		WaitForPreviousFrame();
+		WaitForCopyToComplete();
+		
 		delete(buffer);
 	}
 }
@@ -826,8 +835,15 @@ void DX12Renderer::SetTextureContent(DX12TextureBuffer* buffer, const UINT mipLe
 		}
 	}
 
-	SetTextureCopyState(buffer, mipLevel);
-	UpdateSubresources(m_copyCommandList.Get(), buffer->textureBuffer.Get(), m_textureBufferUploadHeap.Get(), intermediateOffset, mipLevel, 1, &textureData);
+	if (buffer != nullptr)
+	{
+		SetTextureCopyState(buffer, mipLevel);
+		UpdateSubresources(m_copyCommandList.Get(), buffer->textureBuffer.Get(), m_textureBufferUploadHeap.Get(), intermediateOffset, mipLevel, 1, &textureData);
+	}
+	else
+	{
+		// TODO: Fix on null buffer.
+	}
 }
 
 void DX12Renderer::SetTexture(DX12TextureBuffer* buffer) {
@@ -861,11 +877,6 @@ bool DX12Renderer::SetTextureState(DX12TextureBuffer* buffer, const D3D12_RESOUR
 void DX12Renderer::StartTextureWrite(DX12TextureBuffer* buffer) {
 	WaitForCopyToComplete();
 
-	if (FAILED(m_copyCommandAllocator->Reset())) {
-		common->Warning("Could not reset the copy command allocator.");
-		return;
-	}
-
 	if (FAILED(m_copyCommandList->Reset(m_copyCommandAllocator.Get(), nullptr))) {
 		common->Warning("Could not reset the copy command list.");
 		return;
@@ -891,44 +902,48 @@ void DX12Renderer::DXR_ResetAccelerationStructure()
 	}
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
+	
+	m_raytracing->Wait();
 
 	m_raytracing->ResetGeneralTLAS();
 
-	m_raytracing->blas.Reset();
+	m_raytracing->GetBLAS()->Reset();
+
 	m_raytracing->ResetFrame();
 }
 
-void DX12Renderer::DXR_UpdateEntityInBLAS(qhandle_t entityHandle, const renderEntity_t* re)
+void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRenderModel* model)
 {
-	if (!IsRaytracingEnabled() || re == nullptr) {
+	if (!IsRaytracingEnabled() || model == nullptr) {
 		return;
 	}
 
 	// TODO: Add support for joints.
-	if (re->joints != NULL) {
+	if (model->GetJoints() != NULL) {
 		return;
 	}
 
 	// For now we are only supporting objects that can receive shadows.
-	if (re->noShadow)
+	if (!model->ModelHasShadowCastingSurfaces())
 	{
-		//return;
+		return;
 	}
 
-	if (re->hModel->NumSurfaces() <= 0) {
+	if (model->NumSurfaces() <= 0) {
 		return;
 	}
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
-	const dxHandle_t index = GetHandle(&entityHandle);
-	DX12Rendering::DX12AccelerationObject* result = m_raytracing->blas.GetAccelerationObject(index);
+
+	const dxHandle_t index = GetHandle(&modelHandle);
+	DX12Rendering::DX12AccelerationObject* result = m_raytracing->GetBLAS()->GetAccelerationObject(index);
 
 	DX12VertexBuffer* vertexBuffer = nullptr;
 	idIndexBuffer* indexBuffer = nullptr;
 
-	const modelSurface_t surf = *re->hModel->Surface(0);
-	const vertCacheHandle_t vbHandle = surf.geometry->ambientCache;
-	const vertCacheHandle_t ibHandle = surf.geometry->indexCache;
+	const modelSurface_t& surf = *model->Surface(0);
+	const vertCacheHandle_t& vbHandle = surf.geometry->ambientCache;
+	const vertCacheHandle_t& ibHandle = surf.geometry->indexCache;
 
 	int vertOffsetBytes;
 	int indexOffset;
@@ -944,16 +959,17 @@ void DX12Renderer::DXR_UpdateEntityInBLAS(qhandle_t entityHandle, const renderEn
 	}
 	else
 	{
-		if (!re->hModel->IsLoaded())
+		return;
+		/*if (!model->IsLoaded())
 		{
 			re->hModel->LoadModel();
-		}
+		}*/
 
-		std::vector<triIndex_t> indecies;
+		/*std::vector<triIndex_t> indecies;
 		std::vector<triIndex_t>::iterator iIterator = indecies.begin();
 		std::vector<idDrawVert> vertecies;
 
-		for (int sIndex = 0; sIndex < re->hModel->NumSurfaces(); ++sIndex)
+		for (int sIndex = 0; sIndex < model->NumSurfaces(); ++sIndex)
 		{
 			// TODO: make separate for each material.
 			const modelSurface_t* surf = re->hModel->Surface(sIndex);
@@ -970,8 +986,8 @@ void DX12Renderer::DXR_UpdateEntityInBLAS(qhandle_t entityHandle, const renderEn
 			}
 		}
 
-		m_raytracing->AddOrUpdateVertecies(m_device.Get(), entityHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
-		return;
+		m_raytracing->AddOrUpdateVertecies(m_device.Get(), modelHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
+		return;*/
 	};
 
 	if (result != nullptr)
@@ -980,7 +996,7 @@ void DX12Renderer::DXR_UpdateEntityInBLAS(qhandle_t entityHandle, const renderEn
 	}
 	else
 	{
-		m_raytracing->blas.AddAccelerationObject(
+		m_raytracing->GetBLAS()->AddAccelerationObject(
 			index,
 			vertexBuffer,
 			vertOffsetBytes,
@@ -994,14 +1010,17 @@ void DX12Renderer::DXR_UpdateEntityInBLAS(qhandle_t entityHandle, const renderEn
 
 void DX12Renderer::DXR_UpdateBLAS()
 {
-	if (!IsRaytracingEnabled()) {
+	if (true || !IsRaytracingEnabled()) {
 		return;
 	}
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	m_raytracing->blas.Generate(m_device.Get(), m_raytracing->GetCommandList(), m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE, L"Main Raytracing BLAS");
+
+	m_raytracing->GetBLAS()->Generate(m_device.Get(), m_raytracing->GetCommandList(), m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE, L"Main Raytracing BLAS");
 	
+	m_raytracing->Signal();
+
 	m_raytracing->ExecuteCommandList();
 	m_raytracing->ResetCommandList();
 
@@ -1045,7 +1064,7 @@ void DX12Renderer::DXR_AddEntityAccelerationStructure(const K& keyHandle, const 
 		return;
 	}
 
-	if (m_raytracing->blas.GetAccelerationObject(entityHandle) == nullptr) {
+	if (m_raytracing->m_blas.GetAccelerationObject(entityHandle) == nullptr) {
 		//common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
 		return;
 	}
@@ -1062,7 +1081,7 @@ void DX12Renderer::DXR_AddEntityAccelerationStructure(const std::nullptr_t& keyH
 		return;
 	}
 
-	if (m_raytracing->blas.GetAccelerationObject(entityHandle) == nullptr) {
+	if (m_raytracing->GetBLAS()->GetAccelerationObject(entityHandle) == nullptr) {
 		//common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
 		return;
 	}
@@ -1079,7 +1098,7 @@ void DX12Renderer::DXR_UpdateAccelerationStructure(const K& keyHandle)
 		return;
 	}
 
-	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
+	//DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
 
 	// Generate the TLAS resource
@@ -1096,7 +1115,7 @@ void DX12Renderer::DXR_UpdateAccelerationStructure(const std::nullptr_t& keyHand
 	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
 
 	// Generate the TLAS resource
-	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
+	//DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 	m_raytracing->GenerateTLAS(tlas);
 }
 
@@ -1125,6 +1144,7 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
+	m_raytracing->Wait();
 	return m_raytracing->CastRays(m_commandList.Get(), m_frameIndex, m_viewport, m_scissorRect);
 }
 

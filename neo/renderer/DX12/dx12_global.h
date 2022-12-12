@@ -60,6 +60,8 @@ namespace DX12Rendering {
 	void ThrowIfFailed(HRESULT hr);
 	bool WarnIfFailed(HRESULT hr);
 
+	static const DWORD FENCE_MAX_WAIT = INFINITE;
+
 	// From NVIDIAs DXRHelper code
 	// Specifies a heap used for uploading. This heap type has CPU access optimized
 	// for uploading to the GPU.
@@ -95,6 +97,11 @@ namespace DX12Rendering {
 			{
 				CloseHandle(m_fenceEvent);
 			}
+		}
+
+		void Invalidate()
+		{
+			m_value = 1;
 		}
 
 		HRESULT Allocate(ID3D12Device5* device)
@@ -134,12 +141,13 @@ namespace DX12Rendering {
 		{
 			assert(m_fence != nullptr);
 
-			return m_fence->GetCompletedValue() >= m_value;
+			UINT64 completedValue = m_fence->GetCompletedValue();
+			return completedValue >= m_value;
 		}
 
 		void Wait()
 		{
-			WaitLimitted(INFINITE);
+			WaitLimitted(FENCE_MAX_WAIT);
 		}
 
 		void WaitLimitted(DWORD waitTime)
@@ -187,6 +195,15 @@ struct DX12TextureBuffer
 	D3D12_SHADER_RESOURCE_VIEW_DESC textureView;
 	D3D12_RESOURCE_STATES usageState;
 	const idStr* name;
+
+
+	DX12TextureBuffer()
+	{
+		textureBuffer = nullptr;
+		textureView = {};
+		usageState = {};
+		name = nullptr;
+	}
 };
 
 struct DX12JointBuffer

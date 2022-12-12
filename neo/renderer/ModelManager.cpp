@@ -283,7 +283,7 @@ idRenderModel *idRenderModelManagerLocal::GetModel( const char *_modelName, bool
 					}
 				} else {
 					model->LoadModel();
-				}
+				}				
 			} else if ( insideLevelLoad && !model->IsLevelLoadReferenced() ) {
 				// we are reusing a model already in memory, but
 				// touch all the materials to make sure they stay
@@ -532,6 +532,8 @@ idRenderModelManagerLocal::BeginLevelLoad
 void idRenderModelManagerLocal::BeginLevelLoad() {
 	insideLevelLoad = true;
 
+	dxRenderer.DXR_ResetAccelerationStructure(); // If raytracing is enabled, this will begin the setup for the bottom level acceleration structure.
+
 	for ( int i = 0; i < models.Num(); i++ ) {
 		idRenderModel *model = models[i];
 
@@ -665,14 +667,19 @@ void idRenderModelManagerLocal::EndLevelLoad() {
 	for ( int i = 0; i < models.Num(); i++ ) {
 		common->UpdateLevelLoadPacifier();
 
-
 		idRenderModel *model = models[i];
 		if ( model->IsLoaded() ) {
 			for ( int j = 0; j < model->NumSurfaces(); j++ ) {
 				R_CreateStaticBuffersForTri( *(model->Surface( j )->geometry) );
 			}
+
+			// Add the data to the blas structure.
+			dxRenderer.DXR_UpdateModelInBLAS(i, model);
 		}
 	}
+
+	// Update the raytracing structure if needed.
+	dxRenderer.DXR_UpdateBLAS();
 
 
 	// _D3XP added this

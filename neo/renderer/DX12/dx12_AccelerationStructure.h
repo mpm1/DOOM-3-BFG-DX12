@@ -57,6 +57,8 @@ public:
 
 	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() { return m_result->GetGPUVirtualAddress(); }
 
+	bool IsReady() { return m_result != nullptr; }
+
 	void Reset();
 	void Generate(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT64 scratchBufferSize, LPCWSTR name);
 	void CalculateBufferSize(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags);
@@ -69,13 +71,13 @@ private:
 	std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> m_vertexBuffers = {};
 	ComPtr<ID3D12Resource> m_result = nullptr;
 	UINT64 m_resultSizeInBytes = 0;
-	std::atomic_bool m_isDirty = true;
+	std::atomic_bool m_isDirty = false;
 	const UINT64 m_defaultResultSizeInBytes = 1024 * 1024 * 4; //TODO: Calculate the best amount for this.
 };
 
 class DX12Rendering::TopLevelAccelerationStructure {
 public:
-	TopLevelAccelerationStructure(BottomLevelAccelerationStructure* blas);
+	TopLevelAccelerationStructure(BottomLevelAccelerationStructure* m_blas);
 	~TopLevelAccelerationStructure();
 
 	void AddInstance(const dxHandle_t& index, const float transform[16]);

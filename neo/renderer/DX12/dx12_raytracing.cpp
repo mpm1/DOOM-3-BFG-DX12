@@ -27,7 +27,7 @@ namespace DX12Rendering {
 		m_hitSignature(device, NONE),
 		m_width(screenWidth),
 		m_height(screenHeight),
-		m_generalTlas(&blas),
+		m_staticTlas(&m_blas),
 		m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
 		m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
@@ -40,9 +40,13 @@ namespace DX12Rendering {
 			kDefaultHeapProps);
 		scratchBuffer->SetName(L"Raytracing Scratch Buffer");
 
+		m_fence.Allocate(m_device);
+
 		CreateCommandList();
 		CreateShadowPipeline();
 		CreateCBVHeap(sizeof(m_constantBuffer));
+
+		Signal();
 	}
 
 	Raytracing::~Raytracing()
@@ -194,7 +198,7 @@ namespace DX12Rendering {
 
 	void Raytracing::ResetGeneralTLAS()
 	{
-		m_generalTlas.Reset();
+		m_staticTlas.Reset();
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
@@ -236,6 +240,8 @@ namespace DX12Rendering {
 		const CD3DX12_RECT& scissorRect
 	)
 	{
+		m_fence.Wait();
+
 		DX12Rendering::TopLevelAccelerationStructure* tlas = GetGeneralTLAS();
 
 		if (tlas == nullptr || tlas->IsReadEmpty()) {
@@ -286,6 +292,8 @@ namespace DX12Rendering {
 		// Generate the ray traced image.
 		commandList->SetPipelineState1(m_shadowStateObject.Get());
 		commandList->DispatchRays(&desc);
+		
+		m_fence.Signal(m_device, m_commandQueue.Get());
 
 		return true;
 	}
@@ -387,12 +395,12 @@ namespace DX12Rendering {
 			// BLAS information
 			if (ImGui::CollapsingHeader("Bottom Level Acceleration Structor", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				blas.ImGuiDebug();
+				m_blas.ImGuiDebug();
 			}
 
 			// TLAS information
 			ImGui::CollapsingHeader("General TLAS", ImGuiTreeNodeFlags_DefaultOpen);
-			m_generalTlas.ImGuiDebug();
+			m_staticTlas.ImGuiDebug();
 
 			// Constant Information
 			ImGui::CollapsingHeader("Shader Constants", ImGuiTreeNodeFlags_DefaultOpen);

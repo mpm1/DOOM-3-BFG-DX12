@@ -20,6 +20,8 @@
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
+class idRenderModel;
+
 // TODO: Start setting frame data to it's own object to make it easier to manage.
 struct DX12FrameDataBuffer
 {
@@ -93,7 +95,7 @@ public:
 
 #pragma region RayTracing
 	void DXR_ResetAccelerationStructure(); // Resets the bottom level acceleration structure to an empty state.
-	void DXR_UpdateEntityInBLAS(const qhandle_t entityHandle, const renderEntity_t* re);
+	void DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRenderModel* model);
 	void DXR_UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
 
 	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);

@@ -3008,7 +3008,7 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 			break;
 
 		case RC_DRAW_VIEW_3D:
-			if (dxRenderer.IsRaytracingEnabled())
+			if (false && dxRenderer.IsRaytracingEnabled())
 			{
 				RB_PathTraceView(cmds);
 			}
