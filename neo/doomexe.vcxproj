@@ -179,7 +179,7 @@
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">$(DXSDK_DIR)\Include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WIN32;_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WIN32;_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12;DEBUG_NSIGHTS</PreprocessorDefinitions>
       <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">_USE_32BIT_TIME_T;%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp14</LanguageStandard>
     </ClCompile>
@@ -275,6 +275,7 @@
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
     <ClInclude Include="renderer\DX12\dx12_AccelerationStructure.h" />
     <ClInclude Include="renderer\DX12\dx12_buffermap.h" />
+    <ClInclude Include="renderer\DX12\dx12_CommandList.h" />
     <ClInclude Include="renderer\DX12\dx12_global.h" />
     <ClInclude Include="renderer\DX12\dx12_imgui.h" />
     <ClInclude Include="renderer\DX12\dx12_raytracing.h" />
@@ -534,6 +535,7 @@
     <ClCompile Include="renderer\DX12\dx12_backend.cpp" />
     <ClCompile Include="renderer\DX12\dx12_buffermap.cpp" />
     <ClCompile Include="renderer\DX12\dx12_BufferObject.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_CommandList.cpp" />
     <ClCompile Include="renderer\DX12\dx12_global.cpp" />
     <ClCompile Include="renderer\DX12\dx12_imgui.cpp" />
     <ClCompile Include="renderer\DX12\dx12_raytracing.cpp" />

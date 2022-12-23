@@ -78,3 +78,17 @@ ID3D12DescriptorHeap* DX12Rendering::CreateDescriptorHeap(ID3D12Device* device, 
 
 	return heap;
 }
+
+const UINT8 DX12Rendering::GetCurrentFrameIndex() { return m_frameIndex; }
+const UINT8 DX12Rendering::GetLastFrameIndex() { return m_frameIndex == 0 ? DX12_FRAME_COUNT - 1 : m_frameIndex - 1; }
+const UINT8 DX12Rendering::IncrementFrameIndex()
+{
+	++m_frameIndex;
+
+	if (m_frameIndex == DX12_FRAME_COUNT)
+	{
+		m_frameIndex = 0;
+	}
+
+	return m_frameIndex;
+}

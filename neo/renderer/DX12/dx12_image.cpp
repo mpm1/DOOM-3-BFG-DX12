@@ -564,7 +564,7 @@ void idImage::Resize(int width, int height) {
 bool idImage::IsLoaded() const {
 	if (textureResource != nullptr) {
 		auto address = static_cast<DX12TextureBuffer*>(textureResource)->textureBuffer.GetAddressOf();
-		return *address != NULL;
+		return address != NULL;
 	}
 
 	return false;

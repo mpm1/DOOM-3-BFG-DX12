@@ -2,6 +2,8 @@
 
 #include "./dx12_AccelerationStructure.h"
 
+#include "./dx12_CommandList.h"
+
 namespace DX12Rendering {
 #pragma region TopLevelAccelerationStructure
 	BottomLevelAccelerationStructure::BottomLevelAccelerationStructure() 
@@ -68,7 +70,7 @@ namespace DX12Rendering {
 		m_isDirty = false;
 	}
 
-	void BottomLevelAccelerationStructure::Generate(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT64 inputScratchSizeInBytes, LPCWSTR name)
+	void BottomLevelAccelerationStructure::Generate(ID3D12Device5* device, ID3D12Resource* scratchBuffer, UINT64 inputScratchSizeInBytes, LPCWSTR name)
 	{
 		if (!m_isDirty) {
 			return;
@@ -91,6 +93,8 @@ namespace DX12Rendering {
 			FailMessage("BottomLevelAccelerationStructure: Invalid calculated buffer size.");
 			return;
 		}
+
+		DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
 
 		if (!isUpdate)
 		{
@@ -117,33 +121,41 @@ namespace DX12Rendering {
 		} 
 		else
 		{
-			// Provide a barrier to make sure we are done using the resource.
-			D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_result.Get());
-			commandList->ResourceBarrier(1, &uavBarrier);
+			commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+			{
+				// Provide a barrier to make sure we are done using the resource.
+				D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_result.Get());
+				commandList->ResourceBarrier(1, &uavBarrier);
+			});
 		}
 
 		assert(inputScratchSizeInBytes >= testScratchSizeInBytes);
 
-		// Describe the BLAS data
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasDesc;
-		blasDesc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-		blasDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		blasDesc.Inputs.NumDescs = static_cast<UINT>(m_vertexBuffers.size());
-		blasDesc.Inputs.pGeometryDescs = m_vertexBuffers.data();
-		blasDesc.Inputs.Flags = flags | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
-		blasDesc.DestAccelerationStructureData = { m_result->GetGPUVirtualAddress() };
-		blasDesc.ScratchAccelerationStructureData = { scratchBuffer->GetGPUVirtualAddress() };
-		blasDesc.SourceAccelerationStructureData = isUpdate ? m_result->GetGPUVirtualAddress() : NULL;
+		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		{
+			// Describe the BLAS data
+			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasDesc;
+			blasDesc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+			blasDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+			blasDesc.Inputs.NumDescs = static_cast<UINT>(m_vertexBuffers.size());
+			blasDesc.Inputs.pGeometryDescs = m_vertexBuffers.data();
+			blasDesc.Inputs.Flags = flags | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
+			blasDesc.DestAccelerationStructureData = { m_result->GetGPUVirtualAddress() };
+			blasDesc.ScratchAccelerationStructureData = { scratchBuffer->GetGPUVirtualAddress() };
+			blasDesc.SourceAccelerationStructureData = isUpdate ? m_result->GetGPUVirtualAddress() : NULL;
 
-		// Build the acceleration structure.
-		commandList->BuildRaytracingAccelerationStructure(&blasDesc, 0, nullptr);
+			// Build the acceleration structure.
+			commandList->BuildRaytracingAccelerationStructure(&blasDesc, 0, nullptr);
 
-		// Wait for the building of the blas to complete.
-		D3D12_RESOURCE_BARRIER uavBarrier;
-		uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-		uavBarrier.UAV.pResource = m_result.Get();
-		uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		commandList->ResourceBarrier(1, &uavBarrier);
+			// Wait for the building of the blas to complete.
+			D3D12_RESOURCE_BARRIER uavBarrier;
+			uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+			uavBarrier.UAV.pResource = m_result.Get();
+			uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+			commandList->ResourceBarrier(1, &uavBarrier);
+
+			m_fence.Signal(device, commandQueue);
+		});
 	}
 
 	void BottomLevelAccelerationStructure::CalculateBufferSize(
@@ -311,7 +323,7 @@ namespace DX12Rendering {
 		m_instanceDesc->Unmap(0, nullptr);
 	}
 
-	bool TopLevelAccelerationStructure::UpdateResources(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT scratchBufferSize) {
+	bool TopLevelAccelerationStructure::UpdateResources(ID3D12Device5* device, ID3D12Resource* scratchBuffer, UINT scratchBufferSize) {
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
 			? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
 			: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
@@ -367,14 +379,20 @@ namespace DX12Rendering {
 		descriptor.SourceAccelerationStructureData = pSourceAS;
 
 		// Build the top level AS
-		commandList->BuildRaytracingAccelerationStructure(&descriptor, 0, nullptr);
+		auto commandList = Commands::GetCommandList(Commands::COMPUTE);
+		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		{
+			commandList->BuildRaytracingAccelerationStructure(&descriptor, 0, nullptr);
 
-		// Wait for the buffer to complete setup.
-		D3D12_RESOURCE_BARRIER uavBarrier;
-		uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-		uavBarrier.UAV.pResource = m_result.Get();
-		uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
-		commandList->ResourceBarrier(1, &uavBarrier);
+			// Wait for the buffer to complete setup.
+			D3D12_RESOURCE_BARRIER uavBarrier;
+			uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+			uavBarrier.UAV.pResource = m_result.Get();
+			uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+			commandList->ResourceBarrier(1, &uavBarrier);
+
+			m_fence.Signal(device, commandQueue);
+		});
 
 		return true;
 	}

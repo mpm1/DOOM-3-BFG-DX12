@@ -7,7 +7,7 @@
 #include <comdef.h>
 #include <type_traits>
 
-idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_useRayTraycing("r_useRayTraycing", "0", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
@@ -133,19 +133,9 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 		DX12Rendering::ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&m_device)));
 	}
 
-	// Describe and create the command queue
-	D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
+	DX12Rendering::Commands::InitializeCommandLists(m_device.Get());
 
-	DX12Rendering::ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_directCommandQueue)));
-
-	// Describe and create the copy command queue
-	D3D12_COMMAND_QUEUE_DESC copyQueueDesc = {};
-	queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
-	queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
-
-	DX12Rendering::ThrowIfFailed(m_device->CreateCommandQueue(&queueDesc, IID_PPV_ARGS(&m_copyCommandQueue)));
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
 	// Describe and create the swap chain
 	DXGI_SWAP_CHAIN_DESC swapChainDesc = {};
@@ -160,7 +150,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	swapChainDesc.Windowed = TRUE; //TODO: Change to option
 
 	ComPtr<IDXGISwapChain> swapChain;
-	DX12Rendering::ThrowIfFailed(factory->CreateSwapChain(m_directCommandQueue.Get(), &swapChainDesc, &swapChain));
+	DX12Rendering::ThrowIfFailed(factory->CreateSwapChain(commandList->GetCommandQueue(), &swapChainDesc, &swapChain));
 
 	DX12Rendering::ThrowIfFailed(swapChain.As(&m_swapChain));
 
@@ -175,18 +165,6 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 
 	// Create Frame Resources
 	ZeroMemory(&this->m_constantBuffer, sizeof(m_constantBuffer));
-
-	// Create the command allocators
-	for (int frame = 0; frame < DX12_FRAME_COUNT; ++frame)  {
-		WCHAR nameDest[25];
-		wsprintfW(nameDest, L"Main Command Allocator %d", frame);
-		
-		DX12Rendering::ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_directCommandAllocator[frame])));
-		m_directCommandAllocator[frame]->SetName(nameDest);
-	}
-
-	DX12Rendering::ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_COPY, IID_PPV_ARGS(&m_copyCommandAllocator)));
-	m_copyCommandAllocator->SetName(L"Copy Command Allocator");
 }
 
 bool DX12Renderer::CreateBackBuffer() {
@@ -506,6 +484,8 @@ void DX12Renderer::BeginDraw() {
 
 	WaitForPreviousFrame();
 
+	DX12Rendering::Commands::CommandListsBeginFrame();
+
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
 	m_rootSignature->BeginFrame(m_frameIndex);
@@ -546,8 +526,11 @@ void DX12Renderer::EndDraw() {
 
 	ExecuteCommandList();
 
+	DX12Rendering::Commands::CommandListsEndFrame();
+
 	m_isDrawing = false;
 	
+	DX12Rendering::IncrementFrameIndex();
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
 
 	//DX12Rendering::CaptureEventEnd(m_commandList.Get());
@@ -897,19 +880,19 @@ void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
 
 void DX12Renderer::DXR_ResetAccelerationStructure()
 {
+	
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 	
-	m_raytracing->Wait();
-
 	m_raytracing->ResetGeneralTLAS();
 
 	m_raytracing->GetBLAS()->Reset();
 
-	m_raytracing->ResetFrame();
+	// TODO: what else do we need to reset.
+	//m_raytracing->ResetFrame();
 }
 
 void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRenderModel* model)
@@ -1010,19 +993,18 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 
 void DX12Renderer::DXR_UpdateBLAS()
 {
-	if (true || !IsRaytracingEnabled()) {
+	if (!IsRaytracingEnabled()) {
 		return;
 	}
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-
-	m_raytracing->GetBLAS()->Generate(m_device.Get(), m_raytracing->GetCommandList(), m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE, L"Main Raytracing BLAS");
+	m_raytracing->GetBLAS()->Generate(m_device.Get(), m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE, L"Main Raytracing BLAS");
 	
-	m_raytracing->Signal();
-
-	m_raytracing->ExecuteCommandList();
-	m_raytracing->ResetCommandList();
+	//TODO: Move this to a more generalized execution tract.
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
+	commandList->Execute();
+	commandList->Reset();
 
 	m_raytracing->CleanUpAccelerationStructure();
 }
@@ -1065,7 +1047,7 @@ void DX12Renderer::DXR_AddEntityAccelerationStructure(const K& keyHandle, const 
 	}
 
 	if (m_raytracing->m_blas.GetAccelerationObject(entityHandle) == nullptr) {
-		//common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
+		common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
 		return;
 	}
 
@@ -1082,7 +1064,7 @@ void DX12Renderer::DXR_AddEntityAccelerationStructure(const std::nullptr_t& keyH
 	}
 
 	if (m_raytracing->GetBLAS()->GetAccelerationObject(entityHandle) == nullptr) {
-		//common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
+		common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
 		return;
 	}
 
@@ -1144,8 +1126,7 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
-	m_raytracing->Wait();
-	return m_raytracing->CastRays(m_commandList.Get(), m_frameIndex, m_viewport, m_scissorRect);
+	return m_raytracing->CastRays(m_frameIndex, m_viewport, m_scissorRect);
 }
 
 void DX12Renderer::DXR_DenoiseResult()

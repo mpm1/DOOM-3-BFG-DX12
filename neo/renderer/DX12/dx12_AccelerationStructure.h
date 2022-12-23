@@ -57,10 +57,10 @@ public:
 
 	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() { return m_result->GetGPUVirtualAddress(); }
 
-	bool IsReady() { return m_result != nullptr; }
+	bool IsReady() { return m_result != nullptr && m_fence.IsFenceCompleted(); }
 
 	void Reset();
-	void Generate(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT64 scratchBufferSize, LPCWSTR name);
+	void Generate(ID3D12Device5* device, ID3D12Resource* scratchBuffer, UINT64 scratchBufferSize, LPCWSTR name);
 	void CalculateBufferSize(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags);
 
 #ifdef DEBUG_IMGUI
@@ -73,6 +73,8 @@ private:
 	UINT64 m_resultSizeInBytes = 0;
 	std::atomic_bool m_isDirty = false;
 	const UINT64 m_defaultResultSizeInBytes = 1024 * 1024 * 4; //TODO: Calculate the best amount for this.
+
+	DX12Rendering::Fence m_fence;
 };
 
 class DX12Rendering::TopLevelAccelerationStructure {
@@ -84,7 +86,12 @@ public:
 	void Reset(); // Clears the acceleration structure.
 	void IncrementFrameIndex();
 
-	bool IsReadEmpty() { return m_instances[m_readFrameIndex].size() == 0; }
+	bool IsReady() 
+	{ 
+		return m_result != nullptr &&
+			m_instances[m_readFrameIndex].size() > 0 &&
+			m_fence.IsFenceCompleted();
+	}
 
 	/// <summary>
 	/// Updates the TLAS resource structure.
@@ -94,7 +101,7 @@ public:
 	/// <param name="scratchBuffer"></param>
 	/// <param name="scratchBufferSize"></param>
 	/// <returns>True if the resource buffer was updated. False otherwise.</returns>
-	bool UpdateResources(ID3D12Device5* device, ID3D12GraphicsCommandList4* commandList, ID3D12Resource* scratchBuffer, UINT scratchBufferSize);
+	bool UpdateResources(ID3D12Device5* device, ID3D12Resource* scratchBuffer, UINT scratchBufferSize);
 
 	D3D12_GPU_VIRTUAL_ADDRESS GetGPUVirtualAddress() { return m_result->GetGPUVirtualAddress(); }
 	ID3D12Resource* GetResult() { return m_result.Get(); }
@@ -115,6 +122,8 @@ private:
 	std::vector<DX12Rendering::Instance> m_instances[DX12_FRAME_COUNT];
 	UINT16 m_readFrameIndex = 0;
 	UINT16 m_writeFrameIndex = 1;
+
+	DX12Rendering::Fence m_fence;
 
 	void CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize);
 	void FillInstanceDescriptor(ID3D12Device5* device, UINT64 instanceDescsSize);

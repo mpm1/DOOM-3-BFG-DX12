@@ -615,6 +615,9 @@
     <ClInclude Include="renderer\DX12\dx12_resource.h">
       <Filter>Renderer\DX12</Filter>
     </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_CommandList.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cm\CollisionModel_contacts.cpp">
@@ -1290,6 +1293,9 @@
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_resource.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_CommandList.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
   </ItemGroup>

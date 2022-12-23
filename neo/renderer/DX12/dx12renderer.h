@@ -6,6 +6,7 @@
 #include <mutex>
 
 #include "./dx12_global.h"
+#include "./dx12_CommandList.h"
 #include "./dx12_RootSignature.h"
 #include "./dx12_raytracing.h"
 
@@ -155,14 +156,6 @@ private:
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
 	ComPtr<ID3D12Resource> m_depthBuffer;
 	DX12RootSignature* m_rootSignature;
-
-	// Command List
-	ComPtr<ID3D12CommandQueue> m_directCommandQueue;
-	ComPtr<ID3D12CommandQueue> m_copyCommandQueue;
-	ComPtr<ID3D12CommandAllocator> m_directCommandAllocator[DX12_FRAME_COUNT];
-	ComPtr<ID3D12CommandAllocator> m_copyCommandAllocator;
-	ComPtr<ID3D12GraphicsCommandList4> m_commandList;
-	ComPtr<ID3D12GraphicsCommandList> m_copyCommandList;
 
 	XMFLOAT4 m_constantBuffer[53];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];

@@ -2,6 +2,7 @@
 #define __DX12_RAYTRACING_H__
 
 #include "./dx12_global.h"
+#include "./dx12_CommandList.h"
 #include "./RaytracingRootSignature.h"
 #include "./dx12_RaytracingPipeline.h"
 #include "./dx12_ShaderBindingTable.h"
@@ -54,14 +55,6 @@ public:
 
 	void Resize(UINT width, UINT height);
 
-	/// <summary>
-	/// Resets the command allocator. Should be called after a frame is completed.
-	/// </summary>
-	void ResetFrame();
-	void ExecuteCommandList();
-	void ResetCommandList();
-	ID3D12GraphicsCommandList4* GetCommandList() const { return m_commandList.Get();  }
-
 	DX12Rendering::BottomLevelAccelerationStructure* GetBLAS() { return &m_blas; }
 
 	void Uniform4f(dxr_renderParm_t param, const float* uniform);
@@ -74,16 +67,6 @@ public:
 
 	void BeginFrame(){ GetGeneralTLAS()->IncrementFrameIndex(); }
 
-#pragma region Syncronization
-	// Used to signal that we need to wait for commands to complete
-	void Signal() { m_fence.Signal(m_device, m_commandQueue.Get()); }
-
-	// Wait's for the raytracing commands to complete.
-	void Wait() { m_fence.Wait(); }
-#pragma endregion
-
-
-
 	/// <summary>
 	/// Cast rays into the scene through the general TLAS.
 	/// </summary>
@@ -92,7 +75,6 @@ public:
 	/// <param name="scissorRect">Any scissor rectable size.</param>
 	/// <returns></returns>
 	bool CastRays(
-		ID3D12GraphicsCommandList4* commandList,
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect
@@ -117,8 +99,6 @@ private:
 	ID3D12Device5* m_device;
 	UINT m_width;
 	UINT m_height;
-
-	DX12Rendering::Fence m_fence;
 
 	DX12Rendering::VertexBufferMap m_localVertexBuffer;
 	DX12Rendering::IndexBufferMap m_localIndexBuffer;
@@ -146,10 +126,6 @@ private:
 
 	ShaderBindingTable m_generalSBTDesc;
 
-	ComPtr<ID3D12CommandQueue> m_commandQueue;
-	ComPtr<ID3D12CommandAllocator> m_commandAllocator;
-	ComPtr<ID3D12GraphicsCommandList4> m_commandList;
-
 	// Pipeline
 	void CreateShadowPipeline();
 	void CreateOutputBuffers();
@@ -160,14 +136,9 @@ private:
 
 	void CreateCBVHeap(const size_t constantBufferSize);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(
-		ID3D12GraphicsCommandList* commandList, 
 		const size_t constantBufferSize, 
 		const XMFLOAT4* constantBuffer, 
 		const UINT frameIndex);
-
-	// Command List
-	void CreateCommandList();
-	void ResetCommandAllocator();
 
 	// Acceleration Structure
 
