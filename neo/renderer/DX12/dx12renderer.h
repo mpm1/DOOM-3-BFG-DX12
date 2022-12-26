@@ -80,16 +80,15 @@ public:
 	void EndTextureWrite(DX12TextureBuffer* buffer);
 	bool SetTextureCopyState(DX12TextureBuffer* buffer, const UINT mipLevel);
 	bool SetTexturePixelShaderState(DX12TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
-	bool SetTextureState(DX12TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, ID3D12GraphicsCommandList *commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	bool SetTextureState(DX12TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
 
 	// Draw commands
 	void BeginDraw();
 	void Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4]);
 	void EndDraw();
 	void PresentBackbuffer();
-	void ResetCommandList(bool waitForBackBuffer = false);
 	void SetCommandListDefaults(const bool resetPipelineState = true);
-	void ExecuteCommandList();
+	void CycleDirectCommandList();
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
 	bool EndSurfaceSettings(); // Records the the surface entry into the heap.
 	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);

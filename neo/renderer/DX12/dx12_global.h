@@ -19,7 +19,7 @@
 
 #ifdef _DEBUG
 
-#include "dx12_imgui.h"
+//#include "dx12_imgui.h"
 
 #ifdef DEBUG_PIX
 //#include <pix3.h>
@@ -78,8 +78,6 @@ namespace DX12Rendering {
 	ID3D12DescriptorHeap* CreateDescriptorHeap(ID3D12Device* device, uint32_t count, D3D12_DESCRIPTOR_HEAP_TYPE type, bool shaderVisible);
 
 	// FrameIndexing
-	UINT8 m_frameIndex = 0;
-
 	const UINT8 GetCurrentFrameIndex();
 	const UINT8 GetLastFrameIndex();
 	const UINT8 IncrementFrameIndex();

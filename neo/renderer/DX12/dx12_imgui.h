@@ -13,5 +13,5 @@ namespace DX12Rendering
 
 	void ImGui_InitForGame(void* hwnd, ID3D12Device* device, int num_frames_in_flight, ID3D12DescriptorHeap* cbv_srv_heap);
 	void ImGui_StartFrame();
-	void ImGui_EndFrame(ID3D12GraphicsCommandList* commandList, ID3D12DescriptorHeap* cbv_srv_heap);
+	void ImGui_EndFrame(ID3D12DescriptorHeap* cbv_srv_heap);
 };

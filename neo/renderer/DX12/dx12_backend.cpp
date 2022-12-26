@@ -24,13 +24,12 @@ void DebugCycleCommandList(std::string caller, std::string file, int line)
 {
 	common->DPrintf("Cycling CommandList for %s in %s:line %d\n", caller.c_str(), file.c_str(), line);
 
-	dxRenderer.ExecuteCommandList(); 
-	dxRenderer.ResetCommandList();
+	dxRenderer.CycleDirectCommandList();
 }
 
 #define CYCLE_COMMAND_LIST() DebugCycleCommandList(__FUNCTION__, __FILE__, __LINE__)
 #else
-#define CYCLE_COMMAND_LIST() dxRenderer.ExecuteCommandList();dxRenderer.ResetCommandList()
+#define CYCLE_COMMAND_LIST() dxRenderer.CycleDirectCommandList()
 #endif
 
 bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 

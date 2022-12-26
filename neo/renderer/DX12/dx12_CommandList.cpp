@@ -72,10 +72,15 @@ namespace DX12Rendering {
 
 
 #pragma region CommandList
-		CommandList::CommandList(ID3D12Device5* device, D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, LPCWSTR name)
+		CommandList::CommandList(ID3D12Device5* device, D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, const LPCWSTR name)
 			: resetPerFrame(resetPerFrame),
 			m_device(device),
-			m_isDirty(false)
+			m_state(UNKNOWN),
+			m_commandCount(0),
+			m_commandThreshold(128),
+#ifdef _DEBUG
+			m_name(std::wstring(name))
+#endif
 		{
 			// Describe and create the command queue
 			ThrowIfFailed(device->CreateCommandQueue(queueDesc, IID_PPV_ARGS(&m_commandQueue)));
@@ -97,6 +102,8 @@ namespace DX12Rendering {
 			DX12Rendering::ThrowIfFailed(m_commandList->Close());
 			std::wstring commandListName = std::wstring(name) + L" Command List";
 			m_commandList->SetName(commandListName.c_str());
+
+			m_state = CLOSED;
 		}
 
 		CommandList::~CommandList()
@@ -104,19 +111,51 @@ namespace DX12Rendering {
 
 		}
 
+		void CommandList::BeginCommandChunk()
+		{
+			assert(m_state == OPEN);
+
+			m_state = IN_CHUNK;
+		}
+
+		void CommandList::EndCommandChunk()
+		{
+			assert(m_state == IN_CHUNK);
+
+			m_state = OPEN;
+		}
+
+		void CommandList::AddCommand(CommandFunction func)
+		{
+			if (func != nullptr)
+			{
+				assert(m_state >= OPEN && m_state <= IN_CHUNK);
+
+				func(m_commandList.Get(), m_commandQueue.Get());
+
+				++m_commandCount;
+				if (m_commandCount >= m_commandThreshold)
+				{
+					Cycle();
+				}
+			}
+		}
+
 		bool CommandList::Execute()
 		{
-			if (!WarnIfFailed(m_commandList->Close()))
+			if (IsExecutable())
 			{
-				return false;
-			}
+				if (!WarnIfFailed(m_commandList->Close()))
+				{
+					return false;
+				}
 
-			if (m_isDirty)
-			{
+				m_state = CLOSED;
+
 				ID3D12CommandList* const ppCommandLists[] = { m_commandList.Get() };
 				m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 
-				m_isDirty = false;
+				m_commandCount = 0;
 			}
 
 			return true;
@@ -124,12 +163,15 @@ namespace DX12Rendering {
 
 		bool CommandList::Reset()
 		{
-			if (m_isDirty)
+			if (m_state < CLOSED)
 			{
 				return false;
 			}
 
-			return WarnIfFailed(m_commandList->Reset(m_commandAllocator[GetCurrentFrameIndex()].Get(), NULL));
+			bool result = WarnIfFailed(m_commandList->Reset(m_commandAllocator[GetCurrentFrameIndex()].Get(), NULL));
+			m_state = OPEN;
+
+			return result;
 		}
 
 		bool CommandList::BeginFrame()

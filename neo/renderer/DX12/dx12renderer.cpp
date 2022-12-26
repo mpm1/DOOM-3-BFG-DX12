@@ -252,7 +252,7 @@ void DX12Renderer::SetActivePipelineState(ID3D12PipelineState* pPipelineState) {
 		m_activePipelineState = pPipelineState;
 
 		if (m_isDrawing) {
-			m_commandList->SetPipelineState(pPipelineState);
+			DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT)->CommandSetPipelineState(pPipelineState);
 		}
 	}
 }
@@ -291,28 +291,6 @@ void DX12Renderer::LoadAssets() {
 
 	// Create Empty Root Signature
 	m_rootSignature = new DX12RootSignature(m_device.Get(), sizeof(m_constantBuffer));
-
-	// Create the Command Lists
-	{
-		DX12Rendering::ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_directCommandAllocator[m_frameIndex].Get(), NULL, IID_PPV_ARGS(&m_commandList)));
-		DX12Rendering::ThrowIfFailed(m_commandList->Close());
-
-		WCHAR nameDest[16];
-		wsprintfW(nameDest, L"Command List %d", 0);
-
-		m_commandList->SetName(static_cast<LPCWSTR>(nameDest));
-	}
-
-	// Create the Copy Command Lists
-	{
-		DX12Rendering::ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_COPY, m_copyCommandAllocator.Get(), NULL, IID_PPV_ARGS(&m_copyCommandList)));
-		DX12Rendering::ThrowIfFailed(m_copyCommandList->Close());
-
-		WCHAR nameDest[20];
-		wsprintfW(nameDest, L"Copy Command List %d", 0);
-
-		m_copyCommandList->SetName(static_cast<LPCWSTR>(nameDest));
-	}
 
 	{
 		// Create the texture upload heap.
@@ -406,11 +384,12 @@ void DX12Renderer::FreeJointBuffer(DX12JointBuffer* buffer) {
 }
 
 void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset) {
-	D3D12_CONSTANT_BUFFER_VIEW_DESC descriptor = m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, m_frameIndex, m_commandList.Get());
+	D3D12_CONSTANT_BUFFER_VIEW_DESC descriptor = m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, m_frameIndex, DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT));
 }
 
 void DX12Renderer::SignalNextFrame() {
-	m_frameFence.Signal(m_device.Get(), m_directCommandQueue.Get());
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	m_frameFence.Signal(m_device.Get(), commandList->GetCommandQueue());
 }
 
 void DX12Renderer::WaitForPreviousFrame() {
@@ -421,58 +400,47 @@ void DX12Renderer::WaitForCopyToComplete() {
 	m_copyFence.Wait();
 }
 
-void DX12Renderer::ResetCommandList(bool waitForBackBuffer) {
+void DX12Renderer::SetCommandListDefaults(const bool resetPipelineState) {
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+
+	commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	{
+		auto rootSignature = m_rootSignature->GetRootSignature();
+		if (rootSignature != nullptr)
+		{
+			commandList->SetGraphicsRootSignature(rootSignature);
+		}
+
+		if (m_activePipelineState != nullptr) {
+			commandList->SetPipelineState(m_activePipelineState);
+		}
+
+		commandList->RSSetViewports(1, &m_viewport);
+		commandList->RSSetScissorRects(1, &m_scissorRect);
+
+		commandList->OMSetStencilRef(m_stencilRef);
+
+		const CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
+		const CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+		commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
+
+		// Setup the initial heap location
+		ID3D12DescriptorHeap* descriptorHeaps[1] = {
+			m_rootSignature->GetCBVHeap(m_frameIndex),
+		};
+		commandList->SetDescriptorHeaps(1, descriptorHeaps);
+	});
+}
+
+void DX12Renderer::CycleDirectCommandList() {
 	if (!m_isDrawing) {
 		return;
 	}
 
-	DX12Rendering::ThrowIfFailed(m_commandList->Reset(m_directCommandAllocator[m_frameIndex].Get(), m_activePipelineState));
-	
-	auto rootSignature = m_rootSignature->GetRootSignature();
-	if (rootSignature != nullptr)
-	{
-		m_commandList->SetGraphicsRootSignature(rootSignature);
-	}
-
-	if (waitForBackBuffer) {
-		// Indicate that we will be rendering to the back buffer
-		m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
-	}
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	commandList->Cycle();
 
 	SetCommandListDefaults(false);
-}
-
-void DX12Renderer::SetCommandListDefaults(const bool resetPipelineState) {
-	if (m_activePipelineState != nullptr) {
-		m_commandList->SetPipelineState(m_activePipelineState);
-	}
-
-	m_commandList->RSSetViewports(1, &m_viewport);
-	m_commandList->RSSetScissorRects(1, &m_scissorRect);
-
-	m_commandList->OMSetStencilRef(m_stencilRef);
-
-	const CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
-	const CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-	m_commandList->OMSetRenderTargets(1, &rtvHandle, FALSE, &dsvHandle);
-
-	// Setup the initial heap location
-	ID3D12DescriptorHeap* descriptorHeaps[1] = { 
-		m_rootSignature->GetCBVHeap(m_frameIndex),
-	};	
-	m_commandList->SetDescriptorHeaps(1, descriptorHeaps);
-}
-
-void DX12Renderer::ExecuteCommandList() {
-	if (!m_isDrawing) {
-		return;
-	}
-
-	//TODO: Implement version for multiple command lists
-	DX12Rendering::WarnIfFailed(m_commandList->Close());
-
-	ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-	m_directCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 }
 
 void DX12Renderer::BeginDraw() {
@@ -492,7 +460,6 @@ void DX12Renderer::BeginDraw() {
 	
 	m_objectIndex = 0;
 	m_isDrawing = true;
-	DX12Rendering::ThrowIfFailed(m_directCommandAllocator[m_frameIndex]->Reset()); //TODO: Change to warning
 
 	if (IsRaytracingEnabled())
 	{
@@ -507,7 +474,10 @@ void DX12Renderer::BeginDraw() {
 		//}
 	}
 
-	ResetCommandList(true);
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	commandList->CommandResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+
+	SetCommandListDefaults(false);
 }
 
 void DX12Renderer::EndDraw() {
@@ -515,16 +485,19 @@ void DX12Renderer::EndDraw() {
 		return;
 	}
 
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+
 #ifdef DEBUG_IMGUI
 	DX12Rendering::ImGui_StartFrame();
 	ImGuiDebugWindows();
-	DX12Rendering::ImGui_EndFrame(m_commandList.Get() , m_imguiSrvDescHeap.Get());
+	DX12Rendering::ImGui_EndFrame(m_imguiSrvDescHeap.Get());
 #endif
 
-	// present the backbuffer
-	m_commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
-
-	ExecuteCommandList();
+	commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	{
+		// present the backbuffer
+		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+	});
 
 	DX12Rendering::Commands::CommandListsEndFrame();
 
@@ -544,6 +517,9 @@ UINT DX12Renderer::StartSurfaceSettings() {
 		m_objectIndex = 0;
 	}
 
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	commandList->BeginCommandChunk();
+
 	return m_objectIndex;
 }
 
@@ -553,20 +529,25 @@ bool DX12Renderer::EndSurfaceSettings() {
 
 	assert(m_isDrawing);
 
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+
 	if (!DX12_ActivatePipelineState()) {
 		// We cant draw the object, so return.
+		commandList->EndCommandChunk();
 		return false;
 	}
 	
-	const D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, m_frameIndex, m_commandList.Get());
+	const D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, m_frameIndex, commandList);
 
 	// Copy the Textures
 	DX12TextureBuffer* currentTexture;
 	UINT index;
 	for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
 		SetTexturePixelShaderState(currentTexture);
-		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, m_frameIndex, m_commandList.Get());
+		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, m_frameIndex, commandList);
 	}
+
+	commandList->EndCommandChunk();
 
 	return true;
 }
@@ -592,12 +573,17 @@ void DX12Renderer::DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, 
 
 	D3D12_INDEX_BUFFER_VIEW indecies = indexBuffer->indexBufferView;
 
-	m_commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	m_commandList->IASetVertexBuffers(0, 1, &vertecies);
-	m_commandList->IASetIndexBuffer(&indecies);
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
-	// Draw the model
-	m_commandList->DrawIndexedInstanced(indexCount, 1, indexOffset, vertexOffset, 0); // TODO: Multiply by 16 for index?
+	commandList->AddCommand([&indecies, &vertecies, &indexCount, &indexOffset, &vertexOffset](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	{
+		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+		commandList->IASetVertexBuffers(0, 1, &vertecies);
+		commandList->IASetIndexBuffer(&indecies);
+
+		// Draw the model
+		commandList->DrawIndexedInstanced(indexCount, 1, indexOffset, vertexOffset, 0); // TODO: Multiply by 16 for index?
+	});
 }
 
 void DX12Renderer::Clear(const bool color, const bool depth, const bool stencil, byte stencilValue, const float colorRGBA[4]) {
@@ -606,12 +592,6 @@ void DX12Renderer::Clear(const bool color, const bool depth, const bool stencil,
 	}
 
 	uint8 clearFlags = 0;
-
-	if (color) {
-		CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
-		m_commandList->ClearRenderTargetView(rtvHandle, colorRGBA, 0, nullptr);
-	}
-
 	if (depth) {
 		clearFlags |= D3D12_CLEAR_FLAG_DEPTH;
 	}
@@ -621,9 +601,22 @@ void DX12Renderer::Clear(const bool color, const bool depth, const bool stencil,
 		clearFlags |= D3D12_CLEAR_FLAG_STENCIL;
 	}
 
-	if (clearFlags > 0) {
-		CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
-		m_commandList->ClearDepthStencilView(dsvHandle, static_cast<D3D12_CLEAR_FLAGS>(clearFlags), 1.0f, stencilValue, 0, nullptr);
+	if (color || clearFlags > 0)
+	{
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+
+		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		{
+			if (color) {
+				CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), m_frameIndex, m_rtvDescriptorSize);
+				commandList->ClearRenderTargetView(rtvHandle, colorRGBA, 0, nullptr);
+			}
+
+			if (clearFlags > 0) {
+				CD3DX12_CPU_DESCRIPTOR_HANDLE dsvHandle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+				commandList->ClearDepthStencilView(dsvHandle, static_cast<D3D12_CLEAR_FLAGS>(clearFlags), 1.0f, stencilValue, 0, nullptr);
+			}
+		});
 	}
 }
 
@@ -663,19 +656,11 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 	//m_swapChain->SetFullscreenState(true, NULL);
 
 	// TODO: HANDLE THIS WHILE DRAWING.
-	if (m_device && m_swapChain && m_directCommandAllocator[m_frameIndex]) {
-		if (!m_isDrawing) {
+	if (m_device && m_swapChain) {
+		if (m_isDrawing) {
 			WaitForPreviousFrame();
 
-			if (FAILED(m_directCommandAllocator[m_frameIndex]->Reset())) {
-				common->Warning("DX12Renderer::SetScreenParams: Error resetting command allocator.");
-				return false;
-			}
-
-			if (FAILED(m_commandList->Reset(m_directCommandAllocator[m_frameIndex].Get(), nullptr))) {
-				common->Warning("DX12Renderer::SetScreenParams: Error resetting command list.");
-				return false;
-			}
+			DX12Rendering::Commands::CommandListsEndFrame();
 		}
 
 		for (int frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
@@ -699,12 +684,9 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 		UpdateScissorRect(0, 0, static_cast<LONG>(width), static_cast<LONG>(height));
 
 		if (!m_isDrawing) {
-			if (FAILED(m_commandList->Close())) {
-				return false;
-			}
+			auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
-			ID3D12CommandList* ppCommandLists[] = { m_commandList.Get() };
-			m_directCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+			commandList->Execute();
 		}
 
 		SignalNextFrame();
@@ -735,7 +717,11 @@ void DX12Renderer::UpdateScissorRect(const LONG x, const LONG y, const LONG w, c
 	m_scissorRect.top = m_scissorRect.bottom - h;
 
 	if (m_isDrawing) {
-		m_commandList->RSSetScissorRects(1, &m_scissorRect);
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		{
+			commandList->RSSetScissorRects(1, &m_scissorRect);
+		});
 	}
 }
 
@@ -744,7 +730,11 @@ void DX12Renderer::UpdateStencilRef(UINT ref) {
 		m_stencilRef = ref;
 
 		if (m_isDrawing) {
-			m_commandList->OMSetStencilRef(ref);
+			auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+			commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+			{
+				commandList->OMSetStencilRef(ref);
+			});
 		}
 	}
 }
@@ -820,8 +810,13 @@ void DX12Renderer::SetTextureContent(DX12TextureBuffer* buffer, const UINT mipLe
 
 	if (buffer != nullptr)
 	{
-		SetTextureCopyState(buffer, mipLevel);
-		UpdateSubresources(m_copyCommandList.Get(), buffer->textureBuffer.Get(), m_textureBufferUploadHeap.Get(), intermediateOffset, mipLevel, 1, &textureData);
+		auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
+
+		copyCommands->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		{
+			SetTextureCopyState(buffer, mipLevel);
+			UpdateSubresources(commandList, buffer->textureBuffer.Get(), m_textureBufferUploadHeap.Get(), intermediateOffset, mipLevel, 1, &textureData);
+		});
 	}
 	else
 	{
@@ -834,14 +829,16 @@ void DX12Renderer::SetTexture(DX12TextureBuffer* buffer) {
 }
 
 bool DX12Renderer::SetTextureCopyState(DX12TextureBuffer* buffer, const UINT mipLevel) {
-	return SetTextureState(buffer, D3D12_RESOURCE_STATE_COPY_DEST, m_copyCommandList.Get(), mipLevel);
+	auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
+	return SetTextureState(buffer, D3D12_RESOURCE_STATE_COPY_DEST, copyCommands, mipLevel);
 }
 
 bool DX12Renderer::SetTexturePixelShaderState(DX12TextureBuffer* buffer, const UINT mipLevel) {
-	return SetTextureState(buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, m_commandList.Get());
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	return SetTextureState(buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, commandList);
 }
 
-bool DX12Renderer::SetTextureState(DX12TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, ID3D12GraphicsCommandList* commandList, const UINT mipLevel) {
+bool DX12Renderer::SetTextureState(DX12TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel) {
 	if (buffer == nullptr) {
 		return false;
 	}
@@ -851,31 +848,23 @@ bool DX12Renderer::SetTextureState(DX12TextureBuffer* buffer, const D3D12_RESOUR
 	}
 	
 	// TODO: Check for valid state transitions.
-	commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(buffer->textureBuffer.Get(), buffer->usageState, usageState, mipLevel));
+	commandList->CommandResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(buffer->textureBuffer.Get(), buffer->usageState, usageState, mipLevel));
 	buffer->usageState = usageState;
 
-	return true; // STate has changed.
+	return true; // State has changed.
 }
 
 void DX12Renderer::StartTextureWrite(DX12TextureBuffer* buffer) {
 	WaitForCopyToComplete();
+	auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
 
-	if (FAILED(m_copyCommandList->Reset(m_copyCommandAllocator.Get(), nullptr))) {
-		common->Warning("Could not reset the copy command list.");
-		return;
-	}
+	copyCommands->Reset();
 }
 
 void DX12Renderer::EndTextureWrite(DX12TextureBuffer* buffer) {
-	m_copyFence.Signal(m_device.Get(), m_copyCommandQueue.Get());
-
-	if (FAILED(m_copyCommandList->Close())) {
-		common->Warning("Could not close copy command list.");
-	}
-
-	// Execute the command list
-	ID3D12CommandList* ppCommandLists[] = { m_copyCommandList.Get() };
-	m_copyCommandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+	auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
+	copyCommands->SignalFence(m_copyFence);
+	copyCommands->Cycle();
 }
 
 void DX12Renderer::DXR_ResetAccelerationStructure()
@@ -1150,22 +1139,27 @@ void DX12Renderer::DXR_CopyResultToDisplay()
 
 void DX12Renderer::CopyResourceToDisplay(ID3D12Resource* resource, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height, D3D12_RESOURCE_STATES sourceState)
 {
-	CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(resource, sourceState, D3D12_RESOURCE_STATE_COPY_SOURCE);
-	m_commandList->ResourceBarrier(1, &transition);
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
-	transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
-	m_commandList->ResourceBarrier(1, &transition);
+	commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	{
+		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(resource, sourceState, D3D12_RESOURCE_STATE_COPY_SOURCE);
+		commandList->ResourceBarrier(1, &transition);
 
-	CD3DX12_TEXTURE_COPY_LOCATION dst(m_renderTargets[m_frameIndex].Get());
-	CD3DX12_TEXTURE_COPY_LOCATION src(resource);
-	CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
-	m_commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
+		commandList->ResourceBarrier(1, &transition);
 
-	transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
-	m_commandList->ResourceBarrier(1, &transition);
+		CD3DX12_TEXTURE_COPY_LOCATION dst(m_renderTargets[m_frameIndex].Get());
+		CD3DX12_TEXTURE_COPY_LOCATION src(resource);
+		CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
+		commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
 
-	transition = CD3DX12_RESOURCE_BARRIER::Transition(resource, D3D12_RESOURCE_STATE_COPY_SOURCE, sourceState);
-	m_commandList->ResourceBarrier(1, &transition);
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
+		commandList->ResourceBarrier(1, &transition);
+
+		transition = CD3DX12_RESOURCE_BARRIER::Transition(resource, D3D12_RESOURCE_STATE_COPY_SOURCE, sourceState);
+		commandList->ResourceBarrier(1, &transition);
+	});
 }
 
 #ifdef DEBUG_IMGUI

@@ -2,6 +2,7 @@
 #define __DX12_ROOT_SIGNATURE_H__
 
 #include "./dx12_global.h"
+#include "./dx12_CommandList.h"
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -20,9 +21,9 @@ public:
 	/// <param name="frameIndex"></param>
 	void BeginFrame(UINT frameIndex);
 
-	D3D12_CONSTANT_BUFFER_VIEW_DESC SetJointDescriptorTable(DX12JointBuffer* buffer, UINT jointOffset, UINT frameIndex, ID3D12GraphicsCommandList* commandList);
-	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* m_constantBuffer, UINT objectIndex, UINT frameIndex, ID3D12GraphicsCommandList* commandList);
-	DX12TextureBuffer* SetTextureRegisterIndex(UINT textureIndex, DX12TextureBuffer* texture, UINT frameIndex, ID3D12GraphicsCommandList* commandList);
+	D3D12_CONSTANT_BUFFER_VIEW_DESC SetJointDescriptorTable(DX12JointBuffer* buffer, UINT jointOffset, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList);
+	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* m_constantBuffer, UINT objectIndex, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList);
+	DX12TextureBuffer* SetTextureRegisterIndex(UINT textureIndex, DX12TextureBuffer* texture, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList);
 private:
 	ID3D12Device5* m_device;
 	ComPtr<ID3D12RootSignature> m_rootSignature;

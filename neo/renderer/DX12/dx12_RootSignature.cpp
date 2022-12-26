@@ -99,7 +99,7 @@ void DX12RootSignature::BeginFrame(UINT frameIndex)
 	m_cbvHeapIndex = 0;
 }
 
-D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12JointBuffer* buffer, UINT jointOffset, UINT frameIndex, ID3D12GraphicsCommandList* commandList) {
+D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12JointBuffer* buffer, UINT jointOffset, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
 	assert(m_cbvHeapIndex < MAX_HEAP_INDEX_COUNT);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvHeap[frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
@@ -109,14 +109,18 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12J
 	cbvDesc.SizeInBytes = buffer->entrySizeInBytes;
 	m_device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
 
-	const CD3DX12_GPU_DESCRIPTOR_HANDLE tableHandle(m_cbvHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
-	commandList->SetGraphicsRootDescriptorTable(1, tableHandle);
+	UINT heapIndex = m_cbvHeapIndex;
+	commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	{
+		const CD3DX12_GPU_DESCRIPTOR_HANDLE tableHandle(m_cbvHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart(), heapIndex, m_cbvHeapIncrementor);
+		commandList->SetGraphicsRootDescriptorTable(1, tableHandle);
+	});
 
 	++m_cbvHeapIndex;
 	return cbvDesc;
 }
 
-D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* constantBuffer, UINT objectIndex, UINT frameIndex, ID3D12GraphicsCommandList* commandList) {
+D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* constantBuffer, UINT objectIndex, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
 	// Copy the CBV value to the upload heap
 	UINT8* buffer;
 	const UINT bufferSize = ((constantBufferSize + 255) & ~255);
@@ -136,14 +140,18 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const s
 	m_device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
 
 	// Define the Descriptor Table to use.
-	const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_cbvHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
-	commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
-	++m_cbvHeapIndex;
+	UINT heapIndex = m_cbvHeapIndex;
+	commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	{
+		const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_cbvHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart(), heapIndex, m_cbvHeapIncrementor);
+		commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
+	});
 
+	++m_cbvHeapIndex;
 	return cbvDesc;
 }
 
-DX12TextureBuffer* DX12RootSignature::SetTextureRegisterIndex(UINT textureIndex, DX12TextureBuffer* texture, UINT frameIndex, ID3D12GraphicsCommandList* commandList) {
+DX12TextureBuffer* DX12RootSignature::SetTextureRegisterIndex(UINT textureIndex, DX12TextureBuffer* texture, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
 	CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_cbvHeap[frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
 	m_device->CreateShaderResourceView(texture->textureBuffer.Get(), &texture->textureView, textureHandle);
 
