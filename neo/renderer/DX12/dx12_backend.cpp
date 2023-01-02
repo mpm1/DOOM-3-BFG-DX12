@@ -1481,6 +1481,10 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 		GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHMASK | depthFunc | GLS_STENCIL_FUNC_ALWAYS);
 	}
 
+#ifdef _DEBUG
+	dxRenderer.DebugAddLight(*vLight);
+#endif
+
 	// some rare lights have multiple animating stages, loop over them outside the surface list
 	const idMaterial* lightShader = vLight->lightShader;
 	const float* lightRegs = vLight->shaderRegisters;

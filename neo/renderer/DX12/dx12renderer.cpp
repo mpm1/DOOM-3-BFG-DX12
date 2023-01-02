@@ -452,6 +452,10 @@ void DX12Renderer::BeginDraw() {
 
 	WaitForPreviousFrame();
 
+#ifdef _DEBUG
+	DebugClearLights();
+#endif
+
 	DX12Rendering::Commands::CommandListsBeginFrame();
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
@@ -710,11 +714,12 @@ void DX12Renderer::UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, co
 
 void DX12Renderer::UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h) {
 	m_scissorRect.left = x;
-	m_scissorRect.right = x + w;
+	m_scissorRect.right = m_scissorRect.left + w;
 
 	// Note: x and y are the lower left corner  of the scissor window. We need to calculate the y location to work properly with DirectX. 
-	m_scissorRect.bottom = m_viewport.Height - y;
-	m_scissorRect.top = m_scissorRect.bottom - h;
+	m_scissorRect.top = y;
+	m_scissorRect.bottom = m_scissorRect.top + h;
+	//m_viewport.Height;
 
 	if (m_isDrawing) {
 		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
@@ -1162,10 +1167,24 @@ void DX12Renderer::CopyResourceToDisplay(ID3D12Resource* resource, UINT sx, UINT
 	});
 }
 
+#ifdef _DEBUG
+
+void DX12Renderer::DebugAddLight(const viewLight_t& light)
+{
+	m_debugLights.push_back(light);
+}
+
+void DX12Renderer::DebugClearLights()
+{
+	m_debugLights.clear();
+}
+
 #ifdef DEBUG_IMGUI
 
 void DX12Renderer::InitializeImGui(HWND hWnd)
 {
+	m_debugMode = DEBUG_LIGHTS;
+
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
 		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
@@ -1196,18 +1215,57 @@ void DX12Renderer::ReleaseImGui()
 
 void DX12Renderer::ImGuiDebugWindows()
 {
-	ImGui::SetNextWindowSize({ 400, 500 });
-	if (ImGui::Begin("DirectX 12 Debug", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+	if (m_debugMode == DEBUG_LIGHTS)
+	{
+		const float scaleX = 0.33f;
+		const float scaleY = 0.33f;
+		const float headerOffset = 25.0f;
 
-		// Draw the base information
+		ImGui::SetNextWindowSize({ static_cast<float>(m_viewport.Width) * scaleX, (static_cast<float>(m_viewport.Height) * scaleY) + headerOffset });
 
-		if (m_raytracing != nullptr)
-		{
-			m_raytracing->ImGuiDebug();
+		if (ImGui::Begin("Lighting Debug", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+			std::for_each(m_debugLights.cbegin(), m_debugLights.cend(), [&scaleX, &scaleY, &headerOffset](const viewLight_t& light)
+			{
+				ImDrawList* drawList = ImGui::GetWindowDrawList();
+
+				if (drawList == nullptr)
+				{
+					return;
+				}
+
+				// Calculate the colour
+				UINT32 color = 0x12345678 + light.lightDef->index;
+				color = ((color << light.lightDef->index) & -1) | (color >> (32 - light.lightDef->index));
+
+				color = color | 0x070707FF;
+
+				const ImVec2 position = ImGui::GetWindowPos();
+				const ImVec2 offset(position.x, position.y + headerOffset);
+				const ImVec2 vec1((light.scissorRect.x1 * scaleX) + offset.x, (light.scissorRect.y1 * scaleY) + offset.y);
+				const ImVec2 vec2((light.scissorRect.x2 * scaleX) + offset.x, (light.scissorRect.y2 * scaleY) + offset.y);
+
+				drawList->AddRect(vec1, vec2, color);
+			});
 		}
-	}
 
-	ImGui::End();
+		ImGui::End();
+	}
+	else if (m_debugMode == DEBUG_RAYTRACING)
+	{
+		ImGui::SetNextWindowSize({ 400, 500 });
+		if (ImGui::Begin("Raytracing Debug", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+
+			// Draw the base information
+
+			if (m_raytracing != nullptr)
+			{
+				m_raytracing->ImGuiDebug();
+			}
+		}
+
+		ImGui::End();
+	}
 }
 
+#endif
 #endif

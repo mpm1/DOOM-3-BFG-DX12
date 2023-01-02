@@ -23,6 +23,10 @@ using namespace Microsoft::WRL;
 
 class idRenderModel;
 
+#ifdef _DEBUG
+struct viewLight_t;
+#endif
+
 // TODO: Start setting frame data to it's own object to make it easier to manage.
 struct DX12FrameDataBuffer
 {
@@ -132,6 +136,11 @@ public:
 	template<typename T>
 	const dxHandle_t GetHandle(const T* qEntity);
 
+#ifdef _DEBUG
+	void DebugAddLight(const viewLight_t& light);
+	void DebugClearLights();
+#endif
+
 private:
 	UINT m_width;
 	UINT m_height;
@@ -205,12 +214,25 @@ private:
 
 	bool IsScissorWindowValid();
 
+#ifdef _DEBUG
+	std::vector<viewLight_t> m_debugLights;
+
 #ifdef DEBUG_IMGUI
+	enum e_debugmode_t
+	{
+		DEBUG_UNKNOWN = 0,
+		DEBUG_LIGHTS,
+		DEBUG_RAYTRACING
+	};
+
 	ComPtr<ID3D12DescriptorHeap> m_imguiSrvDescHeap;
+	e_debugmode_t m_debugMode;
 
 	void InitializeImGui(HWND hWnd);
 	void ReleaseImGui();
 	void ImGuiDebugWindows();
+#endif
+
 #endif
 };
 
