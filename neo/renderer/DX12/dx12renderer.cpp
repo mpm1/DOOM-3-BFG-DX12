@@ -295,11 +295,11 @@ void DX12Renderer::LoadAssets() {
 	{
 		// Create the texture upload heap.
 		//TODO: Find a better way and size for textures
-		// For now we will assume that the max texture resolution is 1024x1024 32bit pixels
-		const UINT bWidth = 1920;
-		const UINT bHeight = 1080;
-		const UINT bBytesPerRow = bWidth * 4;
-		const UINT64 textureUploadBufferSize = (((bBytesPerRow + 255) & ~255) * (bHeight - 1)) + bBytesPerRow;
+		constexpr UINT bWidth = 2048 * 8;
+		constexpr UINT bHeight = bWidth;
+		constexpr UINT bBytesPerRow = bWidth * 4;
+		constexpr UINT64 textureUploadBufferSize = (((bBytesPerRow + 255) & ~255) * (bHeight - 1)) + bBytesPerRow;
+		m_textureBufferUploadMax = textureUploadBufferSize;
 
 		DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
@@ -802,16 +802,15 @@ void DX12Renderer::SetTextureContent(DX12TextureBuffer* buffer, const UINT mipLe
 	textureData.RowPitch = bytesPerRow;
 	textureData.SlicePitch = imageSize;
 
-	int intermediateOffset = 0;
-	if (mipLevel > 0) {
-		UINT mipCheck = mipLevel;
-		size_t lastSize = imageSize << 2;
+	//UINT64 intermediateOffset = 0;
+	//if (mipLevel > 0) {
+	//	size_t lastSize = imageSize;
 
-		for (; mipCheck > 0; --mipCheck) {
-			intermediateOffset += ((lastSize + 511) & ~511); // 512 byte align.
-			lastSize = lastSize << 2;
-		}
-	}
+	//	for (UINT mipCheck = mipLevel; mipCheck > 0; --mipCheck) {
+	//		intermediateOffset += ((lastSize + 511) & ~511); // 512 byte align.
+	//		lastSize = lastSize << 2;
+	//	}
+	//}
 
 	if (buffer != nullptr)
 	{
@@ -819,6 +818,20 @@ void DX12Renderer::SetTextureContent(DX12TextureBuffer* buffer, const UINT mipLe
 
 		copyCommands->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 		{
+			UINT64 intermediateOffset = m_textureBufferUploadIndex;
+			const UINT64 newIntermediateOffset = intermediateOffset
+				+ ((imageSize + 511) & ~511) // 512 byte alignment
+				+ (imageSize <= 2048 ? 512 : 0); // If our image size is less than 1024 bytes, add an extra 512 byte buffer.
+
+			if (newIntermediateOffset >= m_textureBufferUploadMax)
+			{
+				intermediateOffset = 0;
+				m_textureBufferUploadIndex = imageSize;
+			}
+			else {
+				m_textureBufferUploadIndex = newIntermediateOffset;
+			}
+
 			SetTextureCopyState(buffer, mipLevel);
 			UpdateSubresources(commandList, buffer->textureBuffer.Get(), m_textureBufferUploadHeap.Get(), intermediateOffset, mipLevel, 1, &textureData);
 		});

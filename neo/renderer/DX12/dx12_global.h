@@ -18,7 +18,7 @@
 #pragma comment (lib, "dxcompiler.lib")
 
 #ifdef _DEBUG
-
+#include "./debug/dx12_debug.h"
 #include "dx12_imgui.h"
 
 #ifdef DEBUG_PIX

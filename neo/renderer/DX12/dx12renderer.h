@@ -178,7 +178,10 @@ private:
 	DX12Rendering::Fence m_copyFence;
 
 	// Textures
-	ComPtr<ID3D12Resource> m_textureBufferUploadHeap;
+	ComPtr<ID3D12Resource> m_textureBufferUploadHeap; // Intermediate texture upload space.
+	UINT64 m_textureBufferUploadIndex = 0; // Intermediate offset to the texture upload.
+	UINT64 m_textureBufferUploadMax = 0; // The max space for uploading textures.
+
 	UINT8 m_activeTextureRegister;
 	DX12TextureBuffer* m_activeTextures[TEXTURE_REGISTER_COUNT];
 

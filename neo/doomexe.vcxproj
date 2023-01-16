@@ -272,6 +272,7 @@
     <ClInclude Include="renderer\Cinematic.h" />
     <ClInclude Include="renderer\Color\ColorSpace.h" />
     <ClInclude Include="renderer\DX12\d3dx12.h" />
+    <ClInclude Include="renderer\DX12\debug\dx12_debug.h" />
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
     <ClInclude Include="renderer\DX12\dx12_AccelerationStructure.h" />
     <ClInclude Include="renderer\DX12\dx12_buffermap.h" />
@@ -1506,6 +1507,9 @@
       <Project>{49bec5c6-b964-417a-851e-808886b57400}</Project>
       <ReferenceOutputAssembly>false</ReferenceOutputAssembly>
     </ProjectReference>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="renderer\DX12\debug\ImageViewer.natvis" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

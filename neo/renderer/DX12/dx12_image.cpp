@@ -36,12 +36,12 @@ Contains the Image implementation for OpenGL.
 
 #include "../tr_local.h"
 
-void RGB565SwapBytes(const int width, const int height, const byte* input, byte* output) {
-	for (int i = 0; i < width * height; ++i) {
-		output[i * 2 + 0] = input[i * 2 + 1];
-		output[i * 2 + 1] = input[i * 2 + 0];
+void RGB565SwapBytes(const int imageSize, const byte* input, byte* output) {
+	for (int i = 0; i < imageSize; ++i) {
+		output[i] = input[i + 1];
+		++i;
 
-		// TODO: swap the red and blue channels.
+		output[i] = input[i - 1];
 	}
 }
 
@@ -106,10 +106,15 @@ void idImage::SubImageUpload(int mipLevel, int x, int y, int z, int width, int h
 	UINT imageSize = IsCompressed() ? compressedSize : bytePitch * height;
 
 	if (opts.format == FMT_RGB565) {
-		byte* data = new byte[width * height * 2];
-		RGB565SwapBytes(width, height, reinterpret_cast<const byte*>(pic), data);
+		byte* data = new byte[imageSize];
+		RGB565SwapBytes(imageSize, reinterpret_cast<const byte*>(pic), data);
+
+#ifdef _DEBUG
+		RGB565Image debugImg = { data, width, height };
+#endif // _DEBUG
+
 		dxRenderer.SetTextureContent(static_cast<DX12TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, data);
-		delete data;
+		delete[] data;
 	}
 	else {
 		dxRenderer.SetTextureContent(static_cast<DX12TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, pic);

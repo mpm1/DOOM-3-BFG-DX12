@@ -70,6 +70,9 @@
     <Filter Include="Renderer\DX12\imgui">
       <UniqueIdentifier>{5104f725-89bf-49db-b885-15fa5a6a3c3f}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Renderer\DX12\debug">
+      <UniqueIdentifier>{b6fb3a0f-fd7c-4266-9f13-8acd2651c239}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cm\CollisionModel.h">
@@ -617,6 +620,9 @@
     </ClInclude>
     <ClInclude Include="renderer\DX12\dx12_CommandList.h">
       <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\debug\dx12_debug.h">
+      <Filter>Renderer\DX12\debug</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -1596,5 +1602,10 @@
     <FxCompile Include="..\base\renderprogs\general_miss.ray">
       <Filter>Shaders</Filter>
     </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="renderer\DX12\debug\ImageViewer.natvis">
+      <Filter>Renderer\DX12\debug</Filter>
+    </Natvis>
   </ItemGroup>
 </Project>
