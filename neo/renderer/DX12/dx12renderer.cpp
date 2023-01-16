@@ -717,9 +717,8 @@ void DX12Renderer::UpdateScissorRect(const LONG x, const LONG y, const LONG w, c
 	m_scissorRect.right = m_scissorRect.left + w;
 
 	// Note: x and y are the lower left corner  of the scissor window. We need to calculate the y location to work properly with DirectX. 
-	m_scissorRect.top = y;
-	m_scissorRect.bottom = m_scissorRect.top + h;
-	//m_viewport.Height;
+	m_scissorRect.bottom = m_viewport.Height - y;
+	m_scissorRect.top = m_scissorRect.bottom - h;
 
 	if (m_isDrawing) {
 		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
