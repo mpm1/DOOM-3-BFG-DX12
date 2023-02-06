@@ -10,8 +10,6 @@
 
 #include "./dx12_buffermap.h"
 
-#define DEFAULT_SCRATCH_SIZE 3145728 // 1024 * 1024 * 3. We need to check if this is big enough.
-
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
@@ -48,24 +46,21 @@ class DX12Rendering::Raytracing {
 public:
 	const bool isRaytracingSupported;
 
-	ComPtr<ID3D12Resource> scratchBuffer; // For now we will use the same scratch buffer for all AS creations.
-
 	Raytracing(ID3D12Device5* device, UINT screenWidth, UINT screenHeight);
 	~Raytracing();
 
 	void Resize(UINT width, UINT height);
 
-	DX12Rendering::BottomLevelAccelerationStructure* GetBLAS() { return &m_blas; }
+	DX12Rendering::BLASManager* GetBLASManager() { return &m_blasManager; }
+	DX12Rendering::TLASManager* GetTLASManager() { return &m_tlasManager; }
 
 	void Uniform4f(dxr_renderParm_t param, const float* uniform);
 
-	DX12Rendering::TopLevelAccelerationStructure* GetGeneralTLAS() { return &m_staticTlas; }
-	void ResetGeneralTLAS();
-	void GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas);
+	void GenerateTLAS();
 
 	void CleanUpAccelerationStructure();
 
-	void BeginFrame(){ GetGeneralTLAS()->IncrementFrameIndex(); }
+	void BeginFrame();
 
 	/// <summary>
 	/// Cast rays into the scene through the general TLAS.
@@ -107,8 +102,6 @@ private:
 	DX12Rendering::RaytracingRootSignature m_missSignature;
 	DX12Rendering::RaytracingRootSignature m_hitSignature;
 
-	DX12Rendering::BottomLevelAccelerationStructure m_blas; // Bottom level acceleration structer used to define our base instances.
-
 	ComPtr<ID3D12Resource> m_cbvUploadHeap[DX12_FRAME_COUNT];
 	UINT m_cbvHeapIncrementor;
 
@@ -119,7 +112,9 @@ private:
 
 	XMFLOAT4 m_constantBuffer[DX12Rendering::dxr_renderParm_t::COUNT];
 
-	TopLevelAccelerationStructure m_staticTlas;
+	TLASManager m_tlasManager;
+	BLASManager m_blasManager;
+
 	ComPtr<ID3D12Resource> m_diffuseResource;
 	ComPtr<ID3D12DescriptorHeap> m_generalUavHeaps;
 	ComPtr<ID3D12Resource> m_generalSBTData;

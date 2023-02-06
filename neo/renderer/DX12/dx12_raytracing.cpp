@@ -27,25 +27,21 @@ namespace DX12Rendering {
 		m_hitSignature(device, NONE),
 		m_width(screenWidth),
 		m_height(screenHeight),
-		m_staticTlas(&m_blas),
+		m_tlasManager(&m_blasManager),
 		m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
 		m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
-		const UINT64 scratchSize = DX12_ALIGN(DEFAULT_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
-		scratchBuffer = CreateBuffer(
-			device,
-			scratchSize,
-			D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS,
-			D3D12_RESOURCE_STATE_UNORDERED_ACCESS,
-			kDefaultHeapProps);
-		scratchBuffer->SetName(L"Raytracing Scratch Buffer");
-
 		CreateShadowPipeline();
 		CreateCBVHeap(sizeof(m_constantBuffer));
 	}
 
 	Raytracing::~Raytracing()
 	{
+	}
+
+	void Raytracing::BeginFrame()
+	{
+		m_tlasManager.Reset(); // Reset all objects in the static TLAS
 	}
 
 	void Raytracing::CreateCBVHeap(const size_t constantBufferSize)
@@ -152,22 +148,15 @@ namespace DX12Rendering {
 		m_device->CreateUnorderedAccessView(m_diffuseResource.Get(), nullptr, &uavDesc, shadowHandle);
 	}
 
-	void Raytracing::ResetGeneralTLAS()
-	{
-		m_staticTlas.Reset();
-	}
-
 	void Raytracing::CleanUpAccelerationStructure()
 	{
 		// TODO: Add any acceleration structure cleanup.
 	}
 
-	void Raytracing::GenerateTLAS(DX12Rendering::TopLevelAccelerationStructure* tlas)
+	void Raytracing::GenerateTLAS()
 	{
-		assert(tlas != nullptr);
-
 		// Update the resource
-		if (!tlas->UpdateResources(m_device, scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE))
+		if (!m_tlasManager.Generate())
 		{
 			return;
 		}
@@ -180,7 +169,7 @@ namespace DX12Rendering {
 		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-		srvDesc.RaytracingAccelerationStructure.Location = tlas->GetGPUVirtualAddress(); // Write the acceleration structure view in the heap 
+		srvDesc.RaytracingAccelerationStructure.Location = m_tlasManager.GetCurrent().resource->GetGPUVirtualAddress(); // Write the acceleration structure view in the heap 
 
 		m_device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
 	}
@@ -196,61 +185,62 @@ namespace DX12Rendering {
 		const CD3DX12_RECT& scissorRect
 	)
 	{
-		DX12Rendering::TopLevelAccelerationStructure* tlas = GetGeneralTLAS();
+		//TODO
+		//DX12Rendering::TopLevelAccelerationStructure* tlas = GetGeneralTLAS();
 
-		if (tlas == nullptr || tlas->IsReady()) {
-			// No objects to cast shadows.
-			return false;
-		}
+		//if (tlas == nullptr || tlas->IsReady()) {
+		//	// No objects to cast shadows.
+		//	return false;
+		//}
 
-		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
+		//// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
 
-		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
+		//auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
 
-		// Copy the CBV data to the heap
-		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
-		Uniform4f(RENDERPARAM_SCISSOR, scissorVector);
+		//// Copy the CBV data to the heap
+		//float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
+		//Uniform4f(RENDERPARAM_SCISSOR, scissorVector);
 
-		float viewportVector[4] = { viewport.TopLeftX, viewport.TopLeftY, viewport.TopLeftX + viewport.Width, viewport.TopLeftY + viewport.Height };
-		Uniform4f(RENDERPARM_VIEWPORT, viewportVector);
+		//float viewportVector[4] = { viewport.TopLeftX, viewport.TopLeftY, viewport.TopLeftX + viewport.Width, viewport.TopLeftY + viewport.Height };
+		//Uniform4f(RENDERPARM_VIEWPORT, viewportVector);
 
-		SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, frameIndex);
+		//SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, frameIndex);
 
-		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
-		{
-			std::vector<ID3D12DescriptorHeap*> heaps = { m_generalUavHeaps.Get() };
-			commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
+		//commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		//{
+		//	std::vector<ID3D12DescriptorHeap*> heaps = { m_generalUavHeaps.Get() };
+		//	commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
 
-			// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
-			CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(m_diffuseResource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-			commandList->ResourceBarrier(1, &transition);
+		//	// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
+		//	CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(m_diffuseResource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
+		//	commandList->ResourceBarrier(1, &transition);
 
-			// Create the ray dispatcher
-			const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_generalSBTData->GetGPUVirtualAddress();
-			const UINT32 generatorSize = m_generalSBTDesc.GetGeneratorSectorSize();
-			const UINT32 missSize = m_generalSBTDesc.GetMissSectorSize();
-			const UINT32 hitSize = m_generalSBTDesc.GetHitGroupSectorSize();
+		//	// Create the ray dispatcher
+		//	const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_generalSBTData->GetGPUVirtualAddress();
+		//	const UINT32 generatorSize = m_generalSBTDesc.GetGeneratorSectorSize();
+		//	const UINT32 missSize = m_generalSBTDesc.GetMissSectorSize();
+		//	const UINT32 hitSize = m_generalSBTDesc.GetHitGroupSectorSize();
 
-			D3D12_DISPATCH_RAYS_DESC desc = {};
-			desc.RayGenerationShaderRecord.StartAddress = gpuAddress;
-			desc.RayGenerationShaderRecord.SizeInBytes = generatorSize;
+		//	D3D12_DISPATCH_RAYS_DESC desc = {};
+		//	desc.RayGenerationShaderRecord.StartAddress = gpuAddress;
+		//	desc.RayGenerationShaderRecord.SizeInBytes = generatorSize;
 
-			desc.MissShaderTable.StartAddress = gpuAddress + generatorSize;
-			desc.MissShaderTable.SizeInBytes = missSize;
-			desc.MissShaderTable.StrideInBytes = m_generalSBTDesc.GetMissEntrySize();
+		//	desc.MissShaderTable.StartAddress = gpuAddress + generatorSize;
+		//	desc.MissShaderTable.SizeInBytes = missSize;
+		//	desc.MissShaderTable.StrideInBytes = m_generalSBTDesc.GetMissEntrySize();
 
-			desc.HitGroupTable.StartAddress = gpuAddress + generatorSize + missSize;
-			desc.HitGroupTable.SizeInBytes = hitSize;
-			desc.HitGroupTable.StrideInBytes = m_generalSBTDesc.GetHitGroupEntrySize();
+		//	desc.HitGroupTable.StartAddress = gpuAddress + generatorSize + missSize;
+		//	desc.HitGroupTable.SizeInBytes = hitSize;
+		//	desc.HitGroupTable.StrideInBytes = m_generalSBTDesc.GetHitGroupEntrySize();
 
-			desc.Height = viewport.Height;
-			desc.Width = viewport.Width;
-			desc.Depth = 1;
+		//	desc.Height = viewport.Height;
+		//	desc.Width = viewport.Width;
+		//	desc.Depth = 1;
 
-			// Generate the ray traced image.
-			commandList->SetPipelineState1(m_shadowStateObject.Get());
-			commandList->DispatchRays(&desc);
-		});
+		//	// Generate the ray traced image.
+		//	commandList->SetPipelineState1(m_shadowStateObject.Get());
+		//	commandList->DispatchRays(&desc);
+		//});
 
 		return true;
 	}
@@ -352,12 +342,12 @@ namespace DX12Rendering {
 			// BLAS information
 			if (ImGui::CollapsingHeader("Bottom Level Acceleration Structor", ImGuiTreeNodeFlags_DefaultOpen))
 			{
-				m_blas.ImGuiDebug();
+				m_blasManager.ImGuiDebug();
 			}
 
 			// TLAS information
 			ImGui::CollapsingHeader("General TLAS", ImGuiTreeNodeFlags_DefaultOpen);
-			m_staticTlas.ImGuiDebug();
+			m_tlasManager.ImGuiDebug();
 
 			// Constant Information
 			ImGui::CollapsingHeader("Shader Constants", ImGuiTreeNodeFlags_DefaultOpen);

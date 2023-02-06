@@ -7,7 +7,7 @@ namespace DX12Rendering {
 	namespace Commands {
 #pragma region Static Functions
 
-		void InitializeCommandLists(ID3D12Device5* device)
+		void InitializeCommandLists(const ID3D12Device5* device)
 		{
 			// It's important that we add the command lists in the same order as the dx12_commandList_t enumerator. 
 			m_commandLists.reserve(DX12Rendering::Commands::dx12_commandList_t::COUNT);

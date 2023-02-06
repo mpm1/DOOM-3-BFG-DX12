@@ -6,6 +6,7 @@
 #include <mutex>
 
 #include "./dx12_global.h"
+#include "./dx12_DeviceManager.h"
 #include "./dx12_CommandList.h"
 #include "./dx12_RootSignature.h"
 #include "./dx12_raytracing.h"
@@ -112,21 +113,7 @@ public:
 	void DXR_CopyResultToDisplay(); // Copies the resulting image to the user display.
 
 #pragma region Top Level Acceleration Structure
-	template<typename K>
-	DX12Rendering::TopLevelAccelerationStructure* DXR_GetOrGenerateAccelerationStructure(const K& keyHandle);
-
-	/// <summary>
-	/// 
-	/// </summary>
-	/// <typeparam name="K"></typeparam>
-	/// <param name="keyHandle"></param>
-	/// <param name="entity"></param>
-	/// <param name="modelMatrix"></param>
-	template<typename K>
-	void DXR_AddEntityAccelerationStructure(const K& keyHandle, const dxHandle_t entityHandle, const float modelMatrix[16]);
-
-	template<typename K>
-	void DXR_UpdateAccelerationStructure(const K& keyHandle);
+	//TODO
 #pragma endregion
 
 	bool IsRaytracingEnabled() const { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
@@ -156,7 +143,6 @@ private:
 	// Pipeline
 	CD3DX12_VIEWPORT m_viewport;
 	CD3DX12_RECT m_scissorRect;
-	ComPtr<ID3D12Device5> m_device;
 	ComPtr<IDXGISwapChain3> m_swapChain;
 	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
 	UINT m_rtvDescriptorSize;

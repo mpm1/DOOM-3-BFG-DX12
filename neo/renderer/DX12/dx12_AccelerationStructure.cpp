@@ -1,25 +1,34 @@
 #pragma hdrstop
 
 #include "./dx12_AccelerationStructure.h"
-
+#include "./dx12_DeviceManager.h"
 #include "./dx12_CommandList.h"
 
 namespace DX12Rendering {
-#pragma region TopLevelAccelerationStructure
-	BottomLevelAccelerationStructure::BottomLevelAccelerationStructure() 
-	{}
-
-	BottomLevelAccelerationStructure::~BottomLevelAccelerationStructure()
-	{}
-
-	DX12AccelerationObject* BottomLevelAccelerationStructure::AddAccelerationObject(const dxHandle_t& key, DX12VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount)
+#pragma region BottomLevelAccelerationStructure
+	void BottomLevelAccelerationStructure::CalculateBufferSize(
+		ID3D12Device5* device,
+		UINT64* scratchSizeInBytes,
+		UINT64* resultSizeInBytes,
+		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags)
 	{
-		if (GetAccelerationObject(key) != nullptr) 
-		{
-			FailMessage("BottomLevelAccelerationStructure::AddAccelerationObject failed due to an already existing acceleration object.");
-			return nullptr;
-		}
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS desc = {};
+		desc.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+		desc.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+		desc.NumDescs = geometry.size();
+		desc.pGeometryDescs = geometry.data();
+		desc.Flags = flags;
 
+		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
+
+		device->GetRaytracingAccelerationStructurePrebuildInfo(&desc, &info);
+
+		*scratchSizeInBytes = DX12_ALIGN(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+	}
+
+	void BottomLevelAccelerationStructure::AddGeometry(DX12VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount)
+	{
 		D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc = {};
 		geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
 		geometryDesc.Triangles.VertexBuffer.StartAddress = vertexBuffer->vertexBuffer->GetGPUVirtualAddress() + vertexOffsetBytes;
@@ -34,67 +43,50 @@ namespace DX12Rendering {
 		geometryDesc.Flags = true ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE
 			: D3D12_RAYTRACING_GEOMETRY_FLAG_NONE; //TODO: Eventually add support for opaque geometry.
 
-		m_vertexBuffers.emplace_back(geometryDesc);
-		m_objectMap.try_emplace(key, &m_vertexBuffers.back(), static_cast<UINT>(m_vertexBuffers.size() - 1));
-
-		m_isDirty = true;
+		AddGeometry(geometryDesc);
 	}
 
-	DX12AccelerationObject* BottomLevelAccelerationStructure::GetAccelerationObject(const dxHandle_t& key) 
+	void BottomLevelAccelerationStructure::AddGeometry(D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc)
 	{
-		auto result = m_objectMap.find(key);
+		geometry.emplace_back(geometryDesc, geometry.size() - 1);
 
-		if (result != m_objectMap.end()) 
+		if (state > Unallocated && state < Removed)
 		{
-			return &result->second;
+			state = Dirty;
 		}
-
-		return nullptr;
 	}
 
-	void BottomLevelAccelerationStructure::RemoveAccelerationObject(const dxHandle_t& key) 
+	bool BottomLevelAccelerationStructure::Generate(ScratchBuffer& scratch)
 	{
-		DX12AccelerationObject* result = GetAccelerationObject(key);
+		if (state == Ready) {
+			return true; // Nothing to update
+		}
 
-		if (result != nullptr)
+		ID3D12Device5* device = Device::GetDevice();
+
+		if (device == nullptr || !fence.IsFenceCompleted())
 		{
-			m_objectMap.erase(key);
-		}
-	}
-
-	void BottomLevelAccelerationStructure::Reset()
-	{
-		m_objectMap.clear();
-		m_vertexBuffers.clear();
-		m_result = nullptr;
-		m_isDirty = false;
-	}
-
-	void BottomLevelAccelerationStructure::Generate(ID3D12Device5* device, ID3D12Resource* scratchBuffer, UINT64 inputScratchSizeInBytes, LPCWSTR name)
-	{
-		if (!m_isDirty) {
-			return;
+			return false; // We are not ready to generate.
 		}
 
-		m_isDirty = false;
-		bool isUpdate = m_result.Get() != nullptr;
+		bool isUpdate = resource.Get() != nullptr;
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = isUpdate ?
 			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE :
 			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE; // For now we will always allow updates in our BLAS
 
-		UINT64 testScratchSizeInBytes;
+		UINT64 requestedScratchSize;
+		UINT64 scratchLocation;
 		UINT64 resultSizeInBytes;
 
-
-		CalculateBufferSize(device, &testScratchSizeInBytes, &resultSizeInBytes, flags);
-
-		if (resultSizeInBytes > m_defaultResultSizeInBytes)
-		{
-			FailMessage("BottomLevelAccelerationStructure: Invalid calculated buffer size.");
-			return;
-		}
+		CalculateBufferSize(device, &requestedScratchSize, &resultSizeInBytes, flags);
 
 		DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
+
+		if (!scratch.RequestSpace(commandList, requestedScratchSize, scratchLocation))
+		{
+			// The scratch is full and we cannot build at the moment.
+			return false;
+		}
 
 		if (!isUpdate)
 		{
@@ -110,26 +102,25 @@ namespace DX12Rendering {
 			description.MipLevels = 1;
 			description.SampleDesc.Count = 1;
 			description.SampleDesc.Quality = 0;
-			description.Width = m_defaultResultSizeInBytes;
+			description.Width = resultSizeInBytes;
 
-			ThrowIfFailed(device->CreateCommittedResource(&kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &description, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, nullptr, IID_PPV_ARGS(&m_result)));
-			
-			m_resultSizeInBytes = resultSizeInBytes;
+			if (!Allocate(description, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps))
+			{
+				return false; // Failed to create resource.
+			}
+
+			m_sizeInBytes = resultSizeInBytes;
 			isUpdate = false; // Since we built a new resource, all objects will be updated inside.
-
-			m_result->SetName(name);
-		} 
+		}
 		else
 		{
 			commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 			{
 				// Provide a barrier to make sure we are done using the resource.
-				D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(m_result.Get());
+				D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(resource.Get());
 				commandList->ResourceBarrier(1, &uavBarrier);
 			});
 		}
-
-		assert(inputScratchSizeInBytes >= testScratchSizeInBytes);
 
 		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 		{
@@ -137,12 +128,12 @@ namespace DX12Rendering {
 			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasDesc;
 			blasDesc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
 			blasDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-			blasDesc.Inputs.NumDescs = static_cast<UINT>(m_vertexBuffers.size());
-			blasDesc.Inputs.pGeometryDescs = m_vertexBuffers.data();
+			blasDesc.Inputs.NumDescs = static_cast<UINT>(geometry.size());
+			blasDesc.Inputs.pGeometryDescs = geometry.data();
 			blasDesc.Inputs.Flags = flags | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
-			blasDesc.DestAccelerationStructureData = { m_result->GetGPUVirtualAddress() };
-			blasDesc.ScratchAccelerationStructureData = { scratchBuffer->GetGPUVirtualAddress() };
-			blasDesc.SourceAccelerationStructureData = isUpdate ? m_result->GetGPUVirtualAddress() : NULL;
+			blasDesc.DestAccelerationStructureData = { resource->GetGPUVirtualAddress() };
+			blasDesc.ScratchAccelerationStructureData = { scratch.resource->GetGPUVirtualAddress() + scratchLocation }; // Point to the space in the scratch to build from.
+			blasDesc.SourceAccelerationStructureData = isUpdate ? resource->GetGPUVirtualAddress() : NULL;
 
 			// Build the acceleration structure.
 			commandList->BuildRaytracingAccelerationStructure(&blasDesc, 0, nullptr);
@@ -150,149 +141,121 @@ namespace DX12Rendering {
 			// Wait for the building of the blas to complete.
 			D3D12_RESOURCE_BARRIER uavBarrier;
 			uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-			uavBarrier.UAV.pResource = m_result.Get();
+			uavBarrier.UAV.pResource = resource.Get();
 			uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 			commandList->ResourceBarrier(1, &uavBarrier);
 
-			m_fence.Signal(device, commandQueue);
+			fence.Signal(device, commandQueue);
 		});
 	}
 
-	void BottomLevelAccelerationStructure::CalculateBufferSize(
-		ID3D12Device5* device, 
-		UINT64* scratchSizeInBytes, 
-		UINT64* resultSizeInBytes, 
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags)
+#pragma endregion
+#pragma region BLASContainer
+	BLASManager::BLASManager() :
+		m_scratchBuffer(DEFAULT_BLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, L"BLAS Scratch Buffer")
+	{}
+
+	BLASManager::~BLASManager()
 	{
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS desc = {};
-		desc.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-		desc.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		desc.NumDescs = m_vertexBuffers.size();
-		desc.pGeometryDescs = m_vertexBuffers.data();
-		desc.Flags = flags;
+		Reset();
+	}
 
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
+	BottomLevelAccelerationStructure* BLASManager::CreateBLAS(const dxHandle_t& key, const LPCWSTR name)
+	{
+		BottomLevelAccelerationStructure* blas = GetBLAS(key);
+		if (blas)
+		{
+			return blas;
+		}
 
-		device->GetRaytracingAccelerationStructurePrebuildInfo(&desc, &info);
+		blas = &m_objectMap.emplace(key, name).first->second;
 
-		*scratchSizeInBytes = DX12_ALIGN(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+		return blas;
+	}
+
+	BottomLevelAccelerationStructure* BLASManager::GetBLAS(const dxHandle_t& key)
+	{
+		auto result = m_objectMap.find(key);
+
+		if (result != m_objectMap.end())
+		{
+			return &result->second;
+		}
+
+		return nullptr;
+	}
+
+	void BLASManager::RemoveBLAS(const dxHandle_t& key)
+	{
+		BottomLevelAccelerationStructure* result = GetBLAS(key);
+
+		if (result != nullptr)
+		{
+			m_objectMap.erase(key);
+		}
+	}
+
+	void BLASManager::Reset()
+	{
+		m_objectMap.clear();
+	}
+
+	bool BLASManager::Generate()
+	{
+		for (auto blasPair = m_objectMap.begin(); blasPair != m_objectMap.end(); ++blasPair)
+		{
+			if (!blasPair->second.Generate(m_scratchBuffer))
+			{
+				// For now, just drop the loop on failure. We'll modify this to only do a limited number of entries per frame.
+				return false;
+			}
+		}
 	}
 
 #ifdef DEBUG_IMGUI
-	const void BottomLevelAccelerationStructure::ImGuiDebug()
+	const void BLASManager::ImGuiDebug()
 	{
-		if (m_result == nullptr)
+		if (m_objectMap.size() == 0)
 		{
 			ImGui::TextColored(ImGui_Color_Error, "Result - None");
 		}
 		else
 		{
-			ImGui::Text("Result GPU Addr: 0x%08x", m_result->GetGPUVirtualAddress());
+			ImGui::Text("Total Elements: %d", m_objectMap.size());
 		}
-
-		ImGui::Text("Total Elements: %d", m_objectMap.size());
 	}
 #endif
 #pragma endregion
 
-#pragma region TopLevelAccelerationStructure
-	TopLevelAccelerationStructure::TopLevelAccelerationStructure(BottomLevelAccelerationStructure* m_blas)
-		: m_blas(m_blas)
+#pragma region InstanceDescriptor
+	void InstanceDescriptor::Fill(BLASManager& blasManager, UINT64 instanceDescsSize, const DX12Rendering::Instance* instances, const UINT instanceCount)
 	{
-		for (UINT i = 0; i < DX12_FRAME_COUNT; ++i)
-		{
-			m_instances[i].reserve(512); //TODO: Setup an object to make this the max size.
-		}
-	}
+		bool shouldCleanMemory = m_lastInstanceCount > instanceCount;
 
-	TopLevelAccelerationStructure::~TopLevelAccelerationStructure() 
-	{
-		Reset();
+		if (state != Ready || m_instanceDescsSize < instanceDescsSize) {
+			Release();
 
-		m_blas = nullptr;
+			D3D12_RESOURCE_DESC description = {};
+			description.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+			description.DepthOrArraySize = 1;
+			description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+			description.Flags = D3D12_RESOURCE_FLAG_NONE;
+			description.Format = DXGI_FORMAT_UNKNOWN;
+			description.Height = 1;
+			description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+			description.MipLevels = 1;
+			description.SampleDesc.Count = 1;
+			description.SampleDesc.Quality = 0;
+			description.Width = instanceDescsSize;
 
-		if (m_result != nullptr)
-		{
-			m_result = nullptr;
-		}
-
-		if (m_instanceDesc != nullptr)
-		{
-			m_instanceDesc = nullptr;
-		}
-	}
-
-	void TopLevelAccelerationStructure::IncrementFrameIndex()
-	{
-		m_readFrameIndex = m_writeFrameIndex;
-		++m_writeFrameIndex;
-
-		if (m_writeFrameIndex >= DX12_FRAME_COUNT)
-		{
-			m_writeFrameIndex = 0;
-		}
-	}
-
-	void TopLevelAccelerationStructure::Reset() 
-	{
-		m_readFrameIndex = 0;
-		m_writeFrameIndex = 1;
-		
-		m_instances[m_readFrameIndex].clear();
-		m_instances[m_writeFrameIndex].clear();
-	}
-
-	const bool TopLevelAccelerationStructure::TryGetWriteInstance(const UINT& index, DX12Rendering::Instance **outInstance) 
-	{
-		for (auto instance : m_instances[m_writeFrameIndex]) {
-			if (instance.instanceId == index)
-			{
-				*outInstance = &instance;
-				return true;
-			}
-		}
-
-		return false;
-	}
-
-	void TopLevelAccelerationStructure::AddInstance(const dxHandle_t& index, const float transform[16]) {
-		auto* object = m_blas->GetAccelerationObject(index);
-
-		if (object == nullptr)
-		{
-			assert("Tried adding an invalid object handle to TLAS.");
-			return;
-		}
-
-		DX12Rendering::Instance *instance;
-		if (TryGetWriteInstance(object->index, &instance))
-		{
-			memcpy(instance->transformation, transform, sizeof(float[16]));
-			return;
-		}
-
-		m_instances[m_writeFrameIndex].emplace_back(transform, object->index, 0 /* TODO: Find the hit group index containing the normal map of the surface. */);
-	}
-
-	void TopLevelAccelerationStructure::FillInstanceDescriptor(ID3D12Device5* device, UINT64 instanceDescsSize)
-	{
-		if (!m_blas->IsReady())
-		{
-			return;
-		}
-
-		auto instances = m_instances[m_readFrameIndex];
-		bool shouldCleanMemory = m_lastInstanceCount > instances.size();
-
-		if (m_instanceDesc == nullptr || m_instanceDescsSize < instanceDescsSize) {
 			m_instanceDescsSize = instanceDescsSize;
-			m_instanceDesc = CreateBuffer(device, instanceDescsSize, D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, kUploadHeapProps);
+			Allocate(description, D3D12_RESOURCE_STATE_GENERIC_READ, kUploadHeapProps);
+
 			shouldCleanMemory = true;
 		}
 
 		D3D12_RAYTRACING_INSTANCE_DESC* instanceDescs;
-		m_instanceDesc->Map(0, nullptr, reinterpret_cast<void**>(&instanceDescs));
+		resource->Map(0, nullptr, reinterpret_cast<void**>(&instanceDescs));
 		if (!instanceDescs)
 		{
 			FailMessage("TopLevelAccelerationStructure error: Cannot map instance descriptors.");
@@ -304,77 +267,122 @@ namespace DX12Rendering {
 			ZeroMemory(instanceDescs, m_instanceDescsSize);
 		}
 
-		m_lastInstanceCount = static_cast<UINT>(instances.size());
+		m_lastInstanceCount = static_cast<UINT>(instanceCount);
 		for (UINT32 index = 0; index < m_lastInstanceCount; ++index)
 		{
 			instanceDescs[index].InstanceID = instances[index].instanceId;
 			instanceDescs[index].InstanceContributionToHitGroupIndex = instances[index].hitGroupIndex;
 			instanceDescs[index].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE; // Should we implement back face culling?
-			
+
 			// Model View Matrix matrix
 			memcpy(instanceDescs[index].Transform, &instances[index].transformation, sizeof(instanceDescs[index].Transform));
 
-			instanceDescs[index].AccelerationStructure = m_blas->GetGPUVirtualAddress();
-			
-			// Always visible.
-			instanceDescs[index].InstanceMask = 0xFF;
+			auto blas = blasManager.GetBLAS(instances[index].instanceId);
+			if (blas == nullptr)
+			{
+				instanceDescs[index].AccelerationStructure = 0;
+
+				// Unreachable
+				instanceDescs[index].InstanceMask = 0x00;
+			}
+			else
+			{
+				instanceDescs[index].AccelerationStructure = blas->resource->GetGPUVirtualAddress();
+
+				// Always visible.
+				instanceDescs[index].InstanceMask = 0xFF;
+			}
 		}
 
-		m_instanceDesc->Unmap(0, nullptr);
+		resource->Unmap(0, nullptr);
 	}
 
-	bool TopLevelAccelerationStructure::UpdateResources(ID3D12Device5* device, ID3D12Resource* scratchBuffer, UINT scratchBufferSize) {
+#ifdef DEBUG_IMGUI
+	const void InstanceDescriptor::ImGuiDebug()
+	{
+		// Each TLAS
+		if (state == Unallocated || state == Removed)
+		{
+			ImGui::TextColored(ImGui_Color_Error, "Instance: None");
+		}
+		else
+		{
+			ImGui::Text("Instance GPU Addr: 0x%08x", resource->GetGPUVirtualAddress());
+		}
+
+		ImGui::Text("Instance Size (In Bytes): %d", m_instanceDescsSize);
+	}
+#endif
+#pragma endregion
+
+#pragma region TopLevelAccelerationStructure
+	TopLevelAccelerationStructure::~TopLevelAccelerationStructure()
+	{
+	}
+
+	bool TopLevelAccelerationStructure::UpdateResources(BLASManager& blasManager, const DX12Rendering::Instance* instances, const UINT instanceCount, ScratchBuffer* scratchBuffer) {
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
 			? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
 			: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
 		UINT64 scratchSizeInBytes;
 		UINT64 resultSizeInBytes;
 		UINT64 instanceDescsSize;
-		
-		if (m_instances[m_readFrameIndex].size() == 0) 
+
+		if (instanceCount == 0 || !fence.IsFenceCompleted())
 		{
 			return false;
 		}
 
-		if (!m_blas->IsReady())
+		auto device = DX12Rendering::Device::GetDevice();
+		if (device == nullptr)
 		{
 			return false;
 		}
 
-		CacluateBufferSizes(device, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize);
-		assert(scratchSizeInBytes < scratchBufferSize);
-		
+		CacluateBufferSizes(device, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize, instanceCount);
+
 		if (instanceDescsSize == 0) {
 			return false;
 		}
 
-		FillInstanceDescriptor(device, instanceDescsSize);
+		// Create the descriptor information for the tlas data
+		m_instanceDescriptor.Fill(blasManager, instanceDescsSize, instances, instanceCount);
 
-		if (resultSizeInBytes > m_resultSize)
+		// Rebuild the resource each time, as this was reccomended by NVIDIA as the best TLAS practice
 		{
-			if (m_result != nullptr)
-			{
-				m_result = nullptr;
-			}
+			Release();
 
-			m_result = CreateBuffer(device, resultSizeInBytes, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
+			D3D12_RESOURCE_DESC description = {};
+			description.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
+			description.DepthOrArraySize = 1;
+			description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
+			description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+			description.Format = DXGI_FORMAT_UNKNOWN;
+			description.Height = 1;
+			description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
+			description.MipLevels = 1;
+			description.SampleDesc.Count = 1;
+			description.SampleDesc.Quality = 0;
+			description.Width = resultSizeInBytes;
+
+			Allocate(description, D3D12_RESOURCE_STATE_RAYTRACING_ACCELERATION_STRUCTURE, kDefaultHeapProps);
 			m_resultSize = resultSizeInBytes;
 		}
 
 		D3D12_GPU_VIRTUAL_ADDRESS pSourceAS = 0;// updateOnly ? previousResult->GetGPUVirtualAddress() : 0;
-		
+
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC descriptor = {};
 		descriptor.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 		descriptor.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		descriptor.Inputs.InstanceDescs = m_instanceDesc->GetGPUVirtualAddress();
-		descriptor.Inputs.NumDescs = static_cast<UINT>(m_instances[m_readFrameIndex].size());
+		descriptor.Inputs.InstanceDescs = m_instanceDescriptor.resource->GetGPUVirtualAddress();
+		descriptor.Inputs.NumDescs = instanceCount;
 		descriptor.Inputs.Flags = flags;
 
 		descriptor.DestAccelerationStructureData = {
-			m_result->GetGPUVirtualAddress()
+			resource->GetGPUVirtualAddress()
 		};
 		descriptor.ScratchAccelerationStructureData = {
-			scratchBuffer->GetGPUVirtualAddress()
+			scratchBuffer->resource->GetGPUVirtualAddress()
 		};
 		descriptor.SourceAccelerationStructureData = pSourceAS;
 
@@ -387,17 +395,17 @@ namespace DX12Rendering {
 			// Wait for the buffer to complete setup.
 			D3D12_RESOURCE_BARRIER uavBarrier;
 			uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-			uavBarrier.UAV.pResource = m_result.Get();
+			uavBarrier.UAV.pResource = resource.Get();
 			uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 			commandList->ResourceBarrier(1, &uavBarrier);
 
-			m_fence.Signal(device, commandQueue);
+			fence.Signal(device, commandQueue);
 		});
 
 		return true;
 	}
 
-	void TopLevelAccelerationStructure::CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize) { 
+	void TopLevelAccelerationStructure::CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize, const UINT instanceCount) {
 		const UINT numDescs = 1000;
 
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
@@ -418,37 +426,102 @@ namespace DX12Rendering {
 		*scratchSizeInBytes = DX12_ALIGN(info.ScratchDataSizeInBytes, 256);
 		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, 256);
 
-		*instanceDescsSize = DX12_ALIGN(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * static_cast<UINT64>(m_instances[m_readFrameIndex].size()), 256);
+		*instanceDescsSize = DX12_ALIGN(sizeof(D3D12_RAYTRACING_INSTANCE_DESC) * static_cast<UINT64>(instanceCount), 256);
 	}
-
 
 #ifdef DEBUG_IMGUI
 	const void TopLevelAccelerationStructure::ImGuiDebug()
 	{
-		// Result
-		if (m_result == nullptr)
+		// Each TLAS
+		if (state == Unallocated || state == Removed)
 		{
 			ImGui::TextColored(ImGui_Color_Error, "Result - None");
 		}
 		else
 		{
-			ImGui::Text("Result GPU Addr: 0x%08x", m_result->GetGPUVirtualAddress());
+			ImGui::Text("Result GPU Addr: 0x%08x", resource->GetGPUVirtualAddress());
 		}
 
 		ImGui::Text("Result Size (In Bytes): %d", m_resultSize);
 
-		// Instances
-		if (m_instanceDesc == nullptr)
+		// Instance Descriptor
+		m_instanceDescriptor.ImGuiDebug();
+	}
+#endif
+#pragma endregion
+
+#pragma region TLASManager
+	TLASManager::TLASManager(BLASManager* blasManager) :
+		m_blasManager(blasManager),
+		m_scratch(DEFAULT_TLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, L"TLAS Scratch Buffer"),
+		m_tlas{ TopLevelAccelerationStructure(L"TLAS 0"), TopLevelAccelerationStructure(L"TLAS 1") }
+	{
+		Reset();
+	}
+
+	TLASManager::~TLASManager()
+	{
+
+	}
+
+	void TLASManager::Reset()
+	{
+		m_instances.clear();
+		m_instances.reserve(DEFAULT_TLAS_COUNT);
+	}
+
+	bool TLASManager::Generate()
+	{
+		return m_tlas[GetCurrentFrameIndex()].UpdateResources(*m_blasManager, m_instances.data(), m_instances.size(), &m_scratch);
+	}
+
+	void TLASManager::AddInstance(const dxHandle_t& id, const float transform[16])
+	{
+		BottomLevelAccelerationStructure* blas = m_blasManager->GetBLAS(id);
+		if (blas == nullptr)
 		{
-			ImGui::TextColored(ImGui_Color_Error, "Instance: None");
-		}
-		else
-		{
-			ImGui::Text("Instance GPU Addr: 0x%08x", m_instanceDesc->GetGPUVirtualAddress());
+			return;
 		}
 
-		ImGui::Text("Instance Size (In Bytes): %d", m_instanceDescsSize);
-		ImGui::Text("Instance Count: %d, Last Instance Count: %d", m_instances[m_readFrameIndex].size(), m_lastInstanceCount);
+		DX12Rendering::Instance* instance;
+		if (TryGetWriteInstance(blas->id, &instance))
+		{
+			memcpy(instance->transformation, transform, sizeof(float[16]));
+			return;
+		}
+
+		m_instances.emplace_back(transform, blas->id, 0 /* TODO: Find the hit group index containing the normal map of the surface. */);
+	}
+
+	const bool TLASManager::TryGetWriteInstance(const dxHandle_t& index, DX12Rendering::Instance** outInstance)
+	{
+		for (auto instance : m_instances) {
+			if (instance.instanceId == index)
+			{
+				*outInstance = &instance;
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+#ifdef DEBUG_IMGUI
+	const void TLASManager::ImGuiDebug()
+	{
+		// Each TLAS
+		for (TopLevelAccelerationStructure& tlas : m_tlas)
+		{
+			char title[50];
+			std::sprintf(title, "%ls", tlas.GetName());
+
+			if (ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen))
+			{
+				tlas.ImGuiDebug();
+			}
+		}
+
+		ImGui::Text("Instance Count: %d", m_instances.size());
 	}
 #endif
 #pragma endregion

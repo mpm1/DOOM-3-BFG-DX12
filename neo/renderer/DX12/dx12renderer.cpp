@@ -7,49 +7,10 @@
 #include <comdef.h>
 #include <type_traits>
 
-idCVar r_useRayTraycing("r_useRayTraycing", "0", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
-
-void __stdcall OnDeviceRemoved(PVOID context, BOOLEAN) {
-	ID3D12Device* removedDevice = (ID3D12Device*)context;
-	HRESULT removedReason = removedDevice->GetDeviceRemovedReason();
-
-	ComPtr<ID3D12DeviceRemovedExtendedData1> pDred;
-	removedDevice->QueryInterface(IID_PPV_ARGS(&pDred)); //TODO: Validate result
-	D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT1 DredAutoBreadcrumbsOutput;
-	D3D12_DRED_PAGE_FAULT_OUTPUT1 DredPageFaultOutput;
-	pDred->GetAutoBreadcrumbsOutput1(&DredAutoBreadcrumbsOutput); //TODO: Validate result
-	pDred->GetPageFaultAllocationOutput1(&DredPageFaultOutput); //TODO: Validate result
-
-	_com_error err(removedReason);
-	DX12Rendering::FailMessage(err.ErrorMessage());
-}
-
-void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter) {
-	*ppAdapter = nullptr;
-
-	for (UINT adapterIndex = 0; ; ++adapterIndex) {
-		IDXGIAdapter1* pAdapter = nullptr;
-		if (DXGI_ERROR_NOT_FOUND == pFactory->EnumAdapters1(adapterIndex, &pAdapter)) {
-			// No more adapters.
-			break;
-		}
-
-		//TODO: Select the appropriate monitor.
-		DXGI_ADAPTER_DESC1 desc;
-		pAdapter->GetDesc1(&desc);
-
-		// Check to see if the adapter supports Direct3D 12
-		if (SUCCEEDED(D3D12CreateDevice(pAdapter, D3D_FEATURE_LEVEL_12_1, _uuidof(ID3D12Device), nullptr))) {
-			*ppAdapter = pAdapter;
-			return;
-		}
-
-		pAdapter->Release();
-	}
-}
 
 DX12Renderer::DX12Renderer() :
 	m_frameIndex(0),
@@ -99,7 +60,7 @@ void DX12Renderer::Init(HWND hWnd) {
 #endif
 
 	if (r_useRayTraycing.GetBool()) {
-		m_raytracing = new DX12Rendering::Raytracing(m_device.Get(), m_width, m_height);
+		m_raytracing = new DX12Rendering::Raytracing(m_width, m_height);
 	}
 
 	m_initialized = true;
@@ -125,15 +86,9 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	ComPtr<IDXGIFactory4> factory;
 	DX12Rendering::ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
 
-	// TODO: Try to enable a WARP adapter? I don't think we need to do this, since we expect DXR hardware.
-	{
-		ComPtr<IDXGIAdapter1> hardwareAdapter;
-		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
+	DX12Rendering::Device::InitializeDevice(factory.Get());
 
-		DX12Rendering::ThrowIfFailed(D3D12CreateDevice(hardwareAdapter.Get(), D3D_FEATURE_LEVEL_12_1, IID_PPV_ARGS(&m_device)));
-	}
-
-	DX12Rendering::Commands::InitializeCommandLists(m_device.Get());
+	DX12Rendering::Commands::InitializeCommandLists(DX12Rendering::Device::GetDevice());
 
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
@@ -173,18 +128,25 @@ bool DX12Renderer::CreateBackBuffer() {
 	rtvHeapDesc.NumDescriptors = DX12_FRAME_COUNT;
 	rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	if (FAILED(m_device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)))) {
+
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+	if (device == nullptr)
+	{
 		return false;
 	}
 
-	m_rtvDescriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+	if (FAILED(device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap)))) {
+		return false;
+	}
+
+	m_rtvDescriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 
 	// Describe and create a depth-stencil view (DSV) descriptor
 	D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
 	dsvHeapDesc.NumDescriptors = 1;
 	dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
-	if (FAILED(m_device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_dsvHeap)))) {
+	if (FAILED(device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_dsvHeap)))) {
 		return false;
 	}
 
@@ -196,7 +158,7 @@ bool DX12Renderer::CreateBackBuffer() {
 			return false;
 		}
 
-		m_device->CreateRenderTargetView(m_renderTargets[frameIndex].Get(), nullptr, rtvHandle);
+		device->CreateRenderTargetView(m_renderTargets[frameIndex].Get(), nullptr, rtvHandle);
 		rtvHandle.Offset(1, m_rtvDescriptorSize);
 
 		WCHAR nameDest[16];
@@ -210,7 +172,7 @@ bool DX12Renderer::CreateBackBuffer() {
 	clearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	clearValue.DepthStencil = { 1.0f, 128 };
 
-	if (FAILED(m_device->CreateCommittedResource(
+	if (FAILED(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT, m_width, m_height, 1, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
@@ -227,7 +189,7 @@ bool DX12Renderer::CreateBackBuffer() {
 	dsv.Texture2D.MipSlice = 0;
 	dsv.Flags = D3D12_DSV_FLAG_NONE;
 
-	m_device->CreateDepthStencilView(m_depthBuffer.Get(), &dsv, m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+	device->CreateDepthStencilView(m_depthBuffer.Get(), &dsv, m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 
 	return true;
 }
@@ -235,16 +197,18 @@ bool DX12Renderer::CreateBackBuffer() {
 void DX12Renderer::LoadPipelineState(D3D12_GRAPHICS_PIPELINE_STATE_DESC* psoDesc, ID3D12PipelineState** ppPipelineState) {
 	assert(ppPipelineState != NULL);
 
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 	D3D12_FEATURE_DATA_ROOT_SIGNATURE featureData = {};
 	featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_1;
-	if (FAILED(m_device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
+	if (FAILED(device->CheckFeatureSupport(D3D12_FEATURE_ROOT_SIGNATURE, &featureData, sizeof(featureData))))
 	{
 		featureData.HighestVersion = D3D_ROOT_SIGNATURE_VERSION_1_0;
 	}
 
 	psoDesc->pRootSignature = m_rootSignature->GetRootSignature();
 
-	DX12Rendering::ThrowIfFailed(m_device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));	
+	DX12Rendering::ThrowIfFailed(device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));	
 }
 
 void DX12Renderer::SetActivePipelineState(ID3D12PipelineState* pPipelineState) {
@@ -262,9 +226,11 @@ void DX12Renderer::Uniform4f(UINT index, const float* uniform) {
 }
 
 void DX12Renderer::LoadAssets() {
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 	// Create the synchronization objects
 	{
-		m_frameFence.Allocate(m_device.Get());
+		m_frameFence.Allocate(device);
 
 		// Attach event for device removal
 #ifdef DEBUG_GPU
@@ -278,7 +244,7 @@ void DX12Renderer::LoadAssets() {
 			&m_deviceRemovedHandle,
 			m_removeDeviceEvent,
 			OnDeviceRemoved,
-			m_device.Get(),
+			device,
 			INFINITE,
 			0
 		);
@@ -290,7 +256,7 @@ void DX12Renderer::LoadAssets() {
 	}
 
 	// Create Empty Root Signature
-	m_rootSignature = new DX12RootSignature(m_device.Get(), sizeof(m_constantBuffer));
+	m_rootSignature = new DX12RootSignature(device.Get(), sizeof(m_constantBuffer));
 
 	{
 		// Create the texture upload heap.
@@ -301,7 +267,7 @@ void DX12Renderer::LoadAssets() {
 		constexpr UINT64 textureUploadBufferSize = (((bBytesPerRow + 255) & ~255) * (bHeight - 1)) + bBytesPerRow;
 		m_textureBufferUploadMax = textureUploadBufferSize;
 
-		DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
+		DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(
 			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 			D3D12_HEAP_FLAG_NONE,
 			&CD3DX12_RESOURCE_DESC::Buffer(textureUploadBufferSize),
@@ -316,7 +282,9 @@ void DX12Renderer::LoadAssets() {
 }
 
 DX12VertexBuffer* DX12Renderer::AllocVertexBuffer(DX12VertexBuffer* buffer, UINT numBytes) {
-	DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+	
+	DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(numBytes),
@@ -337,7 +305,9 @@ void DX12Renderer::FreeVertexBuffer(DX12VertexBuffer* buffer) {
 }
 
 DX12IndexBuffer* DX12Renderer::AllocIndexBuffer(DX12IndexBuffer* buffer, UINT numBytes) {
-	DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+	
+	DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(numBytes),
@@ -363,8 +333,10 @@ DX12JointBuffer* DX12Renderer::AllocJointBuffer(DX12JointBuffer* buffer, UINT nu
 	constexpr UINT entrySize = ((sizeof(float) * 4 * 404) + 255) & ~255; // (Size of float4 * maxFloatAllowed) that's 256 byts aligned.
 	const UINT heapSize = (numBytes + resourceAlignment) & ~resourceAlignment;
 
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 	// TODO: SET THIS FOR THE UPLOAD HEAP... THEN DO A SEPARATE JOINT HEAP JUST LIKE CBV
-	DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
+	DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 		D3D12_HEAP_FLAG_NONE,
 		&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
@@ -388,8 +360,9 @@ void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset) {
 }
 
 void DX12Renderer::SignalNextFrame() {
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-	m_frameFence.Signal(m_device.Get(), commandList->GetCommandQueue());
+	m_frameFence.Signal(device, commandList->GetCommandQueue());
 }
 
 void DX12Renderer::WaitForPreviousFrame() {
@@ -641,11 +614,15 @@ void DX12Renderer::OnDestroy() {
 		m_rootSignature = nullptr;
 	}
 
+	DX12Rendering::Device::DestroyDevice();
+
 	m_initialized = false;
 }
 
 bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 {
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 	/*if (m_width == width && m_height == height && m_fullScreen == fullscreen) {
 		return true;
 	}*/
@@ -660,7 +637,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 	//m_swapChain->SetFullscreenState(true, NULL);
 
 	// TODO: HANDLE THIS WHILE DRAWING.
-	if (m_device && m_swapChain) {
+	if (device && m_swapChain) {
 		if (m_isDrawing) {
 			WaitForPreviousFrame();
 
@@ -756,8 +733,10 @@ void DX12Renderer::SetActiveTextureRegister(UINT8 index) {
 }
 
 DX12TextureBuffer* DX12Renderer::AllocTextureBuffer(DX12TextureBuffer* buffer, D3D12_RESOURCE_DESC* textureDesc, const idStr* name) {
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 	// Create the buffer object.
-	if (!DX12Rendering::WarnIfFailed(m_device->CreateCommittedResource(
+	if (!DX12Rendering::WarnIfFailed(device->CreateCommittedResource(
 		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
 		D3D12_HEAP_FLAG_NONE,
 		textureDesc,
@@ -975,7 +954,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 			}
 		}
 
-		m_raytracing->AddOrUpdateVertecies(m_device.Get(), modelHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
+		m_raytracing->AddOrUpdateVertecies(device, modelHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
 		return;*/
 	};
 
@@ -1003,9 +982,15 @@ void DX12Renderer::DXR_UpdateBLAS()
 		return;
 	}
 
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+	if (device == nullptr)
+	{
+		return;
+	}
+
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	m_raytracing->GetBLAS()->Generate(m_device.Get(), m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE, L"Main Raytracing BLAS");
+	m_raytracing->GetBLAS()->Generate(device, m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE, L"Main Raytracing BLAS");
 	
 	//TODO: Move this to a more generalized execution tract.
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
@@ -1013,98 +998,6 @@ void DX12Renderer::DXR_UpdateBLAS()
 	commandList->Reset();
 
 	m_raytracing->CleanUpAccelerationStructure();
-}
-
-template<typename K>
-DX12Rendering::TopLevelAccelerationStructure* DX12Renderer::DXR_GetOrGenerateAccelerationStructure(const K& keyHandle)
-{
-	std::static_assert(false, "Invalid key  handle for TLAS");
-	return nullptr;
-}
-
-template<>
-DX12Rendering::TopLevelAccelerationStructure* DX12Renderer::DXR_GetOrGenerateAccelerationStructure(const std::nullptr_t& nullKey)
-{
-	return m_raytracing->GetGeneralTLAS();
-}
-
-template<>
-DX12Rendering::TopLevelAccelerationStructure* DX12Renderer::DXR_GetOrGenerateAccelerationStructure(const viewLight_t& keyHandle)
-{
-	idassert(false);// Light based TLAS no longer supported.
-	return nullptr;
-
-	/*const dxHandle_t handle = GetHandle(keyHandle);
-	DX12Rendering::TopLevelAccelerationStructure* tlas = m_raytracing->GetGeneralTLAS(handle);
-
-	if (tlas == nullptr)
-	{
-		tlas = m_raytracing->EmplaceShadowTLAS(handle);
-	}
-
-	return tlas;*/
-}
-
-template<typename K>
-void DX12Renderer::DXR_AddEntityAccelerationStructure(const K& keyHandle, const dxHandle_t entityHandle, const float modelMatrix[16])
-{
-	if (!IsRaytracingEnabled()) {
-		return;
-	}
-
-	if (m_raytracing->m_blas.GetAccelerationObject(entityHandle) == nullptr) {
-		common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
-		return;
-	}
-
-	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
-
-	tlas->AddInstance(entityHandle, modelMatrix);
-}
-
-template<>
-void DX12Renderer::DXR_AddEntityAccelerationStructure(const std::nullptr_t& keyHandle, const dxHandle_t entityHandle, const float modelMatrix[16])
-{
-	if (!IsRaytracingEnabled()) {
-		return;
-	}
-
-	if (m_raytracing->GetBLAS()->GetAccelerationObject(entityHandle) == nullptr) {
-		common->DWarning("DX12Renderer::AddEntityAccelerationStructure: Invalid entity key %d", entityHandle);
-		return;
-	}
-
-	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
-
-	tlas->AddInstance(entityHandle, modelMatrix);
-}
-
-template<typename K>
-void DX12Renderer::DXR_UpdateAccelerationStructure(const K& keyHandle)
-{
-	if (!IsRaytracingEnabled()) {
-		return;
-	}
-
-	//DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
-	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
-
-	// Generate the TLAS resource
-	m_raytracing->GenerateTLAS(tlas);
-}
-
-template<>
-void DX12Renderer::DXR_UpdateAccelerationStructure(const std::nullptr_t& keyHandle)
-{
-	if (!IsRaytracingEnabled()) {
-		return;
-	}
-
-	DX12Rendering::TopLevelAccelerationStructure* tlas = DXR_GetOrGenerateAccelerationStructure(keyHandle);
-
-	// Generate the TLAS resource
-	//DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
-	m_raytracing->GenerateTLAS(tlas);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)
@@ -1195,6 +1088,8 @@ void DX12Renderer::DebugClearLights()
 
 void DX12Renderer::InitializeImGui(HWND hWnd)
 {
+	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 	m_debugMode = DEBUG_LIGHTS;
 
 	{
@@ -1202,14 +1097,14 @@ void DX12Renderer::InitializeImGui(HWND hWnd)
 		desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 		desc.NumDescriptors = 1;
 		desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-		if (m_device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_imguiSrvDescHeap)) != S_OK)
+		if (device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&m_imguiSrvDescHeap)) != S_OK)
 		{
 			DX12Rendering::WarnMessage("Failed to create ImGui Descriptor heap.");
 			return;
 		}
 	}
 
-	DX12Rendering::ImGui_InitForGame(hWnd, m_device.Get(), DX12_FRAME_COUNT, m_imguiSrvDescHeap.Get());
+	DX12Rendering::ImGui_InitForGame(hWnd, device, DX12_FRAME_COUNT, m_imguiSrvDescHeap.Get());
 }
 
 void DX12Renderer::ReleaseImGui()

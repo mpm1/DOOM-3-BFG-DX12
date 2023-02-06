@@ -35,7 +35,7 @@ namespace DX12Rendering
 
 		static std::vector<CommandList> m_commandLists;
 
-		void InitializeCommandLists(ID3D12Device5* device);
+		void InitializeCommandLists(const ID3D12Device5* device);
 		CommandList* GetCommandList(const dx12_commandList_t commandListType);
 
 		void CommandListsBeginFrame();

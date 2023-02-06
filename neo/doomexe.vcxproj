@@ -277,6 +277,7 @@
     <ClInclude Include="renderer\DX12\dx12_AccelerationStructure.h" />
     <ClInclude Include="renderer\DX12\dx12_buffermap.h" />
     <ClInclude Include="renderer\DX12\dx12_CommandList.h" />
+    <ClInclude Include="renderer\DX12\dx12_DeviceManager.h" />
     <ClInclude Include="renderer\DX12\dx12_global.h" />
     <ClInclude Include="renderer\DX12\dx12_imgui.h" />
     <ClInclude Include="renderer\DX12\dx12_raytracing.h" />
@@ -537,6 +538,7 @@
     <ClCompile Include="renderer\DX12\dx12_buffermap.cpp" />
     <ClCompile Include="renderer\DX12\dx12_BufferObject.cpp" />
     <ClCompile Include="renderer\DX12\dx12_CommandList.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_DeviceManager.cpp" />
     <ClCompile Include="renderer\DX12\dx12_global.cpp" />
     <ClCompile Include="renderer\DX12\dx12_imgui.cpp" />
     <ClCompile Include="renderer\DX12\dx12_raytracing.cpp" />
