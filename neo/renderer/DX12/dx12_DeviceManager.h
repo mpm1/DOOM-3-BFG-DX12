@@ -10,23 +10,20 @@ namespace DX12Rendering
 		class DeviceManager
 		{
 		public:
-			ID3D12Device5* GetDevice() { return m_device; }
+			ID3D12Device5* GetDevice() { return m_device.Get(); }
 
 			DeviceManager(IDXGIAdapter1* hardwareAdapter);
 			~DeviceManager();
 
 		private:
-			ID3D12Device5* m_device;
+			ComPtr<ID3D12Device5> m_device;
 		};
-
-
-		DeviceManager* m_managerInstance = nullptr;
 
 		void InitializeDevice(IDXGIFactory4* factory);
 		void DestroyDevice();
 
-		const DeviceManager* GetDeviceManager() { return m_managerInstance; }
-		ID3D12Device5* GetDevice() { return GetDeviceManager() ? nullptr : m_managerInstance->GetDevice(); }
+		const DeviceManager* GetDeviceManager();
+		ID3D12Device5* GetDevice();
 	}
 }
 

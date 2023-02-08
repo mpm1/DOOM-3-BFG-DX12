@@ -46,7 +46,7 @@ class DX12Rendering::Raytracing {
 public:
 	const bool isRaytracingSupported;
 
-	Raytracing(ID3D12Device5* device, UINT screenWidth, UINT screenHeight);
+	Raytracing(UINT screenWidth, UINT screenHeight);
 	~Raytracing();
 
 	void Resize(UINT width, UINT height);
@@ -91,7 +91,6 @@ public:
 #endif
 
 private:
-	ID3D12Device5* m_device;
 	UINT m_width;
 	UINT m_height;
 

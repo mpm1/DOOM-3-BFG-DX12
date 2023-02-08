@@ -88,7 +88,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 
 	DX12Rendering::Device::InitializeDevice(factory.Get());
 
-	DX12Rendering::Commands::InitializeCommandLists(DX12Rendering::Device::GetDevice());
+	DX12Rendering::Commands::InitializeCommandLists();
 
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
@@ -256,7 +256,7 @@ void DX12Renderer::LoadAssets() {
 	}
 
 	// Create Empty Root Signature
-	m_rootSignature = new DX12RootSignature(device.Get(), sizeof(m_constantBuffer));
+	m_rootSignature = new DX12RootSignature(device, sizeof(m_constantBuffer));
 
 	{
 		// Create the texture upload heap.
@@ -872,9 +872,23 @@ void DX12Renderer::DXR_ResetAccelerationStructure()
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 	
-	m_raytracing->ResetGeneralTLAS();
+	m_raytracing->GetTLASManager()->Reset();
+	m_raytracing->GetBLASManager()->Reset();
 
-	m_raytracing->GetBLAS()->Reset();
+	// TODO: what else do we need to reset.
+	//m_raytracing->ResetFrame();
+}
+
+void DX12Renderer::DXR_UpdateAccelerationStructure()
+{
+
+	if (!IsRaytracingEnabled()) {
+		return;
+	}
+
+	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
+
+	m_raytracing->GetTLASManager()->Generate();
 
 	// TODO: what else do we need to reset.
 	//m_raytracing->ResetFrame();
@@ -904,68 +918,64 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
 	const dxHandle_t index = GetHandle(&modelHandle);
-	DX12Rendering::DX12AccelerationObject* result = m_raytracing->GetBLAS()->GetAccelerationObject(index);
+	std::string blasName = std::string(model->Name());
+	DX12Rendering::BottomLevelAccelerationStructure* blas = m_raytracing->GetBLASManager()->CreateBLAS(index, std::wstring(blasName.begin(), blasName.end()).c_str());
 
-	DX12VertexBuffer* vertexBuffer = nullptr;
-	idIndexBuffer* indexBuffer = nullptr;
-
-	const modelSurface_t& surf = *model->Surface(0);
-	const vertCacheHandle_t& vbHandle = surf.geometry->ambientCache;
-	const vertCacheHandle_t& ibHandle = surf.geometry->indexCache;
-
-	int vertOffsetBytes;
-	int indexOffset;
-
-	// Get vertex buffer
-	if (vertexCache.CacheIsStatic(vbHandle))
+	for (UINT surfaceIndex = 0; surfaceIndex < model->NumSurfaces(); ++surfaceIndex)
 	{
-		vertexBuffer = reinterpret_cast<DX12VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
-		vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+		DX12VertexBuffer* vertexBuffer = nullptr;
+		idIndexBuffer* indexBuffer = nullptr;
 
-		indexBuffer = &vertexCache.staticData.indexBuffer;
-		indexOffset = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
-	}
-	else
-	{
-		return;
-		/*if (!model->IsLoaded())
+		const modelSurface_t& surf = *model->Surface(surfaceIndex);
+		const vertCacheHandle_t& vbHandle = surf.geometry->ambientCache;
+		const vertCacheHandle_t& ibHandle = surf.geometry->indexCache;
+
+		int vertOffsetBytes;
+		int indexOffset;
+
+		// Get vertex buffer
+		if (vertexCache.CacheIsStatic(vbHandle))
 		{
-			re->hModel->LoadModel();
-		}*/
+			vertexBuffer = reinterpret_cast<DX12VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
+			vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
-		/*std::vector<triIndex_t> indecies;
-		std::vector<triIndex_t>::iterator iIterator = indecies.begin();
-		std::vector<idDrawVert> vertecies;
-
-		for (int sIndex = 0; sIndex < model->NumSurfaces(); ++sIndex)
-		{
-			// TODO: make separate for each material.
-			const modelSurface_t* surf = re->hModel->Surface(sIndex);
-
-			// Add all indecies
-			iIterator = indecies.insert(iIterator, surf->geometry->indexes, surf->geometry->indexes + surf->geometry->numIndexes);
-
-			// Add all vertecies
-			vertecies.reserve(vertecies.size() + surf->geometry->numVerts);
-			for (int vIndex = 0; vIndex < surf->geometry->numVerts; ++vIndex)
-			{
-				idDrawVert* vert = &surf->geometry->verts[vIndex];
-				vertecies.push_back(*vert);
-			}
+			indexBuffer = &vertexCache.staticData.indexBuffer;
+			indexOffset = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 		}
+		else
+		{
+			continue;
+			/*if (!model->IsLoaded())
+			{
+				re->hModel->LoadModel();
+			}*/
 
-		m_raytracing->AddOrUpdateVertecies(device, modelHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
-		return;*/
-	};
+			/*std::vector<triIndex_t> indecies;
+			std::vector<triIndex_t>::iterator iIterator = indecies.begin();
+			std::vector<idDrawVert> vertecies;
 
-	if (result != nullptr)
-	{
-		//TODO: update
-	}
-	else
-	{
-		m_raytracing->GetBLAS()->AddAccelerationObject(
-			index,
+			for (int sIndex = 0; sIndex < model->NumSurfaces(); ++sIndex)
+			{
+				// TODO: make separate for each material.
+				const modelSurface_t* surf = re->hModel->Surface(sIndex);
+
+				// Add all indecies
+				iIterator = indecies.insert(iIterator, surf->geometry->indexes, surf->geometry->indexes + surf->geometry->numIndexes);
+
+				// Add all vertecies
+				vertecies.reserve(vertecies.size() + surf->geometry->numVerts);
+				for (int vIndex = 0; vIndex < surf->geometry->numVerts; ++vIndex)
+				{
+					idDrawVert* vert = &surf->geometry->verts[vIndex];
+					vertecies.push_back(*vert);
+				}
+			}
+
+			m_raytracing->AddOrUpdateVertecies(device, modelHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
+			return;*/
+		};
+
+		blas->AddGeometry(
 			vertexBuffer,
 			vertOffsetBytes,
 			surf.geometry->numVerts,
@@ -990,14 +1000,24 @@ void DX12Renderer::DXR_UpdateBLAS()
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	m_raytracing->GetBLAS()->Generate(device, m_raytracing->scratchBuffer.Get(), DEFAULT_SCRATCH_SIZE, L"Main Raytracing BLAS");
-	
-	//TODO: Move this to a more generalized execution tract.
-	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
-	commandList->Execute();
-	commandList->Reset();
+	if (m_raytracing->GetBLASManager()->Generate() > 0)
+	{
+		//TODO: Move this to a more generalized execution tract.
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
+		commandList->Execute();
+		commandList->Reset();
+	}
 
 	m_raytracing->CleanUpAccelerationStructure();
+}
+
+void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16])
+{
+	if (!IsRaytracingEnabled()) {
+		return;
+	}
+
+	m_raytracing->GetTLASManager()->AddInstance(modelHandle, transform);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)
@@ -1090,7 +1110,7 @@ void DX12Renderer::InitializeImGui(HWND hWnd)
 {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-	m_debugMode = DEBUG_LIGHTS;
+	m_debugMode = DEBUG_RAYTRACING;
 
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC desc = {};

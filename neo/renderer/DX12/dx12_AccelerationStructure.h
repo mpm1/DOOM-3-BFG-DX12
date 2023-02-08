@@ -42,7 +42,7 @@ namespace DX12Rendering
 		UINT				hitGroupIndex; // TODO: We will change this to point to the hitGroup in the stack that contains the normal map for the surface.
 		//TODO: Add support for bone information.
 
-		Instance(const float srcTransformation[16], dxHandle_t& id, UINT hitGroupIndex) :
+		Instance(const float srcTransformation[16], const dxHandle_t& id, UINT hitGroupIndex) :
 			instanceId(id),
 			hitGroupIndex(hitGroupIndex),
 			transformation()
@@ -71,7 +71,7 @@ namespace DX12Rendering
 		const dxHandle_t id;
 		std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry = {};
 
-		BottomLevelAccelerationStructure(dxHandle_t id, const LPCWSTR name) :
+		BottomLevelAccelerationStructure(const dxHandle_t id, const LPCWSTR name) :
 			Resource(name),
 			id(id),
 			m_sizeInBytes(0)
@@ -102,7 +102,7 @@ namespace DX12Rendering
 	{
 		TopLevelAccelerationStructure(const std::wstring name) :
 			Resource(name.c_str()),
-			m_instanceDescriptor((name + L": Descriptor").c_str())
+			m_instanceDescriptor(InstanceDescriptor((name + L": Descriptor").c_str()))
 		{}
 		~TopLevelAccelerationStructure();
 
@@ -144,7 +144,7 @@ public:
 	/// <summary>
 	/// Loops through all BLAS objects and updates as needed.
 	/// </summary>
-	bool Generate();
+	UINT Generate();
 
 #ifdef DEBUG_IMGUI
 	const void ImGuiDebug();

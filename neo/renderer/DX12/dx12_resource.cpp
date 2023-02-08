@@ -13,7 +13,7 @@ namespace DX12Rendering {
 			return nullptr;
 		}
 
-		assert(state >= Ready);
+		assert(state == Unallocated || state >= Removed);
 
 		if (DX12Rendering::WarnIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, nullptr, IID_PPV_ARGS(&resource))))
 		{
@@ -34,7 +34,7 @@ namespace DX12Rendering {
 	{
 		if (state >= Ready && state < Unallocated)
 		{
-			resource.Reset();
+			resource = nullptr;
 			state = Unallocated;
 		}
 	}

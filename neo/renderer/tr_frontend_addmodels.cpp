@@ -366,7 +366,7 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 		// Add the object to the general tlas
 		float modelMatrix[16];
 		R_AxisToModelMatrix(renderEntity->axis, renderEntity->origin, modelMatrix);
-		dxRenderer.DXR_AddEntityAccelerationStructure(nullptr, dxRenderer.GetHandle(entityDef), modelMatrix);
+		dxRenderer.DXR_AddEntityToTLAS(dxRenderer.GetHandle(entityDef), modelMatrix);
 
 		SCOPED_PROFILE_EVENT( "Find lights" );
 		for ( viewLight_t * vLight = viewDef->viewLights; vLight != NULL; vLight = vLight->next ) {

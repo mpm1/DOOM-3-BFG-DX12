@@ -23,7 +23,7 @@ namespace DX12Rendering {
 
 		Resource(const LPCWSTR name = nullptr) :
 			m_name(name),
-			state(Unallocated) {}
+			state(ResourceState::Unallocated) {}
 
 		void Release();
 
@@ -32,7 +32,7 @@ namespace DX12Rendering {
 		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps);
 
 	private:
-		LPCWSTR m_name;
+		const LPCWSTR m_name;
 	};
 
 	struct ScratchBuffer : Resource

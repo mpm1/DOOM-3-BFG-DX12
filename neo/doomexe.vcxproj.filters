@@ -1308,7 +1308,7 @@
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_DeviceManager.cpp">
-      <Filter>Renderer</Filter>
+      <Filter>Renderer\DX12</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

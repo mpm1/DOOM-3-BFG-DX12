@@ -144,7 +144,11 @@ namespace DX12Rendering {
 
 		bool IsFenceCompleted()
 		{
-			assert(m_fence != nullptr);
+			if (m_fence == nullptr)
+			{
+				// No fence to evaluate.
+				return true;
+			}
 
 			UINT64 completedValue = m_fence->GetCompletedValue();
 			return completedValue >= m_value;

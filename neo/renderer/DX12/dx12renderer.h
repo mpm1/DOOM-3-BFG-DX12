@@ -99,9 +99,13 @@ public:
 	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 
 #pragma region RayTracing
-	void DXR_ResetAccelerationStructure(); // Resets the bottom level acceleration structure to an empty state.
+	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.
+	void DXR_UpdateAccelerationStructure();
+
 	void DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRenderModel* model);
 	void DXR_UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
+
+	void DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16]);
 
 	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
 	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);

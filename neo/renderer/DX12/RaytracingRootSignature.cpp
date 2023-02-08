@@ -3,8 +3,7 @@
 namespace DX12Rendering {
 	#include "./RaytracingRootSignature.h"
 
-	RaytracingRootSignature::RaytracingRootSignature(ID3D12Device5* device, UINT flags)
-		: m_device(device)
+	RaytracingRootSignature::RaytracingRootSignature(UINT flags)
 	{
 		CD3DX12_ROOT_PARAMETER1 rootParameters[1];
 
@@ -58,6 +57,8 @@ namespace DX12Rendering {
 
 	void RaytracingRootSignature::CreateRootSignature(D3D12_ROOT_PARAMETER1* parameters, UINT parameterCount)
 	{
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 		// Describe the raytracing root signature.
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
 		rootSignatureDesc.Init_1_1(parameterCount, parameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
@@ -67,6 +68,6 @@ namespace DX12Rendering {
 		ComPtr<ID3DBlob> errorBlob;
 		DX12Rendering::ThrowIfFailed(D3DX12SerializeVersionedRootSignature(&rootSignatureDesc, D3D_ROOT_SIGNATURE_VERSION_1_1, &signatureBlob, &errorBlob));
 
-		DX12Rendering::ThrowIfFailed(m_device->CreateRootSignature(0, signatureBlob.Get()->GetBufferPointer(), signatureBlob.Get()->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
+		DX12Rendering::ThrowIfFailed(device->CreateRootSignature(0, signatureBlob.Get()->GetBufferPointer(), signatureBlob.Get()->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
 	}
 }

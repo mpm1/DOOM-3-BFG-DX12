@@ -2788,7 +2788,7 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 	//-------------------------------------------------
 
 	// Verify the acceleration structure is properly updated
-	dxRenderer.DXR_UpdateAccelerationStructure(nullptr);
+	dxRenderer.DXR_UpdateAccelerationStructure();
 
 	// set the window clipping
 	GL_Viewport(viewDef->viewport.x1,

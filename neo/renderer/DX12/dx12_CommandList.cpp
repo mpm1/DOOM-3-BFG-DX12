@@ -7,7 +7,7 @@ namespace DX12Rendering {
 	namespace Commands {
 #pragma region Static Functions
 
-		void InitializeCommandLists(const ID3D12Device5* device)
+		void InitializeCommandLists()
 		{
 			// It's important that we add the command lists in the same order as the dx12_commandList_t enumerator. 
 			m_commandLists.reserve(DX12Rendering::Commands::dx12_commandList_t::COUNT);
@@ -18,7 +18,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
-				m_commandLists.emplace_back(device, &queueDesc, true, L"Direct");
+				m_commandLists.emplace_back(&queueDesc, true, L"Direct");
 			}
 
 			// Copy Commands
@@ -27,7 +27,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
 
-				m_commandLists.emplace_back(device, &queueDesc, true, L"Copy");
+				m_commandLists.emplace_back(&queueDesc, true, L"Copy");
 			}
 
 			//  Commands
@@ -36,7 +36,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
 
-				m_commandLists.emplace_back(device, &queueDesc, false, L"Compute");
+				m_commandLists.emplace_back(&queueDesc, false, L"Compute");
 			}
 		}
 
@@ -72,9 +72,8 @@ namespace DX12Rendering {
 
 
 #pragma region CommandList
-		CommandList::CommandList(ID3D12Device5* device, D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, const LPCWSTR name)
+		CommandList::CommandList(D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, const LPCWSTR name)
 			: resetPerFrame(resetPerFrame),
-			m_device(device),
 			m_state(UNKNOWN),
 			m_commandCount(0),
 			m_commandThreshold(128),
@@ -83,6 +82,8 @@ namespace DX12Rendering {
 #endif
 		{
 			// Describe and create the command queue
+			ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 			ThrowIfFailed(device->CreateCommandQueue(queueDesc, IID_PPV_ARGS(&m_commandQueue)));
 			std::wstring queueName = std::wstring(name) + L" Command Queue";
 			m_commandQueue->SetName(queueName.c_str());
@@ -93,7 +94,7 @@ namespace DX12Rendering {
 				WCHAR nameDest[64];
 				wsprintfW(nameDest, L"%s Command Allocator %d", name, frame);
 
-				DX12Rendering::ThrowIfFailed(m_device->CreateCommandAllocator(queueDesc->Type, IID_PPV_ARGS(&m_commandAllocator[frame])));
+				DX12Rendering::ThrowIfFailed(device->CreateCommandAllocator(queueDesc->Type, IID_PPV_ARGS(&m_commandAllocator[frame])));
 				m_commandAllocator[frame]->SetName(nameDest);
 			}
 

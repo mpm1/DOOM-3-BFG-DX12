@@ -15,13 +15,12 @@ namespace DX12Rendering {
 
 class DX12Rendering::RaytracingRootSignature {
 public:
-	RaytracingRootSignature(ID3D12Device5* device, UINT flags);
+	RaytracingRootSignature(UINT flags);
 	~RaytracingRootSignature();
 
 	ID3D12RootSignature* GetRootSignature() { return m_rootSignature.Get(); }
 
 private:
-	ID3D12Device5* m_device;
 	ComPtr<ID3D12RootSignature> m_rootSignature;
 
 	void CreateRootSignature(D3D12_ROOT_PARAMETER1* parameters, UINT parameterCount);

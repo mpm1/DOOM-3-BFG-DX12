@@ -4,6 +4,7 @@
 #include <functional>
 
 #include "./dx12_global.h"
+#include "./dx12_DeviceManager.h"
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -35,7 +36,7 @@ namespace DX12Rendering
 
 		static std::vector<CommandList> m_commandLists;
 
-		void InitializeCommandLists(const ID3D12Device5* device);
+		void InitializeCommandLists();
 		CommandList* GetCommandList(const dx12_commandList_t commandListType);
 
 		void CommandListsBeginFrame();
@@ -48,10 +49,10 @@ class DX12Rendering::Commands::CommandList
 public:
 	const bool resetPerFrame;
 
-	CommandList(ID3D12Device5* device, D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, const LPCWSTR name);
+	CommandList(D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, const LPCWSTR name);
 	~CommandList();
 
-	bool SignalFence(DX12Rendering::Fence& fence) { fence.Signal(m_device, m_commandQueue.Get()); }
+	bool SignalFence(DX12Rendering::Fence& fence) { fence.Signal(DX12Rendering::Device::GetDevice(), m_commandQueue.Get()); }
 
 	/// <summary>
 	/// Resets the command list. Returns true if we reset correctly; false otherwise.
@@ -116,8 +117,6 @@ private:
 	dx12_commandListState_t m_state;
 	UINT m_commandCount;
 	UINT m_commandThreshold;
-
-	ID3D12Device5* m_device;
 
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	ComPtr<ID3D12CommandAllocator> m_commandAllocator[DX12_FRAME_COUNT];

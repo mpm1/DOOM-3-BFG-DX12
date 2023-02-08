@@ -48,7 +48,7 @@ namespace DX12Rendering {
 
 	void BottomLevelAccelerationStructure::AddGeometry(D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc)
 	{
-		geometry.emplace_back(geometryDesc, geometry.size() - 1);
+		geometry.emplace_back(geometryDesc);
 
 		if (state > Unallocated && state < Removed)
 		{
@@ -168,7 +168,7 @@ namespace DX12Rendering {
 			return blas;
 		}
 
-		blas = &m_objectMap.emplace(key, name).first->second;
+		blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, name)).first->second;
 
 		return blas;
 	}
@@ -200,16 +200,23 @@ namespace DX12Rendering {
 		m_objectMap.clear();
 	}
 
-	bool BLASManager::Generate()
+	UINT BLASManager::Generate()
 	{
+		UINT count = 0;
 		for (auto blasPair = m_objectMap.begin(); blasPair != m_objectMap.end(); ++blasPair)
 		{
-			if (!blasPair->second.Generate(m_scratchBuffer))
+			if (blasPair->second.Generate(m_scratchBuffer))
+			{
+				++count;
+			}
+			else
 			{
 				// For now, just drop the loop on failure. We'll modify this to only do a limited number of entries per frame.
-				return false;
+				break;
 			}
 		}
+
+		return count;
 	}
 
 #ifdef DEBUG_IMGUI
@@ -510,10 +517,13 @@ namespace DX12Rendering {
 	const void TLASManager::ImGuiDebug()
 	{
 		// Each TLAS
+		UINT count = 0;
 		for (TopLevelAccelerationStructure& tlas : m_tlas)
 		{
+			count++;
+
 			char title[50];
-			std::sprintf(title, "%ls", tlas.GetName());
+			std::sprintf(title, "%d - %ls", count, tlas.GetName());
 
 			if (ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen))
 			{

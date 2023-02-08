@@ -2,9 +2,11 @@
 
 #include <stdexcept>
 #include "./dx12_raytracing.h"
+#include "./dx12_DeviceManager.h"
 
 namespace DX12Rendering {
-	bool CheckRaytracingSupport(ID3D12Device5* device) {
+	bool CheckRaytracingSupport() {
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 		D3D12_FEATURE_DATA_D3D12_OPTIONS5 options5 = {};
 
 		if (!DX12Rendering::WarnIfFailed(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS5, &options5, sizeof(options5)))) {
@@ -19,12 +21,11 @@ namespace DX12Rendering {
 		return true;
 	}
 
-	Raytracing::Raytracing(ID3D12Device5* device, UINT screenWidth, UINT screenHeight)
-		: m_device(device),
-		isRaytracingSupported(CheckRaytracingSupport(device)),
-		m_rayGenSignature(device, WRITE_OUTPUT | READ_ENVIRONMENT),
-		m_missSignature(device, NONE),
-		m_hitSignature(device, NONE),
+	Raytracing::Raytracing(UINT screenWidth, UINT screenHeight) :
+		isRaytracingSupported(CheckRaytracingSupport()),
+		m_rayGenSignature( WRITE_OUTPUT | READ_ENVIRONMENT),
+		m_missSignature(NONE),
+		m_hitSignature(NONE),
 		m_width(screenWidth),
 		m_height(screenHeight),
 		m_tlasManager(&m_blasManager),
@@ -46,6 +47,8 @@ namespace DX12Rendering {
 
 	void Raytracing::CreateCBVHeap(const size_t constantBufferSize)
 	{
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 		// Create the buffer size.
 		constexpr UINT resourceAlignment = (1024 * 64) - 1; // Resource must be a multible of 64KB
 		const UINT entrySize = (constantBufferSize + 255) & ~255; // Size is required to be 256 byte aligned
@@ -57,7 +60,7 @@ namespace DX12Rendering {
 			// Describe and create the constant buffer view (CBV) descriptor for each frame
 			for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
 				// Create the Constant buffer heap for each frame
-				DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
+				DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(
 					&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
 					D3D12_HEAP_FLAG_NONE,
 					&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
@@ -70,7 +73,7 @@ namespace DX12Rendering {
 				m_cbvUploadHeap[frameIndex]->SetName(heapName);
 			}
 
-			m_cbvHeapIncrementor = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+			m_cbvHeapIncrementor = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 		}
 	}
 
@@ -88,10 +91,12 @@ namespace DX12Rendering {
 		// Create the constant buffer view for the object
 		CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart(), 2, m_cbvHeapIncrementor);
 
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 		cbvDesc.BufferLocation = m_cbvUploadHeap[frameIndex]->GetGPUVirtualAddress() + offset;
 		cbvDesc.SizeInBytes = bufferSize;
-		m_device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
+		device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
 
 		// Define the Descriptor Table to use.
 		auto commandList = Commands::GetCommandList(Commands::COMPUTE);
@@ -107,6 +112,8 @@ namespace DX12Rendering {
 
 	void Raytracing::CreateOutputBuffers()
 	{
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 		// Create the resource to draw raytraced shadows to.
 		D3D12_RESOURCE_DESC shadowDesc = {};
 		shadowDesc.DepthOrArraySize = 1;
@@ -119,7 +126,7 @@ namespace DX12Rendering {
 		shadowDesc.MipLevels = 1;
 		shadowDesc.SampleDesc.Count = 1;
 
-		DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(&kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &shadowDesc, D3D12_RESOURCE_STATE_COPY_SOURCE, nullptr, IID_PPV_ARGS(&m_diffuseResource)));
+		DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(&kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &shadowDesc, D3D12_RESOURCE_STATE_COPY_SOURCE, nullptr, IID_PPV_ARGS(&m_diffuseResource)));
 		m_diffuseResource->SetName(L"DXR Shadow Output");
 	}
 
@@ -136,16 +143,18 @@ namespace DX12Rendering {
 
 	void Raytracing::CreateShaderResourceHeap()
 	{
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 		// Create a SRV/UAV/CBV descriptor heap. We need 3 entries - 
 		// 1 UAV for the raytracing output
 		// 1 SRV for the TLAS 
 		// 1 CBV for the Camera properties
-		m_generalUavHeaps = CreateDescriptorHeap(m_device, 3, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+		m_generalUavHeaps = CreateDescriptorHeap(device, 3, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-		m_device->CreateUnorderedAccessView(m_diffuseResource.Get(), nullptr, &uavDesc, shadowHandle);
+		device->CreateUnorderedAccessView(m_diffuseResource.Get(), nullptr, &uavDesc, shadowHandle);
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
@@ -161,9 +170,11 @@ namespace DX12Rendering {
 			return;
 		}
 
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 		// Write the acceleration structure to the view.
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
-		shadowHandle.ptr += m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		shadowHandle.ptr += device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
@@ -171,7 +182,7 @@ namespace DX12Rendering {
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.RaytracingAccelerationStructure.Location = m_tlasManager.GetCurrent().resource->GetGPUVirtualAddress(); // Write the acceleration structure view in the heap 
 
-		m_device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
+		device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
 	}
 
 	void Raytracing::Uniform4f(dxr_renderParm_t param, const float* uniform)
@@ -257,6 +268,8 @@ namespace DX12Rendering {
 	}
 
 	ID3D12RootSignature* Raytracing::GetGlobalRootSignature() {
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 		if (m_globalRootSignature.Get() == nullptr) {
 			D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
 			rootDesc.NumParameters = 0;
@@ -268,15 +281,17 @@ namespace DX12Rendering {
 
 			DX12Rendering::ThrowIfFailed(D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &rootSignature, &error));
 
-			DX12Rendering::ThrowIfFailed(m_device->CreateRootSignature(0, rootSignature->GetBufferPointer(), rootSignature->GetBufferSize(), IID_PPV_ARGS(&m_globalRootSignature)));
+			DX12Rendering::ThrowIfFailed(device->CreateRootSignature(0, rootSignature->GetBufferPointer(), rootSignature->GetBufferSize(), IID_PPV_ARGS(&m_globalRootSignature)));
 		}
 
 		return m_globalRootSignature.Get();
 	}
 
 	void Raytracing::CreateShadowPipeline() { 
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 		// Create the Pipline
-		DX12Rendering::RaytracingPipeline pipeline(m_device, GetGlobalRootSignature());
+		DX12Rendering::RaytracingPipeline pipeline(device, GetGlobalRootSignature());
 		std::vector<std::wstring> generatorSymbols = { L"RayGen" };
 		std::vector<std::wstring> missSymbols = { L"Miss" };
 		std::vector<std::wstring> hitSymbols = { L"ClosestHit" };
@@ -312,6 +327,8 @@ namespace DX12Rendering {
 		D3D12_GPU_DESCRIPTOR_HANDLE srvUavHandle = m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart();
 		void* heapPointer = reinterpret_cast<void*>(srvUavHandle.ptr);
 
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
 		// Create the SBT structure
 		m_generalSBTDesc.AddRayGeneratorProgram(L"RayGen", { heapPointer });
 		m_generalSBTDesc.AddRayMissProgram(L"Miss", {});
@@ -319,7 +336,7 @@ namespace DX12Rendering {
 
 		// Create the SBT resource
 		UINT32 tableSize = m_generalSBTDesc.CalculateTableSize();
-		ThrowIfFailed(m_device->CreateCommittedResource(
+		ThrowIfFailed(device->CreateCommittedResource(
 			&kUploadHeapProps,
 			D3D12_HEAP_FLAG_NONE,
 			&CD3DX12_RESOURCE_DESC::Buffer(tableSize),
