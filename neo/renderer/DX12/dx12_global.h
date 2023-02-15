@@ -22,7 +22,10 @@
 #include "dx12_imgui.h"
 
 #ifdef DEBUG_PIX
-//#include <pix3.h>
+#undef _vsnprintf
+#include <pix3.h>
+#define _vsnprintf	use_idStr_vsnPrintf
+
 #include <DXProgrammableCapture.h>
 #elif defined(DEBUG_NSIGHTS)
 #else
@@ -46,14 +49,8 @@ using namespace Microsoft::WRL;
 typedef UINT64 dxHandle_t;
 
 namespace DX12Rendering {
-//#ifdef USE_PIX
-//MARK figue out why pix is not working.
-//	void CaptureEventStart(ID3D12CommandList* commandList, std::string message) { PIXBeginEvent(commandList, PIX_COLOR(128, 255, 128), message.c_str()); };
-//	void CaptureEventEnd(ID3D12CommandList* commandList) { PIXEndEvent(commandList); }
-//#else
-//	void CaptureEventStart(ID3D12CommandList* commandList, std::string message) {};
-//	void CaptureEventEnd(ID3D12CommandList* commandList) {}
-//#endif
+	void CaptureEventStart(ID3D12CommandQueue* commandQueue, std::string message);
+	void CaptureEventEnd(ID3D12CommandQueue* commandQueue);
 
 	void FailMessage(LPCSTR message);
 	void WarnMessage(LPCSTR message);
@@ -186,19 +183,6 @@ struct Vertex
 	XMFLOAT4 colour;
 };
 
-struct DX12VertexBuffer
-{
-	ComPtr<ID3D12Resource> vertexBuffer;
-	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-};
-
-struct DX12IndexBuffer
-{
-	ComPtr<ID3D12Resource> indexBuffer;
-	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	UINT indexCount;
-};
-
 struct DX12TextureBuffer
 {
 	ComPtr<ID3D12Resource> textureBuffer;
@@ -214,12 +198,6 @@ struct DX12TextureBuffer
 		usageState = {};
 		name = nullptr;
 	}
-};
-
-struct DX12JointBuffer
-{
-	ComPtr<ID3D12Resource> jointBuffer;
-	UINT entrySizeInBytes;
 };
 
 enum eStageType {

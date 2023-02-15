@@ -3,6 +3,7 @@
 
 #include "./dx12_global.h"
 #include "./dx12_CommandList.h"
+#include "./dx12_Geometry.h"
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -21,7 +22,7 @@ public:
 	/// <param name="frameIndex"></param>
 	void BeginFrame(UINT frameIndex);
 
-	D3D12_CONSTANT_BUFFER_VIEW_DESC SetJointDescriptorTable(DX12JointBuffer* buffer, UINT jointOffset, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList);
+	D3D12_CONSTANT_BUFFER_VIEW_DESC SetJointDescriptorTable(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* m_constantBuffer, UINT objectIndex, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList);
 	DX12TextureBuffer* SetTextureRegisterIndex(UINT textureIndex, DX12TextureBuffer* texture, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList);
 private:

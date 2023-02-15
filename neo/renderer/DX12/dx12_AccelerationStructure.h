@@ -6,6 +6,7 @@
 
 #include "./dx12_global.h"
 #include "./dx12_resource.h"
+#include "./dx12_Geometry.h"
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -70,11 +71,13 @@ namespace DX12Rendering
 	{
 		const dxHandle_t id;
 		std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry = {};
+		const bool m_isStatic;
 
-		BottomLevelAccelerationStructure(const dxHandle_t id, const LPCWSTR name) :
+		BottomLevelAccelerationStructure(const dxHandle_t id, bool isStatic, const LPCWSTR name) :
 			Resource(name),
 			id(id),
-			m_sizeInBytes(0)
+			m_sizeInBytes(0),
+			m_isStatic(isStatic)
 		{}
 
 		~BottomLevelAccelerationStructure()
@@ -82,7 +85,7 @@ namespace DX12Rendering
 			geometry.clear();
 		}
 
-		void AddGeometry(DX12VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+		void AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 		void AddGeometry(D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc);
 
 		/// <summary>
@@ -92,7 +95,7 @@ namespace DX12Rendering
 
 	private:
 		UINT64 m_sizeInBytes;
-		void CalculateBufferSize(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags);
+		void CalculateBufferSize(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS* desc);
 	};
 
 	/// <summary>
@@ -101,7 +104,7 @@ namespace DX12Rendering
 	struct TopLevelAccelerationStructure : Resource
 	{
 		TopLevelAccelerationStructure(const std::wstring name) :
-			Resource(name.c_str()),
+			Resource(std::move(name.c_str())),
 			m_instanceDescriptor(InstanceDescriptor((name + L": Descriptor").c_str()))
 		{}
 		~TopLevelAccelerationStructure();
@@ -150,6 +153,8 @@ public:
 	const void ImGuiDebug();
 #endif
 private:
+	const UINT m_blasPerFrame = 100; // The maximum available BLAS objects to be processed per frame.
+	UINT m_blasIndex; // Used to tell the next BLAS index to process each frame.
 	std::map<dxHandle_t, BottomLevelAccelerationStructure> m_objectMap = {};
 	ScratchBuffer m_scratchBuffer;
 
@@ -165,7 +170,7 @@ public:
 	bool Generate();
 
 	void Reset();
-	bool IsReady() { return m_instances.size() > 0 && m_tlas[GetCurrentFrameIndex()].fence.IsFenceCompleted(); }
+	bool IsReady() { return m_instances.size() > 0 && GetCurrent().fence.IsFenceCompleted(); }
 
 	TopLevelAccelerationStructure& GetCurrent() { return m_tlas[GetCurrentFrameIndex()]; }
 

@@ -33,10 +33,10 @@ namespace DX12Rendering {
 			//  Commands
 			{
 				D3D12_COMMAND_QUEUE_DESC queueDesc = {};
-				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
+				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
 
-				m_commandLists.emplace_back(&queueDesc, false, L"Compute");
+				m_commandLists.emplace_back(&queueDesc, true, L"Compute");
 			}
 		}
 
@@ -169,7 +169,7 @@ namespace DX12Rendering {
 				return false;
 			}
 
-			bool result = WarnIfFailed(m_commandList->Reset(m_commandAllocator[GetCurrentFrameIndex()].Get(), NULL));
+			bool result = WarnIfFailed(m_commandList->Reset(m_commandAllocator[GetCurrentFrameIndex()].Get(), NULL)); 
 			m_state = OPEN;
 
 			return result;

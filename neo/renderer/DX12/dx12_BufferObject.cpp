@@ -143,7 +143,7 @@ idVertexBuffer::~idVertexBuffer() {
 
 void idVertexBuffer::FreeBufferObject() {
 	if (apiObject != NULL) {
-		dxRenderer.FreeVertexBuffer(reinterpret_cast<DX12VertexBuffer*>(apiObject));
+		dxRenderer.FreeVertexBuffer(reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(apiObject));
 		delete apiObject;
 	}
 }
@@ -219,16 +219,18 @@ void* idVertexBuffer::MapBuffer(bufferMapType_t mapType) const {
 
 	UINT8* buffer = NULL;
 	D3D12_RANGE readRange = { 0, 0 };
-	const DX12VertexBuffer* bufferObject = reinterpret_cast<DX12VertexBuffer*>(apiObject);
+	DX12Rendering::Geometry::VertexBuffer* bufferObject = reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(apiObject);
 
 	if (mapType == BM_READ || mapType == BM_WRITE) { // TODO: Can we make a read only one?
-		const HRESULT hr = bufferObject->vertexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&buffer));
-		if (FAILED(hr)) {
+		const HRESULT hr = bufferObject->Map(&readRange, reinterpret_cast<void**>(&buffer));
+		if (bufferObject->Map(&readRange, reinterpret_cast<void**>(&buffer))) 
+		{
+			buffer = (byte*)buffer + GetOffset();
+		}
+		else
+		{
 			common->Warning("Could not load vertex buffer.");
 			buffer = NULL;
-		}
-		else {
-			buffer = (byte*)buffer + GetOffset();
 		}
 	}
 	else {
@@ -252,7 +254,7 @@ void idVertexBuffer::UnmapBuffer() const {
 	assert(apiObject != NULL);
 	assert(IsMapped());
 
-	reinterpret_cast<DX12VertexBuffer*>(apiObject)->vertexBuffer->Unmap(0, nullptr);
+	reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(apiObject)->Unmap(nullptr);
 
 	SetUnmapped();
 }
@@ -286,7 +288,7 @@ bool idVertexBuffer::AllocBufferObject(const void* data, int allocSize) {
 	bool allocationFailed = false;
 
 	const int numBytes = GetAllocedSize();
-	apiObject = dxRenderer.AllocVertexBuffer(new DX12VertexBuffer(), numBytes);
+	apiObject = dxRenderer.AllocVertexBuffer(numBytes, nullptr);
 
 
 	if (r_showBuffers.GetBool()) {
@@ -349,7 +351,7 @@ bool idIndexBuffer::AllocBufferObject(const void* data, int allocSize) {
 
 	const int numBytes = GetAllocedSize();
 
-	apiObject = dxRenderer.AllocIndexBuffer(new DX12IndexBuffer(), numBytes);
+	apiObject = dxRenderer.AllocIndexBuffer(numBytes, nullptr);
 
 	if (r_showBuffers.GetBool()) {
 		idLib::Printf("index buffer alloc %p, api %p (%i bytes)\n", this, GetAPIObject(), GetSize());
@@ -394,7 +396,7 @@ void idIndexBuffer::FreeBufferObject() {
 		idLib::Printf("index buffer free %p, api %p (%i bytes)\n", this, GetAPIObject(), GetSize());
 	}
 
-	dxRenderer.FreeIndexBuffer(static_cast<DX12IndexBuffer*>(apiObject));
+	dxRenderer.FreeIndexBuffer(static_cast<DX12Rendering::Geometry::IndexBuffer*>(apiObject));
 	delete apiObject;
 
 	ClearWithoutFreeing();
@@ -471,10 +473,10 @@ void* idIndexBuffer::MapBuffer(bufferMapType_t mapType) const {
 
 	UINT8* buffer = NULL;
 	D3D12_RANGE readRange = { 0, 0 };
-	DX12IndexBuffer* bufferObject = reinterpret_cast<DX12IndexBuffer*>(apiObject);
+	DX12Rendering::Geometry::IndexBuffer* bufferObject = reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(apiObject);
 
 	if (mapType == BM_READ || mapType == BM_WRITE) { // TODO: Can we make a read only one?
-		HRESULT hr = bufferObject->indexBuffer->Map(0, &readRange, reinterpret_cast<void**>(&buffer));
+		HRESULT hr = bufferObject->Map(&readRange, reinterpret_cast<void**>(&buffer));
 		if (FAILED(hr)) {
 			common->Warning("Could not load index buffer.");
 			buffer = NULL;
@@ -504,7 +506,7 @@ void idIndexBuffer::UnmapBuffer() const {
 	assert(apiObject != NULL);
 	assert(IsMapped());
 
-	reinterpret_cast<DX12IndexBuffer*>(apiObject)->indexBuffer->Unmap(0, nullptr);
+	reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(apiObject)->Unmap(nullptr);
 
 	SetUnmapped();
 }
@@ -577,7 +579,7 @@ bool idJointBuffer::AllocBufferObject(const float* joints, int numAllocJoints) {
 	apiObject = reinterpret_cast<void*>(buffer);*/
 
 	// TODO: Find if this is the appropriate buffer
-	apiObject = dxRenderer.AllocJointBuffer(new DX12JointBuffer(), numBytes);
+	apiObject = dxRenderer.AllocJointBuffer(numBytes);
 
 	if (r_showBuffers.GetBool()) {
 		idLib::Printf("joint buffer alloc %p, api %p (%i joints)\n", this, GetAPIObject(), GetNumJoints());
@@ -620,7 +622,7 @@ void idJointBuffer::FreeBufferObject() {
 	qglBindBufferARB(GL_UNIFORM_BUFFER, 0);
 	qglDeleteBuffersARB(1, &buffer);*/
 
-	dxRenderer.FreeJointBuffer(static_cast<DX12JointBuffer*>(apiObject));
+	dxRenderer.FreeJointBuffer(static_cast<DX12Rendering::Geometry::JointBuffer*>(apiObject));
 	delete apiObject;
 
 	ClearWithoutFreeing();
@@ -701,10 +703,10 @@ float* idJointBuffer::MapBuffer(bufferMapType_t mapType) const {
 
 	void* buffer = NULL;
 	D3D12_RANGE readRange = { 0, 0 };
-	DX12JointBuffer* bufferObject = reinterpret_cast<DX12JointBuffer*>(apiObject);
+	DX12Rendering::Geometry::JointBuffer* bufferObject = reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(apiObject);
 
 	if (mapType == BM_READ || mapType == BM_WRITE) { // TODO: Can we make a read only one?
-		HRESULT hr = bufferObject->jointBuffer->Map(0, &readRange, reinterpret_cast<void**>(&buffer));
+		HRESULT hr = bufferObject->Map(&readRange, reinterpret_cast<void**>(&buffer));
 		if (FAILED(hr)) {
 			common->Warning("Could not load joint buffer.");
 			buffer = NULL;
@@ -734,7 +736,7 @@ void idJointBuffer::UnmapBuffer() const {
 	assert(apiObject != NULL);
 	assert(IsMapped());
 
-	reinterpret_cast<DX12JointBuffer*>(apiObject)->jointBuffer->Unmap(0, nullptr);
+	reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(apiObject)->Unmap(nullptr);
 
 	SetUnmapped();
 }

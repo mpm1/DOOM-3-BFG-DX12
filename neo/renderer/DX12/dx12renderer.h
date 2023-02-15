@@ -65,15 +65,15 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	// Buffers
-	DX12VertexBuffer* AllocVertexBuffer(DX12VertexBuffer* buffer, UINT numBytes);
-	void FreeVertexBuffer(DX12VertexBuffer* buffer);
+	DX12Rendering::Geometry::VertexBuffer* AllocVertexBuffer(UINT numBytes, LPCWSTR name);
+	void FreeVertexBuffer(DX12Rendering::Geometry::VertexBuffer* buffer);
 
-	DX12IndexBuffer* AllocIndexBuffer(DX12IndexBuffer* buffer, UINT numBytes);
-	void FreeIndexBuffer(DX12IndexBuffer* buffer);
+	DX12Rendering::Geometry::IndexBuffer* AllocIndexBuffer(UINT numBytes, LPCWSTR name);
+	void FreeIndexBuffer(DX12Rendering::Geometry::IndexBuffer* buffer);
 
-	DX12JointBuffer* AllocJointBuffer(DX12JointBuffer* buffer, UINT numBytes);
-	void FreeJointBuffer(DX12JointBuffer* buffer);
-	void SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset);
+	DX12Rendering::Geometry::JointBuffer* AllocJointBuffer(UINT numBytes);
+	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
+	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset);
 
 	// Textures
 	void SetActiveTextureRegister(UINT8 index);
@@ -96,7 +96,7 @@ public:
 	void CycleDirectCommandList();
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
 	bool EndSurfaceSettings(); // Records the the surface entry into the heap.
-	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+	void DrawModel(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
 
 #pragma region RayTracing
 	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.

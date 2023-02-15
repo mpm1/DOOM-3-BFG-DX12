@@ -7,8 +7,9 @@
 #include "./dx12_RaytracingPipeline.h"
 #include "./dx12_ShaderBindingTable.h"
 #include "./dx12_AccelerationStructure.h"
+#include "./dx12_Geometry.h"
 
-#include "./dx12_buffermap.h"
+//#include "./dx12_buffermap.h"
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -83,8 +84,8 @@ public:
 	void AddObjectToAllTopLevelAS(); //TODO: Add matrix and bone information.
 
 	// Buffer updates
-	BufferEntity<DX12VertexBuffer>* AddOrUpdateVertecies(ID3D12Device5* device, qhandle_t entityHandle, byte* data, UINT size) { return m_localVertexBuffer.AddOrUpdateEntity(device, entityHandle, data, size); }
-	BufferEntity<DX12IndexBuffer>* AddOrUpdateIndecies(ID3D12Device5* device, qhandle_t entityHandle, byte* data, UINT size) { return m_localIndexBuffer.AddOrUpdateEntity(device, entityHandle, data, size); }
+	//BufferEntity<DX12Rendering::Geometry::VertexBuffer>* AddOrUpdateVertecies(ID3D12Device5* device, qhandle_t entityHandle, byte* data, UINT size) { return m_localVertexBuffer.AddOrUpdateEntity(device, entityHandle, data, size); }
+	//BufferEntity<DX12Rendering::Geometry::IndexBuffer>* AddOrUpdateIndecies(ID3D12Device5* device, qhandle_t entityHandle, byte* data, UINT size) { return m_localIndexBuffer.AddOrUpdateEntity(device, entityHandle, data, size); }
 
 #ifdef DEBUG_IMGUI
 	void ImGuiDebug();
@@ -94,8 +95,8 @@ private:
 	UINT m_width;
 	UINT m_height;
 
-	DX12Rendering::VertexBufferMap m_localVertexBuffer;
-	DX12Rendering::IndexBufferMap m_localIndexBuffer;
+	//DX12Rendering::VertexBufferMap m_localVertexBuffer;
+	//DX12Rendering::IndexBufferMap m_localIndexBuffer;
 
 	DX12Rendering::RaytracingRootSignature m_rayGenSignature;
 	DX12Rendering::RaytracingRootSignature m_missSignature;

@@ -28,9 +28,9 @@ namespace DX12Rendering {
 		m_hitSignature(NONE),
 		m_width(screenWidth),
 		m_height(screenHeight),
-		m_tlasManager(&m_blasManager),
-		m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
-		m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
+		m_tlasManager(&m_blasManager)//,
+		//m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
+		//m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
 		CreateShadowPipeline();
 		CreateCBVHeap(sizeof(m_constantBuffer));
@@ -42,7 +42,7 @@ namespace DX12Rendering {
 
 	void Raytracing::BeginFrame()
 	{
-		m_tlasManager.Reset(); // Reset all objects in the static TLAS
+		
 	}
 
 	void Raytracing::CreateCBVHeap(const size_t constantBufferSize)

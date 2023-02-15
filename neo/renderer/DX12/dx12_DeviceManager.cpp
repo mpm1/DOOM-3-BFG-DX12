@@ -8,7 +8,8 @@ namespace DX12Rendering
 {
 	using namespace Microsoft::WRL;
 
-	void __stdcall OnDeviceRemoved(PVOID context, BOOLEAN) {
+#ifdef DEBUG_GPU
+	void __stdcall Device::OnDeviceRemoved(PVOID context, BOOLEAN) {
 		ID3D12Device* removedDevice = (ID3D12Device*)context;
 		HRESULT removedReason = removedDevice->GetDeviceRemovedReason();
 
@@ -22,6 +23,7 @@ namespace DX12Rendering
 		_com_error err(removedReason);
 		DX12Rendering::FailMessage(err.ErrorMessage());
 	}
+#endif
 
 	void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter) {
 		*ppAdapter = nullptr;

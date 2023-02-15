@@ -9,6 +9,14 @@ extern idCommon* common;
 
 using namespace Microsoft::WRL;
 
+#ifdef USE_PIX
+void DX12Rendering::CaptureEventStart(ID3D12CommandQueue* commandQueue, std::string message) { PIXBeginEvent(commandQueue, PIX_COLOR(128, 255, 128), message.c_str()); };
+void DX12Rendering::CaptureEventEnd(ID3D12CommandQueue* commandQueue) { PIXEndEvent(commandQueue); }
+#else
+void DX12Rendering::CaptureEventStart(ID3D12CommandQueue* commandQueue, std::string message) {};
+void DX12Rendering::CaptureEventEnd(ID3D12CommandQueue* commandQueue) {}
+#endif
+
 void DX12Rendering::FailMessage(LPCSTR message) {
 	OutputDebugString(message);
 	common->Error(message);

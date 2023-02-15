@@ -476,15 +476,15 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 		}
 		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
 
-		dxRenderer.SetJointBuffer(reinterpret_cast<DX12JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset());
+		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset());
 	}
 
 	const triIndex_t* test = (triIndex_t*)indexOffset;
 
 	if (dxRenderer.EndSurfaceSettings()) {
-		dxRenderer.DrawModel(reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
+		dxRenderer.DrawModel(reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject()),
 			vertOffset / sizeof(idDrawVert),
-			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
+			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
 			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
 			r_singleTriangle.GetBool() ? 3 : surf->numIndexes);
 
@@ -3011,7 +3011,7 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 			break;
 
 		case RC_DRAW_VIEW_3D:
-			if (false && dxRenderer.IsRaytracingEnabled())
+			if (dxRenderer.IsRaytracingEnabled())
 			{
 				RB_PathTraceView(cmds);
 			}

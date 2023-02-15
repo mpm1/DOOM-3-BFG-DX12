@@ -99,14 +99,14 @@ void DX12RootSignature::BeginFrame(UINT frameIndex)
 	m_cbvHeapIndex = 0;
 }
 
-D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12JointBuffer* buffer, UINT jointOffset, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
+D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
 	assert(m_cbvHeapIndex < MAX_HEAP_INDEX_COUNT);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvHeap[frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-	cbvDesc.BufferLocation = buffer->jointBuffer->GetGPUVirtualAddress() + jointOffset;
-	cbvDesc.SizeInBytes = buffer->entrySizeInBytes;
+	cbvDesc.BufferLocation = buffer->resource->GetGPUVirtualAddress() + jointOffset;
+	cbvDesc.SizeInBytes = *buffer->GetSize();
 	m_device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
 
 	UINT heapIndex = m_cbvHeapIndex;

@@ -22,26 +22,30 @@ namespace DX12Rendering {
 		ResourceState state;
 
 		Resource(const LPCWSTR name = nullptr) :
-			m_name(name),
-			state(ResourceState::Unallocated) {}
+			m_name(name == nullptr ? L"" : name),
+			state(ResourceState::Unallocated) 
+		{
+			
+		}
 
 		void Release();
 
-		const LPCWSTR GetName() { return m_name; }
+		const LPCWSTR GetName() { return m_name.empty() ? nullptr : m_name.c_str(); }
 	protected:
 		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps);
 
 	private:
-		const LPCWSTR m_name;
+		//TODO: define to only work with debug.
+		const std::wstring m_name;
 	};
 
 	struct ScratchBuffer : Resource
 	{
-		const UINT64 size; // The total memory size of the buffer
+		const UINT64 m_size; // The total memory size of the buffer
 
 		ScratchBuffer(UINT64 size, UINT alignment, LPCWSTR name) :
 			Resource(name),
-			size(DX12_ALIGN(size, alignment)),
+			m_size(DX12_ALIGN(size, alignment)),
 			m_currentIndex(0),
 			m_alignment(alignment) {}
 

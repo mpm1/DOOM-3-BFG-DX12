@@ -10,34 +10,30 @@ namespace DX12Rendering {
 		ID3D12Device5* device,
 		UINT64* scratchSizeInBytes,
 		UINT64* resultSizeInBytes,
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags)
+		const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS* desc)
 	{
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS desc = {};
-		desc.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-		desc.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		desc.NumDescs = geometry.size();
-		desc.pGeometryDescs = geometry.data();
-		desc.Flags = flags;
-
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
 
-		device->GetRaytracingAccelerationStructurePrebuildInfo(&desc, &info);
+		device->GetRaytracingAccelerationStructurePrebuildInfo(desc, &info);
 
 		*scratchSizeInBytes = DX12_ALIGN(info.ScratchDataSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
-		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT);
+		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
 	}
 
-	void BottomLevelAccelerationStructure::AddGeometry(DX12VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount)
+	void BottomLevelAccelerationStructure::AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount)
 	{
+		auto vertexDesc = vertexBuffer->GetView();
+		auto indexDesc = indexBuffer->GetView();
+
 		D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc = {};
 		geometryDesc.Type = D3D12_RAYTRACING_GEOMETRY_TYPE_TRIANGLES;
-		geometryDesc.Triangles.VertexBuffer.StartAddress = vertexBuffer->vertexBuffer->GetGPUVirtualAddress() + vertexOffsetBytes;
-		geometryDesc.Triangles.VertexBuffer.StrideInBytes = vertexBuffer->vertexBufferView.StrideInBytes;
+		geometryDesc.Triangles.VertexBuffer.StartAddress = vertexDesc->BufferLocation + vertexOffsetBytes;
+		geometryDesc.Triangles.VertexBuffer.StrideInBytes = vertexDesc->StrideInBytes;
 		geometryDesc.Triangles.VertexCount = vertexCount;
 		geometryDesc.Triangles.VertexFormat = DXGI_FORMAT_R32G32B32_FLOAT;
 
-		geometryDesc.Triangles.IndexBuffer = indexBuffer->indexBuffer->GetGPUVirtualAddress() + indexOffset;
-		geometryDesc.Triangles.IndexFormat = DXGI_FORMAT_R32_UINT;
+		geometryDesc.Triangles.IndexBuffer = indexDesc->BufferLocation + indexOffset;
+		geometryDesc.Triangles.IndexFormat = indexDesc->Format;
 		geometryDesc.Triangles.IndexCount = indexCount;
 		geometryDesc.Triangles.Transform3x4 = NULL; //TODO: Check if we need to add a transform here.
 		geometryDesc.Flags = true ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE
@@ -58,6 +54,8 @@ namespace DX12Rendering {
 
 	bool BottomLevelAccelerationStructure::Generate(ScratchBuffer& scratch)
 	{
+		//TODO: Move the BLAS resource into BLASManager and control our own alocation.
+
 		if (state == Ready) {
 			return true; // Nothing to update
 		}
@@ -69,16 +67,33 @@ namespace DX12Rendering {
 			return false; // We are not ready to generate.
 		}
 
-		bool isUpdate = resource.Get() != nullptr;
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = isUpdate ?
-			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE :
-			D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE; // For now we will always allow updates in our BLAS
+		bool isUpdate = state == Dirty;
+		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
+		
+		if (m_isStatic)
+		{
+			flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_TRACE;
+		}
+		else
+		{
+			flags = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
+			flags |= isUpdate ?
+				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PERFORM_UPDATE :
+				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE; // For now we will always allow updates in our BLAS
+		}
 
 		UINT64 requestedScratchSize;
 		UINT64 scratchLocation;
 		UINT64 resultSizeInBytes;
 
-		CalculateBufferSize(device, &requestedScratchSize, &resultSizeInBytes, flags);
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputDesc = {};
+		inputDesc.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
+		inputDesc.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+		inputDesc.NumDescs = geometry.size();
+		inputDesc.pGeometryDescs = geometry.data();
+		inputDesc.Flags = flags;
+
+		CalculateBufferSize(device, &requestedScratchSize, &resultSizeInBytes, &inputDesc);
 
 		DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
 
@@ -88,7 +103,16 @@ namespace DX12Rendering {
 			return false;
 		}
 
-		if (!isUpdate)
+		if (isUpdate)
+		{
+			commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+			{
+				// Provide a barrier to make sure we are done using the resource.
+				D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(resource.Get());
+				commandList->ResourceBarrier(1, &uavBarrier);
+			});
+		}
+		else
 		{
 			// Create the result buffer
 			D3D12_RESOURCE_DESC description = {};
@@ -110,39 +134,22 @@ namespace DX12Rendering {
 			}
 
 			m_sizeInBytes = resultSizeInBytes;
-			isUpdate = false; // Since we built a new resource, all objects will be updated inside.
-		}
-		else
-		{
-			commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
-			{
-				// Provide a barrier to make sure we are done using the resource.
-				D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(resource.Get());
-				commandList->ResourceBarrier(1, &uavBarrier);
-			});
 		}
 
 		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 		{
 			// Describe the BLAS data
-			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasDesc;
-			blasDesc.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
-			blasDesc.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-			blasDesc.Inputs.NumDescs = static_cast<UINT>(geometry.size());
-			blasDesc.Inputs.pGeometryDescs = geometry.data();
-			blasDesc.Inputs.Flags = flags | D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_PREFER_FAST_BUILD;
-			blasDesc.DestAccelerationStructureData = { resource->GetGPUVirtualAddress() };
-			blasDesc.ScratchAccelerationStructureData = { scratch.resource->GetGPUVirtualAddress() + scratchLocation }; // Point to the space in the scratch to build from.
+			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasDesc = {};
+			blasDesc.Inputs = inputDesc;
+			blasDesc.DestAccelerationStructureData = resource->GetGPUVirtualAddress();
+			blasDesc.ScratchAccelerationStructureData = scratch.resource->GetGPUVirtualAddress() + scratchLocation; // Point to the space in the scratch to build from.
 			blasDesc.SourceAccelerationStructureData = isUpdate ? resource->GetGPUVirtualAddress() : NULL;
-
+			
 			// Build the acceleration structure.
 			commandList->BuildRaytracingAccelerationStructure(&blasDesc, 0, nullptr);
 
 			// Wait for the building of the blas to complete.
-			D3D12_RESOURCE_BARRIER uavBarrier;
-			uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-			uavBarrier.UAV.pResource = resource.Get();
-			uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+			D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(resource.Get());
 			commandList->ResourceBarrier(1, &uavBarrier);
 
 			fence.Signal(device, commandQueue);
@@ -168,7 +175,7 @@ namespace DX12Rendering {
 			return blas;
 		}
 
-		blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, name)).first->second;
+		blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, true /* All blas are static for now */, name)).first->second;
 
 		return blas;
 	}
@@ -197,22 +204,26 @@ namespace DX12Rendering {
 
 	void BLASManager::Reset()
 	{
+		m_blasIndex = 0;
+
 		m_objectMap.clear();
 	}
 
 	UINT BLASManager::Generate()
 	{
+		// TODO: Define starting point for BLAS using m_blasIndex
+
 		UINT count = 0;
 		for (auto blasPair = m_objectMap.begin(); blasPair != m_objectMap.end(); ++blasPair)
 		{
 			if (blasPair->second.Generate(m_scratchBuffer))
 			{
 				++count;
-			}
-			else
-			{
-				// For now, just drop the loop on failure. We'll modify this to only do a limited number of entries per frame.
-				break;
+
+				if (count >= m_blasPerFrame)
+				{
+					break;
+				}
 			}
 		}
 
@@ -285,7 +296,7 @@ namespace DX12Rendering {
 			memcpy(instanceDescs[index].Transform, &instances[index].transformation, sizeof(instanceDescs[index].Transform));
 
 			auto blas = blasManager.GetBLAS(instances[index].instanceId);
-			if (blas == nullptr)
+			if (blas == nullptr || blas->state != Ready)
 			{
 				instanceDescs[index].AccelerationStructure = 0;
 
@@ -376,6 +387,10 @@ namespace DX12Rendering {
 			m_resultSize = resultSizeInBytes;
 		}
 
+		auto commandList = Commands::GetCommandList(Commands::COMPUTE);
+		UINT64 scratchLocation;
+		scratchBuffer->RequestSpace(commandList, scratchSizeInBytes, scratchLocation, false);
+
 		D3D12_GPU_VIRTUAL_ADDRESS pSourceAS = 0;// updateOnly ? previousResult->GetGPUVirtualAddress() : 0;
 
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC descriptor = {};
@@ -389,12 +404,11 @@ namespace DX12Rendering {
 			resource->GetGPUVirtualAddress()
 		};
 		descriptor.ScratchAccelerationStructureData = {
-			scratchBuffer->resource->GetGPUVirtualAddress()
+			scratchBuffer->resource->GetGPUVirtualAddress() + scratchLocation
 		};
 		descriptor.SourceAccelerationStructureData = pSourceAS;
 
 		// Build the top level AS
-		auto commandList = Commands::GetCommandList(Commands::COMPUTE);
 		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 		{
 			commandList->BuildRaytracingAccelerationStructure(&descriptor, 0, nullptr);
@@ -479,7 +493,19 @@ namespace DX12Rendering {
 
 	bool TLASManager::Generate()
 	{
-		return m_tlas[GetCurrentFrameIndex()].UpdateResources(*m_blasManager, m_instances.data(), m_instances.size(), &m_scratch);
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
+		DX12Rendering::CaptureEventStart(commandList->GetCommandQueue(), "TLASManager::Generate");
+
+		if (m_scratch.state != Resource::Ready)
+		{
+			m_scratch.Build();
+		}
+
+		bool result = m_tlas[GetCurrentFrameIndex()].UpdateResources(*m_blasManager, m_instances.data(), m_instances.size(), &m_scratch);
+
+		DX12Rendering::CaptureEventEnd(commandList->GetCommandQueue());
+
+		return result;
 	}
 
 	void TLASManager::AddInstance(const dxHandle_t& id, const float transform[16])
@@ -516,22 +542,19 @@ namespace DX12Rendering {
 #ifdef DEBUG_IMGUI
 	const void TLASManager::ImGuiDebug()
 	{
+		ImGui::Text("Instance Count: %d", m_instances.size());
+
 		// Each TLAS
-		UINT count = 0;
 		for (TopLevelAccelerationStructure& tlas : m_tlas)
 		{
-			count++;
-
 			char title[50];
-			std::sprintf(title, "%d - %ls", count, tlas.GetName());
+			std::sprintf(title, "%ls", tlas.GetName());
 
 			if (ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen))
 			{
 				tlas.ImGuiDebug();
 			}
 		}
-
-		ImGui::Text("Instance Count: %d", m_instances.size());
 	}
 #endif
 #pragma endregion

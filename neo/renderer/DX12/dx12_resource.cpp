@@ -15,15 +15,15 @@ namespace DX12Rendering {
 
 		assert(state == Unallocated || state >= Removed);
 
-		if (DX12Rendering::WarnIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, nullptr, IID_PPV_ARGS(&resource))))
+		if (!DX12Rendering::WarnIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, nullptr, IID_PPV_ARGS(&resource))))
 		{
 			state = Unallocated;
 			return nullptr;
 		}
 
-		if (m_name != nullptr)
+		if (!m_name.empty())
 		{
-			resource->SetName(m_name);
+			resource->SetName(GetName());
 		}
 
 		state = Ready;
@@ -32,7 +32,7 @@ namespace DX12Rendering {
 
 	void Resource::Release()
 	{
-		if (state >= Ready && state < Unallocated)
+		if (state >= Ready && state < Removed)
 		{
 			resource = nullptr;
 			state = Unallocated;
@@ -53,7 +53,7 @@ namespace DX12Rendering {
 		description.MipLevels = 1;
 		description.SampleDesc.Count = 1;
 		description.SampleDesc.Quality = 0;
-		description.Width = size;
+		description.Width = m_size;
 
 		return Allocate(description, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kDefaultHeapProps);
 	}
@@ -80,13 +80,17 @@ namespace DX12Rendering {
 
 		offset = m_currentIndex;
 		m_currentIndex += alignedSize;
-		if (m_currentIndex >= size)
+		if (m_currentIndex >= m_size)
 		{
 			offset = 0;
 			m_currentIndex = 0;
 
 			commandList->SignalFence(fence);
-			return false;
+
+			if (waitForSpace)
+			{
+				return false;
+			}
 		}
 
 		return true;

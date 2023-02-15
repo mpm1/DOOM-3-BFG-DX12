@@ -24,6 +24,10 @@ namespace DX12Rendering
 
 		const DeviceManager* GetDeviceManager();
 		ID3D12Device5* GetDevice();
+
+#ifdef DEBUG_GPU
+		void __stdcall OnDeviceRemoved(PVOID context, BOOLEAN);
+#endif
 	}
 }
 

@@ -59,6 +59,10 @@ void DX12Renderer::Init(HWND hWnd) {
 	InitializeImGui(hWnd);
 #endif
 
+#ifdef DEBUG_PIX
+	PIXSetTargetWindow(hWnd);
+#endif
+
 	if (r_useRayTraycing.GetBool()) {
 		m_raytracing = new DX12Rendering::Raytracing(m_width, m_height);
 	}
@@ -243,7 +247,7 @@ void DX12Renderer::LoadAssets() {
 		RegisterWaitForSingleObject(
 			&m_deviceRemovedHandle,
 			m_removeDeviceEvent,
-			OnDeviceRemoved,
+			DX12Rendering::Device::OnDeviceRemoved,
 			device,
 			INFINITE,
 			0
@@ -281,81 +285,42 @@ void DX12Renderer::LoadAssets() {
 	}
 }
 
-DX12VertexBuffer* DX12Renderer::AllocVertexBuffer(DX12VertexBuffer* buffer, UINT numBytes) {
-	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-	
-	DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(numBytes),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&buffer->vertexBuffer)
-	));
+DX12Rendering::Geometry::VertexBuffer* DX12Renderer::AllocVertexBuffer(UINT numBytes, LPCWSTR name) {
+	DX12Rendering::Geometry::VertexBuffer* result = new DX12Rendering::Geometry::VertexBuffer(numBytes, name);
 
-	buffer->vertexBufferView.BufferLocation = buffer->vertexBuffer->GetGPUVirtualAddress();
-	buffer->vertexBufferView.StrideInBytes = sizeof(idDrawVert); // TODO: Change to Doom vertex structure
-	buffer->vertexBufferView.SizeInBytes = numBytes;
-
-	return buffer;
+	return result;
 }
 
-void DX12Renderer::FreeVertexBuffer(DX12VertexBuffer* buffer) {
-	buffer->vertexBuffer->Release();
+void DX12Renderer::FreeVertexBuffer(DX12Rendering::Geometry::VertexBuffer* buffer) {
+	buffer->Release();
 }
 
-DX12IndexBuffer* DX12Renderer::AllocIndexBuffer(DX12IndexBuffer* buffer, UINT numBytes) {
-	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-	
-	DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(numBytes),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr,
-		IID_PPV_ARGS(&buffer->indexBuffer)
-	));
+DX12Rendering::Geometry::IndexBuffer* DX12Renderer::AllocIndexBuffer(UINT numBytes, LPCWSTR name) {
+	DX12Rendering::Geometry::IndexBuffer* result = new DX12Rendering::Geometry::IndexBuffer(numBytes, name);
 
-	buffer->indexBufferView.BufferLocation = buffer->indexBuffer->GetGPUVirtualAddress();
-	buffer->indexBufferView.Format = DXGI_FORMAT_R16_UINT;
-	buffer->indexBufferView.SizeInBytes = numBytes;
-
-	return buffer;
+	return result;
 }
 
-void DX12Renderer::FreeIndexBuffer(DX12IndexBuffer* buffer) {
-	buffer->indexBuffer->Release();
+void DX12Renderer::FreeIndexBuffer(DX12Rendering::Geometry::IndexBuffer* buffer) {
+	buffer->Release();
 }
 
-DX12JointBuffer* DX12Renderer::AllocJointBuffer(DX12JointBuffer* buffer, UINT numBytes) {
+DX12Rendering::Geometry::JointBuffer* DX12Renderer::AllocJointBuffer(UINT numBytes) {
 	// Create the buffer size.
 	constexpr UINT resourceAlignment = (1024 * 64) - 1; // Resource must be a multible of 64KB
 	constexpr UINT entrySize = ((sizeof(float) * 4 * 404) + 255) & ~255; // (Size of float4 * maxFloatAllowed) that's 256 byts aligned.
 	const UINT heapSize = (numBytes + resourceAlignment) & ~resourceAlignment;
 
-	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+	DX12Rendering::Geometry::JointBuffer* result = new DX12Rendering::Geometry::JointBuffer(entrySize, heapSize, L"Joint Upload Heap");
 
-	// TODO: SET THIS FOR THE UPLOAD HEAP... THEN DO A SEPARATE JOINT HEAP JUST LIKE CBV
-	DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
-		D3D12_RESOURCE_STATE_GENERIC_READ,
-		nullptr, // Currently not clear value needed
-		IID_PPV_ARGS(&buffer->jointBuffer)
-	));
-
-	buffer->jointBuffer->SetName(L"Joint Upload Heap");
-	buffer->entrySizeInBytes = entrySize;
-
-	return buffer;
+	return result;
 }
 
-void DX12Renderer::FreeJointBuffer(DX12JointBuffer* buffer) {
-	buffer->jointBuffer->Release();
+void DX12Renderer::FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer) {
+	buffer->Release();
 }
 
-void DX12Renderer::SetJointBuffer(DX12JointBuffer* buffer, UINT jointOffset) {
+void DX12Renderer::SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset) {
 	D3D12_CONSTANT_BUFFER_VIEW_DESC descriptor = m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, m_frameIndex, DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT));
 }
 
@@ -421,7 +386,8 @@ void DX12Renderer::BeginDraw() {
 		return;
 	}
 
-	//DX12Rendering::CaptureEventStart(m_commandList.Get(), "Begin Frame");
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	DX12Rendering::CaptureEventStart(commandList->GetCommandQueue(), "Draw");
 
 	WaitForPreviousFrame();
 
@@ -440,6 +406,7 @@ void DX12Renderer::BeginDraw() {
 
 	if (IsRaytracingEnabled())
 	{
+		DXR_UpdateBLAS();
 		m_raytracing->BeginFrame();
 	}
 
@@ -451,7 +418,6 @@ void DX12Renderer::BeginDraw() {
 		//}
 	}
 
-	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 	commandList->CommandResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
 	SetCommandListDefaults(false);
@@ -481,9 +447,16 @@ void DX12Renderer::EndDraw() {
 	m_isDrawing = false;
 	
 	DX12Rendering::IncrementFrameIndex();
+
+	//After frame events
+	if (IsRaytracingEnabled())
+	{
+		m_raytracing->GetTLASManager()->Reset();
+	}
+
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
 
-	//DX12Rendering::CaptureEventEnd(m_commandList.Get());
+	DX12Rendering::CaptureEventEnd(commandList->GetCommandQueue());
 }
 
 UINT DX12Renderer::StartSurfaceSettings() {
@@ -541,14 +514,14 @@ void DX12Renderer::PresentBackbuffer() {
 	WaitForPreviousFrame();
 }
 
-void DX12Renderer::DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
+void DX12Renderer::DrawModel(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
 	if (!IsScissorWindowValid()) {
 		return;
 	}
 
-	D3D12_VERTEX_BUFFER_VIEW vertecies = vertexBuffer->vertexBufferView;
+	const D3D12_VERTEX_BUFFER_VIEW& vertecies = *vertexBuffer->GetView();
 
-	D3D12_INDEX_BUFFER_VIEW indecies = indexBuffer->indexBufferView;
+	const D3D12_INDEX_BUFFER_VIEW& indecies = *indexBuffer->GetView();
 
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
@@ -790,7 +763,7 @@ void DX12Renderer::SetTextureContent(DX12TextureBuffer* buffer, const UINT mipLe
 	//	}
 	//}
 
-	if (buffer != nullptr)
+	if (buffer != nullptr && buffer->textureBuffer != nullptr)
 	{
 		auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
 
@@ -888,7 +861,12 @@ void DX12Renderer::DXR_UpdateAccelerationStructure()
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	m_raytracing->GetTLASManager()->Generate();
+	if (m_raytracing->GetTLASManager()->Generate())
+	{
+		//TODO: Move this to a more generalized execution tract.
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
+		commandList->Cycle();
+	}
 
 	// TODO: what else do we need to reset.
 	//m_raytracing->ResetFrame();
@@ -923,7 +901,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 
 	for (UINT surfaceIndex = 0; surfaceIndex < model->NumSurfaces(); ++surfaceIndex)
 	{
-		DX12VertexBuffer* vertexBuffer = nullptr;
+		DX12Rendering::Geometry::VertexBuffer* vertexBuffer = nullptr;
 		idIndexBuffer* indexBuffer = nullptr;
 
 		const modelSurface_t& surf = *model->Surface(surfaceIndex);
@@ -936,7 +914,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 		// Get vertex buffer
 		if (vertexCache.CacheIsStatic(vbHandle))
 		{
-			vertexBuffer = reinterpret_cast<DX12VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
+			vertexBuffer = reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
 			vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
 			indexBuffer = &vertexCache.staticData.indexBuffer;
@@ -979,7 +957,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 			vertexBuffer,
 			vertOffsetBytes,
 			surf.geometry->numVerts,
-			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
+			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
 			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
 			r_singleTriangle.GetBool() ? 3 : surf.geometry->numIndexes
 		);
@@ -1000,12 +978,13 @@ void DX12Renderer::DXR_UpdateBLAS()
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
+	commandList->Cycle();
+
 	if (m_raytracing->GetBLASManager()->Generate() > 0)
 	{
 		//TODO: Move this to a more generalized execution tract.
-		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
-		commandList->Execute();
-		commandList->Reset();
+		commandList->Cycle();
 	}
 
 	m_raytracing->CleanUpAccelerationStructure();
