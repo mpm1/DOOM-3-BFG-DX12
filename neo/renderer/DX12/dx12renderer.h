@@ -28,19 +28,42 @@ class idRenderModel;
 struct viewLight_t;
 #endif
 
-// TODO: Start setting frame data to it's own object to make it easier to manage.
-struct DX12FrameDataBuffer
-{
-	// Render Data
-	ComPtr<ID3D12Resource> renderTargets;
+namespace DX12Rendering {
+	struct GBuffer
+	{
+		enum BufferTarget
+		{
+			DISPLAY_TARGET = 0,
+			POSITION_TARGET,
 
-	// CBV Heap data
-	ComPtr<ID3D12DescriptorHeap> cbvHeap;
-	ComPtr<ID3D12Resource> cbvUploadHeap;
-	UINT cbvHeapIndex;
-	UINT8* m_constantBufferGPUAddress;
-};
+			COUNT
+		};
 
+		GBuffer() :
+			m_depthBuffer(L"Depth Buffer"),
+			m_renderTargets{ RenderTarget(DXGI_FORMAT_R8G8B8A8_UNORM, L"Display Target"), RenderTarget(DXGI_FORMAT_R32G32B32_FLOAT, L"Position Buffer") }
+		{} //Mark start here. We need to use this GBuffer to render to the position target. That way we only need to trace shadow rays from points.
+
+	private:
+		DepthBuffer m_depthBuffer;
+		RenderTarget m_renderTargets[BufferTarget::COUNT];
+	};
+
+	// TODO: Start setting frame data to it's own object to make it easier to manage.
+	struct DX12FrameDataBuffer
+	{
+		// Render Data
+		ComPtr<ID3D12Resource> renderTargets;
+
+		// CBV Heap data
+		ComPtr<ID3D12DescriptorHeap> cbvHeap;
+		ComPtr<ID3D12Resource> cbvUploadHeap;
+		UINT cbvHeapIndex;
+		UINT8* m_constantBufferGPUAddress;
+	};
+}
+
+//TODO: move everything into the correct namespace
 bool DX12_ActivatePipelineState();
 
 class DX12Renderer {
@@ -191,17 +214,16 @@ private:
 	void WaitForCopyToComplete();
 
 	/// <summary>
-	/// Copies a resource to the display buffer.
+	/// Copies the contents of a render target to the display buffer.
 	/// </summary>
-	/// <param name="resource"></param>
+	/// <param name="renderTarget"></param>
 	/// <param name="sx">The source x location</param>
 	/// <param name="sy">The source y location</param>
 	/// <param name="rx">The result x location</param>
 	/// <param name="ry">The result y location</param>
 	/// <param name="width">The width of pixels to copy</param>
 	/// <param name="height">The height of the pixels to copy</param>
-	/// <param name="sourceState">The initial state of the source resource to create resource barriers</param>
-	void CopyResourceToDisplay(ID3D12Resource* resource, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height, D3D12_RESOURCE_STATES sourceState);
+	void CopyRenderTargetToDisplay(DX12Rendering::RenderTarget* renderTarget, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height);
 
 	bool CreateBackBuffer();
 

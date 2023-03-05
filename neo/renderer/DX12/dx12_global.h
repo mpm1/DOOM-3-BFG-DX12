@@ -49,9 +49,13 @@ using namespace Microsoft::WRL;
 typedef UINT64 dxHandle_t;
 
 namespace DX12Rendering {
+	// Debug Captures
 	void CaptureEventStart(ID3D12CommandQueue* commandQueue, std::string message);
 	void CaptureEventEnd(ID3D12CommandQueue* commandQueue);
+	void CaptureGPUBegin();
+	void CaptureGPUEnd(bool discard);
 
+	// Error messages
 	void FailMessage(LPCSTR message);
 	void WarnMessage(LPCSTR message);
 	void ThrowIfFailed(HRESULT hr);
@@ -149,6 +153,16 @@ namespace DX12Rendering {
 
 			UINT64 completedValue = m_fence->GetCompletedValue();
 			return completedValue >= m_value;
+		}
+
+		void GPUWait(ID3D12CommandQueue* commandQueue)
+		{
+			if (m_fence == nullptr)
+			{
+				return;
+			}
+
+			commandQueue->Wait(m_fence.Get(), m_value);
 		}
 
 		void Wait()

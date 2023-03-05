@@ -32,7 +32,7 @@ namespace DX12Rendering {
 
 	void Resource::Release()
 	{
-		if (state >= Ready && state < Removed)
+		if (Exists())
 		{
 			resource = nullptr;
 			state = Unallocated;

@@ -28,7 +28,8 @@ namespace DX12Rendering {
 		m_hitSignature(NONE),
 		m_width(screenWidth),
 		m_height(screenHeight),
-		m_tlasManager(&m_blasManager)//,
+		m_tlasManager(&m_blasManager),
+		m_diffuseTarget(DXGI_FORMAT_R8G8B8A8_UNORM, L"DXR Diffuse Map")//,
 		//m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
 		//m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
@@ -85,7 +86,7 @@ namespace DX12Rendering {
 		CD3DX12_RANGE readRange(offset, bufferSize);
 
 		DX12Rendering::ThrowIfFailed(m_cbvUploadHeap[frameIndex]->Map(0, &readRange, reinterpret_cast<void**>(&buffer)));
-		memcpy(&buffer[offset], constantBuffer, constantBufferSize);
+		memcpy(buffer, constantBuffer, constantBufferSize);
 		m_cbvUploadHeap[frameIndex]->Unmap(0, &readRange);
 
 		// Create the constant buffer view for the object
@@ -101,33 +102,19 @@ namespace DX12Rendering {
 		// Define the Descriptor Table to use.
 		auto commandList = Commands::GetCommandList(Commands::COMPUTE);
 
-		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		/*commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 		{
 			const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart(), 2, m_cbvHeapIncrementor);
 			commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
-		});
+		});*/
 
 		return cbvDesc;
 	}
 
 	void Raytracing::CreateOutputBuffers()
 	{
-		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-
-		// Create the resource to draw raytraced shadows to.
-		D3D12_RESOURCE_DESC shadowDesc = {};
-		shadowDesc.DepthOrArraySize = 1;
-		shadowDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-		shadowDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; //DXGI_FORMAT_R8_UINT;
-		shadowDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
-		shadowDesc.Width = GetShadowWidth();
-		shadowDesc.Height = GetShadowHeight();
-		shadowDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-		shadowDesc.MipLevels = 1;
-		shadowDesc.SampleDesc.Count = 1;
-
-		DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(&kDefaultHeapProps, D3D12_HEAP_FLAG_NONE, &shadowDesc, D3D12_RESOURCE_STATE_COPY_SOURCE, nullptr, IID_PPV_ARGS(&m_diffuseResource)));
-		m_diffuseResource->SetName(L"DXR Shadow Output");
+		//TODO: Make shadow atlas for lights. Right now were putting the depth into the diffuse buffer for testing
+		m_diffuseTarget.Resize(GetShadowWidth(), GetShadowHeight());
 	}
 
 	void Raytracing::Resize(UINT width, UINT height)
@@ -154,7 +141,7 @@ namespace DX12Rendering {
 
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-		device->CreateUnorderedAccessView(m_diffuseResource.Get(), nullptr, &uavDesc, shadowHandle);
+		device->CreateUnorderedAccessView(m_diffuseTarget.resource.Get(), nullptr, &uavDesc, shadowHandle);
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
@@ -196,62 +183,72 @@ namespace DX12Rendering {
 		const CD3DX12_RECT& scissorRect
 	)
 	{
-		//TODO
-		//DX12Rendering::TopLevelAccelerationStructure* tlas = GetGeneralTLAS();
+		auto tlasManager = GetTLASManager();
 
-		//if (tlas == nullptr || tlas->IsReady()) {
-		//	// No objects to cast shadows.
-		//	return false;
-		//}
+		if (tlasManager->IsReady()) {
+			// No objects to cast shadows.
+			return false;
+		}
 
-		//// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
+		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
+		DX12Rendering::CaptureEventStart(commandList->GetCommandQueue(), "RayTracing::CastRays");
 
-		//auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
+		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
 
-		//// Copy the CBV data to the heap
-		//float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
-		//Uniform4f(RENDERPARAM_SCISSOR, scissorVector);
+		//tlasManager->AddGPUWait(commandList);
 
-		//float viewportVector[4] = { viewport.TopLeftX, viewport.TopLeftY, viewport.TopLeftX + viewport.Width, viewport.TopLeftY + viewport.Height };
-		//Uniform4f(RENDERPARM_VIEWPORT, viewportVector);
+		// Copy the CBV data to the heap
+		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
+		Uniform4f(RENDERPARAM_SCISSOR, scissorVector);
 
-		//SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, frameIndex);
+		float viewportVector[4] = { viewport.TopLeftX, viewport.TopLeftY, viewport.TopLeftX + viewport.Width, viewport.TopLeftY + viewport.Height };
+		Uniform4f(RENDERPARM_VIEWPORT, viewportVector);
 
-		//commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
-		//{
-		//	std::vector<ID3D12DescriptorHeap*> heaps = { m_generalUavHeaps.Get() };
-		//	commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
+		SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, frameIndex);
 
-		//	// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
-		//	CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(m_diffuseResource.Get(), D3D12_RESOURCE_STATE_COPY_SOURCE, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
-		//	commandList->ResourceBarrier(1, &transition);
+		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		{
+			std::vector<ID3D12DescriptorHeap*> heaps = { m_generalUavHeaps.Get() };
+			commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
 
-		//	// Create the ray dispatcher
-		//	const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_generalSBTData->GetGPUVirtualAddress();
-		//	const UINT32 generatorSize = m_generalSBTDesc.GetGeneratorSectorSize();
-		//	const UINT32 missSize = m_generalSBTDesc.GetMissSectorSize();
-		//	const UINT32 hitSize = m_generalSBTDesc.GetHitGroupSectorSize();
+			// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
+			D3D12_RESOURCE_BARRIER transition = {};
+			if (m_diffuseTarget.TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &transition))
+			{
+				commandList->ResourceBarrier(1, &transition);
+			}
 
-		//	D3D12_DISPATCH_RAYS_DESC desc = {};
-		//	desc.RayGenerationShaderRecord.StartAddress = gpuAddress;
-		//	desc.RayGenerationShaderRecord.SizeInBytes = generatorSize;
+			// Create the ray dispatcher
+			const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = m_generalSBTData->GetGPUVirtualAddress();
+			const UINT32 generatorSize = m_generalSBTDesc.GetGeneratorSectorSize();
+			const UINT32 missSize = m_generalSBTDesc.GetMissSectorSize();
+			const UINT32 hitSize = m_generalSBTDesc.GetHitGroupSectorSize();
 
-		//	desc.MissShaderTable.StartAddress = gpuAddress + generatorSize;
-		//	desc.MissShaderTable.SizeInBytes = missSize;
-		//	desc.MissShaderTable.StrideInBytes = m_generalSBTDesc.GetMissEntrySize();
+			D3D12_DISPATCH_RAYS_DESC desc = {};
+			desc.RayGenerationShaderRecord.StartAddress = gpuAddress;
+			desc.RayGenerationShaderRecord.SizeInBytes = generatorSize;
 
-		//	desc.HitGroupTable.StartAddress = gpuAddress + generatorSize + missSize;
-		//	desc.HitGroupTable.SizeInBytes = hitSize;
-		//	desc.HitGroupTable.StrideInBytes = m_generalSBTDesc.GetHitGroupEntrySize();
+			desc.MissShaderTable.StartAddress = gpuAddress + generatorSize;
+			desc.MissShaderTable.SizeInBytes = missSize;
+			desc.MissShaderTable.StrideInBytes = m_generalSBTDesc.GetMissEntrySize();
 
-		//	desc.Height = viewport.Height;
-		//	desc.Width = viewport.Width;
-		//	desc.Depth = 1;
+			desc.HitGroupTable.StartAddress = gpuAddress + generatorSize + missSize;
+			desc.HitGroupTable.SizeInBytes = hitSize;
+			desc.HitGroupTable.StrideInBytes = m_generalSBTDesc.GetHitGroupEntrySize();
 
-		//	// Generate the ray traced image.
-		//	commandList->SetPipelineState1(m_shadowStateObject.Get());
-		//	commandList->DispatchRays(&desc);
-		//});
+			desc.Height = viewport.Height;
+			desc.Width = viewport.Width;
+			desc.Depth = 1;
+
+			// Generate the ray traced image.
+			commandList->SetPipelineState1(m_shadowStateObject.Get());
+			commandList->DispatchRays(&desc);
+
+			m_diffuseTarget.fence.Signal(DX12Rendering::Device::GetDevice(), commandQueue);
+		});
+
+		DX12Rendering::CaptureEventEnd(commandList->GetCommandQueue());
+		commandList->Cycle();
 
 		return true;
 	}

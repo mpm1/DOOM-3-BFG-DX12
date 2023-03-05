@@ -681,7 +681,6 @@ void idRenderModelManagerLocal::EndLevelLoad() {
 	// Update the raytracing structure if needed.
 	dxRenderer.DXR_UpdateBLAS();
 
-
 	// _D3XP added this
 	int	end = Sys_Milliseconds();
 	common->Printf( "%5i models purged from previous level, ", purgeCount );

@@ -905,11 +905,18 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 		idIndexBuffer* indexBuffer = nullptr;
 
 		const modelSurface_t& surf = *model->Surface(surfaceIndex);
+
+		if (surf.shader->Coverage() == MC_TRANSLUCENT)
+		{
+			// We are not adding translucent surfaces to the trace.
+			continue;
+		}
+
 		const vertCacheHandle_t& vbHandle = surf.geometry->ambientCache;
 		const vertCacheHandle_t& ibHandle = surf.geometry->indexCache;
 
 		int vertOffsetBytes;
-		int indexOffset;
+		int indexOffsetBytes;
 
 		// Get vertex buffer
 		if (vertexCache.CacheIsStatic(vbHandle))
@@ -918,7 +925,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 			vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
 			indexBuffer = &vertexCache.staticData.indexBuffer;
-			indexOffset = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+			indexOffsetBytes = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 		}
 		else
 		{
@@ -958,7 +965,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 			vertOffsetBytes,
 			surf.geometry->numVerts,
 			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
-			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
+			indexOffsetBytes,
 			r_singleTriangle.GetBool() ? 3 : surf.geometry->numIndexes
 		);
 	}
@@ -981,7 +988,7 @@ void DX12Renderer::DXR_UpdateBLAS()
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
 	commandList->Cycle();
 
-	if (m_raytracing->GetBLASManager()->Generate() > 0)
+	if (UINT count = m_raytracing->GetBLASManager()->Generate() > 0)
 	{
 		//TODO: Move this to a more generalized execution tract.
 		commandList->Cycle();
@@ -1024,7 +1031,7 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
-	return m_raytracing->CastRays(m_frameIndex, m_viewport, m_scissorRect);
+	return m_raytracing->CastRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
 }
 
 void DX12Renderer::DXR_DenoiseResult()
@@ -1040,34 +1047,39 @@ void DX12Renderer::DXR_GenerateResult()
 void DX12Renderer::DXR_CopyResultToDisplay()
 {
 	// TODO: Get the desired resource to display
-	ID3D12Resource* resource = m_raytracing->GetOutputResource();
-	D3D12_RESOURCE_STATES transitionState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
+	DX12Rendering::RenderTarget* renderTarget = m_raytracing->GetOutputResource();
 
-	CopyResourceToDisplay(resource, 0, 0, 0, 0, m_width, m_height, transitionState);
+	CopyRenderTargetToDisplay(renderTarget, 0, 0, 0, 0, m_width, m_height);
 }
 
-void DX12Renderer::CopyResourceToDisplay(ID3D12Resource* resource, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height, D3D12_RESOURCE_STATES sourceState)
+void DX12Renderer::CopyRenderTargetToDisplay(DX12Rendering::RenderTarget* renderTarget, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)
 {
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
 	commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 	{
-		CD3DX12_RESOURCE_BARRIER transition = CD3DX12_RESOURCE_BARRIER::Transition(resource, sourceState, D3D12_RESOURCE_STATE_COPY_SOURCE);
-		commandList->ResourceBarrier(1, &transition);
+		DX12Rendering::CaptureEventStart(commandQueue, "DX12Renderer::DXR_CopyResultToDisplay");
+
+		renderTarget->fence.GPUWait(commandQueue); // Wait for all drawing to complete.
+
+		D3D12_RESOURCE_BARRIER transition = {};
+		if (renderTarget->TryTransition(D3D12_RESOURCE_STATE_COPY_SOURCE, &transition))
+		{
+			commandList->ResourceBarrier(1, &transition);
+		}
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
 		commandList->ResourceBarrier(1, &transition);
 
 		CD3DX12_TEXTURE_COPY_LOCATION dst(m_renderTargets[m_frameIndex].Get());
-		CD3DX12_TEXTURE_COPY_LOCATION src(resource);
+		CD3DX12_TEXTURE_COPY_LOCATION src(renderTarget->resource.Get());
 		CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
 		commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
 		commandList->ResourceBarrier(1, &transition);
 
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(resource, D3D12_RESOURCE_STATE_COPY_SOURCE, sourceState);
-		commandList->ResourceBarrier(1, &transition);
+		DX12Rendering::CaptureEventEnd(commandQueue);
 	});
 }
 

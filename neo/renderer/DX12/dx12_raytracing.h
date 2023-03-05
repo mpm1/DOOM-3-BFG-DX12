@@ -8,6 +8,7 @@
 #include "./dx12_ShaderBindingTable.h"
 #include "./dx12_AccelerationStructure.h"
 #include "./dx12_Geometry.h"
+#include "./dx12_RenderTarget.h"
 
 //#include "./dx12_buffermap.h"
 
@@ -76,7 +77,7 @@ public:
 		const CD3DX12_RECT& scissorRect
 	);
 
-	ID3D12Resource* GetOutputResource() { return m_diffuseResource.Get(); }
+	RenderTarget* GetOutputResource() { return &m_diffuseTarget; }
 
 	/// <summary>
 	/// Adds the desired object to the various top level acceleration structures.
@@ -115,7 +116,8 @@ private:
 	TLASManager m_tlasManager;
 	BLASManager m_blasManager;
 
-	ComPtr<ID3D12Resource> m_diffuseResource;
+	RenderTarget m_diffuseTarget;
+
 	ComPtr<ID3D12DescriptorHeap> m_generalUavHeaps;
 	ComPtr<ID3D12Resource> m_generalSBTData;
 

@@ -2884,17 +2884,18 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 	//		- Motion Vector Map
 	//-------------------------------------------------
 	// TODO: Create this for denoising
-	dxRenderer.DXR_CastRays();
+	if (dxRenderer.DXR_CastRays())
+	{
+		//-------------------------------------------------
+		// Cast rays into the scene
+		//-------------------------------------------------
 
-	//-------------------------------------------------
-	// Cast rays into the scene
-	//-------------------------------------------------
-
-	//-------------------------------------------------
-	// Copy the raytraced buffer to view
-	//-------------------------------------------------
-	dxRenderer.DXR_DenoiseResult();
-	dxRenderer.DXR_GenerateResult();
+		//-------------------------------------------------
+		// Copy the raytraced buffer to view
+		//-------------------------------------------------
+		dxRenderer.DXR_DenoiseResult();
+		dxRenderer.DXR_GenerateResult();
+	}
 	dxRenderer.DXR_CopyResultToDisplay();
 	CYCLE_COMMAND_LIST();
 

@@ -153,8 +153,11 @@ namespace DX12Rendering {
 
 				m_state = CLOSED;
 
-				ID3D12CommandList* const ppCommandLists[] = { m_commandList.Get() };
-				m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+				if (m_commandCount > 0)
+				{
+					ID3D12CommandList* const ppCommandLists[] = { m_commandList.Get() };
+					m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
+				}
 
 				m_commandCount = 0;
 			}

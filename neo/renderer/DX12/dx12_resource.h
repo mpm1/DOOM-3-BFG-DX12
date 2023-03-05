@@ -31,6 +31,7 @@ namespace DX12Rendering {
 		void Release();
 
 		const LPCWSTR GetName() { return m_name.empty() ? nullptr : m_name.c_str(); }
+		bool Exists() { return state >= Ready && state < Removed; }
 	protected:
 		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps);
 
@@ -39,7 +40,7 @@ namespace DX12Rendering {
 		const std::wstring m_name;
 	};
 
-	struct ScratchBuffer : Resource
+	struct ScratchBuffer : public Resource
 	{
 		const UINT64 m_size; // The total memory size of the buffer
 

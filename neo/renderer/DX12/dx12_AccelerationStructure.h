@@ -52,7 +52,7 @@ namespace DX12Rendering
 		}
 	};
 
-	struct InstanceDescriptor : Resource
+	struct InstanceDescriptor : public Resource
 	{
 		InstanceDescriptor(const LPCWSTR name) : Resource(name)
 		{}
@@ -67,7 +67,7 @@ namespace DX12Rendering
 		UINT32 m_lastInstanceCount = 0;
 	};
 
-	struct BottomLevelAccelerationStructure : Resource
+	struct BottomLevelAccelerationStructure : public Resource
 	{
 		const dxHandle_t id;
 		std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry = {};
@@ -101,7 +101,7 @@ namespace DX12Rendering
 	/// <summary>
 	/// The structure defining which objects will be active in the scene and which shaders will be used.
 	/// </summary>
-	struct TopLevelAccelerationStructure : Resource
+	struct TopLevelAccelerationStructure : public Resource
 	{
 		TopLevelAccelerationStructure(const std::wstring name) :
 			Resource(std::move(name.c_str())),
@@ -170,11 +170,13 @@ public:
 	bool Generate();
 
 	void Reset();
-	bool IsReady() { return m_instances.size() > 0 && GetCurrent().fence.IsFenceCompleted(); }
+	bool IsReady() { return m_instances.size() > 0; }
 
 	TopLevelAccelerationStructure& GetCurrent() { return m_tlas[GetCurrentFrameIndex()]; }
 
 	void AddInstance(const dxHandle_t& id, const float transform[16]);
+
+	void AddGPUWait(DX12Rendering::Commands::CommandList* commandList) { m_tlas[GetCurrentFrameIndex()].fence.GPUWait(commandList->GetCommandQueue()); }
 
 #ifdef DEBUG_IMGUI
 	const void ImGuiDebug();

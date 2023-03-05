@@ -346,13 +346,18 @@ namespace DX12Rendering {
 		UINT64 resultSizeInBytes;
 		UINT64 instanceDescsSize;
 
-		if (instanceCount == 0 || !fence.IsFenceCompleted())
+		if (instanceCount == 0)
 		{
 			return false;
 		}
 
 		auto device = DX12Rendering::Device::GetDevice();
 		if (device == nullptr)
+		{
+			return false;
+		}
+
+		if (!fence.IsFenceCompleted())
 		{
 			return false;
 		}
@@ -367,6 +372,7 @@ namespace DX12Rendering {
 		m_instanceDescriptor.Fill(blasManager, instanceDescsSize, instances, instanceCount);
 
 		// Rebuild the resource each time, as this was reccomended by NVIDIA as the best TLAS practice
+		if(resultSizeInBytes != m_resultSize)
 		{
 			Release();
 
@@ -420,15 +426,13 @@ namespace DX12Rendering {
 			uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 			commandList->ResourceBarrier(1, &uavBarrier);
 
-			fence.Signal(device, commandQueue);
+			CaptureEventEnd(commandQueue);
 		});
 
 		return true;
 	}
 
 	void TopLevelAccelerationStructure::CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize, const UINT instanceCount) {
-		const UINT numDescs = 1000;
-
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
 			? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
 			: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
@@ -436,7 +440,7 @@ namespace DX12Rendering {
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS description = {};
 		description.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 		description.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		description.NumDescs = numDescs; //static_cast<UINT>(m_instances.size());
+		description.NumDescs = instanceCount;
 		description.Flags = flags;
 
 		// Calculate the space needed to generate the Acceleration Structure
