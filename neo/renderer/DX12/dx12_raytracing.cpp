@@ -185,13 +185,14 @@ namespace DX12Rendering {
 	{
 		auto tlasManager = GetTLASManager();
 
-		if (tlasManager->IsReady()) {
+		if (!tlasManager->IsReady()) {
 			// No objects to cast shadows.
 			return false;
 		}
 
 		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
-		DX12Rendering::CaptureEventStart(commandList->GetCommandQueue(), "RayTracing::CastRays");
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList);
+		DX12Rendering::CaptureEventBlock captureEvent(commandList, "RayTracing::CastRays");
 
 		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
 
@@ -206,6 +207,7 @@ namespace DX12Rendering {
 
 		SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, frameIndex);
 
+		
 		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 		{
 			std::vector<ID3D12DescriptorHeap*> heaps = { m_generalUavHeaps.Get() };
@@ -246,9 +248,6 @@ namespace DX12Rendering {
 
 			m_diffuseTarget.fence.Signal(DX12Rendering::Device::GetDevice(), commandQueue);
 		});
-
-		DX12Rendering::CaptureEventEnd(commandList->GetCommandQueue());
-		commandList->Cycle();
 
 		return true;
 	}

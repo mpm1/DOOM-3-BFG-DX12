@@ -420,6 +420,10 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 }
 
 void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList);
+	DX12Rendering::Commands::CommandChunkBlock chunkBlock(commandList);
+
 	// Connect to a new surfae renderer
 	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
 
@@ -489,8 +493,6 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 			r_singleTriangle.GetBool() ? 3 : surf->numIndexes);
 
 		//TODO: Eventually do the creation of the acceleration structure outside of these commands.
-
-		CYCLE_COMMAND_LIST();
 	}
 
 	/*if (backEnd.glState.currentIndexBuffer != (GLuint)indexBuffer->GetAPIObject() || !r_useStateCaching.GetBool()) {

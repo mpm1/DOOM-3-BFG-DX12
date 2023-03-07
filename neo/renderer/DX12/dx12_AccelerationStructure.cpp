@@ -425,8 +425,6 @@ namespace DX12Rendering {
 			uavBarrier.UAV.pResource = resource.Get();
 			uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 			commandList->ResourceBarrier(1, &uavBarrier);
-
-			CaptureEventEnd(commandQueue);
 		});
 
 		return true;
@@ -498,7 +496,7 @@ namespace DX12Rendering {
 	bool TLASManager::Generate()
 	{
 		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
-		DX12Rendering::CaptureEventStart(commandList->GetCommandQueue(), "TLASManager::Generate");
+		DX12Rendering::CaptureEventBlock captureEvent(commandList, "TLASManager::Generate");
 
 		if (m_scratch.state != Resource::Ready)
 		{
@@ -506,8 +504,6 @@ namespace DX12Rendering {
 		}
 
 		bool result = m_tlas[GetCurrentFrameIndex()].UpdateResources(*m_blasManager, m_instances.data(), m_instances.size(), &m_scratch);
-
-		DX12Rendering::CaptureEventEnd(commandList->GetCommandQueue());
 
 		return result;
 	}

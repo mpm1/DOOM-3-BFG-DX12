@@ -76,6 +76,7 @@ namespace DX12Rendering {
 			: resetPerFrame(resetPerFrame),
 			m_state(UNKNOWN),
 			m_commandCount(0),
+			m_chunkDepth(0),
 			m_commandThreshold(128),
 #ifdef _DEBUG
 			m_name(std::wstring(name))
@@ -114,8 +115,9 @@ namespace DX12Rendering {
 
 		void CommandList::BeginCommandChunk()
 		{
-			assert(m_state == OPEN);
+			assert(m_state == OPEN || m_state == IN_CHUNK);
 
+			++m_chunkDepth;
 			m_state = IN_CHUNK;
 		}
 
@@ -123,7 +125,11 @@ namespace DX12Rendering {
 		{
 			assert(m_state == IN_CHUNK);
 
-			m_state = OPEN;
+			--m_chunkDepth;
+			if (m_chunkDepth <= 0)
+			{
+				m_state = OPEN;
+			}
 		}
 
 		void CommandList::AddCommand(CommandFunction func)

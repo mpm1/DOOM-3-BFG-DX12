@@ -41,6 +41,12 @@ namespace DX12Rendering
 
 		void CommandListsBeginFrame();
 		void CommandListsEndFrame();
+
+		// Defines that a section of code should be executed as a command block.
+		struct CommandChunkBlock;
+
+		// Defines that a section of code will cycle its command list on exit.
+		struct CommandListCycleBlock;
 	}
 }
 
@@ -75,14 +81,14 @@ public:
 	bool Execute();
 
 	void Cycle() { Execute(); Reset(); }
-
+	
 	void AddCommand(CommandFunction func);
 
 	bool IsExecutable() { return m_commandCount > 0 && m_state == OPEN; }
 
 	void BeginCommandChunk();
 	void EndCommandChunk();
-
+	
 #pragma region Command Shortcuts
 	void CommandSetPipelineState(ID3D12PipelineState* pipelineState)
 	{
@@ -116,11 +122,44 @@ private:
 #endif
 	dx12_commandListState_t m_state;
 	UINT m_commandCount;
+	UINT m_chunkDepth;
 	UINT m_commandThreshold;
 
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	ComPtr<ID3D12CommandAllocator> m_commandAllocator[DX12_FRAME_COUNT];
 	ComPtr<ID3D12GraphicsCommandList4> m_commandList;
+};
+
+struct DX12Rendering::Commands::CommandChunkBlock
+{
+	CommandChunkBlock(DX12Rendering::Commands::CommandList* commandList) :
+		m_commandList(commandList)
+	{
+		m_commandList->BeginCommandChunk();
+	}
+
+	~CommandChunkBlock()
+	{
+		m_commandList->EndCommandChunk();
+	}
+
+private:
+	DX12Rendering::Commands::CommandList* m_commandList;
+};
+
+struct DX12Rendering::Commands::CommandListCycleBlock
+{
+	CommandListCycleBlock(DX12Rendering::Commands::CommandList* commandList) :
+		m_commandList(commandList)
+	{}
+
+	~CommandListCycleBlock()
+	{
+		m_commandList->Cycle();
+	}
+
+private:
+	DX12Rendering::Commands::CommandList* m_commandList;
 };
 
 #endif

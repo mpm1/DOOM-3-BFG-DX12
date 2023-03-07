@@ -2,6 +2,7 @@
 
 #include "./dx12_global.h"
 #include "../../idlib/precompiled.h"
+#include "./dx12_CommandList.h"
 
 #include <comdef.h>
 
@@ -10,8 +11,28 @@ extern idCommon* common;
 using namespace Microsoft::WRL;
 
 #ifdef USE_PIX
-void DX12Rendering::CaptureEventStart(ID3D12CommandQueue* commandQueue, std::string message) { PIXBeginEvent(commandQueue, PIX_COLOR(128, 255, 128), message.c_str()); };
-void DX12Rendering::CaptureEventEnd(ID3D12CommandQueue* commandQueue) { PIXEndEvent(commandQueue); }
+namespace
+{
+	
+}
+
+void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, std::string message) 
+{ 
+	commandList->BeginCommandChunk();
+	commandList->AddCommand([&message](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	{
+		PIXBeginEvent(commandList, PIX_COLOR(128, 255, 128), message.c_str());
+	});
+};
+
+void DX12Rendering::CaptureEventEnd(Commands::CommandList* commandList) { 
+	commandList->AddCommand([](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	{
+		PIXEndEvent(commandList);
+	});
+
+	commandList->EndCommandChunk();
+}
 
 void DX12Rendering::CaptureGPUBegin() 
 {
@@ -31,8 +52,9 @@ void DX12Rendering::CaptureGPUBegin()
 
 void DX12Rendering::CaptureGPUEnd(bool discard) { PIXEndCapture(discard);  };
 #else
-void DX12Rendering::CaptureEventStart(ID3D12CommandQueue* commandQueue, std::string message) {};
-void DX12Rendering::CaptureEventEnd(ID3D12CommandQueue* commandQueue) {}
+void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, std::string message) {};
+void DX12Rendering::CaptureEventEnd(Commands::CommandList* commandList) {}
+void DX12Rendering::CaptureEventBlock(Commands::CommandList* commandList, std::string message) {};
 void DX12Rendering::CaptureGPUBegin() {};
 void DX12Rendering::CaptureGPUEnd(bool discard) {};
 #endif

@@ -386,9 +386,6 @@ void DX12Renderer::BeginDraw() {
 		return;
 	}
 
-	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-	DX12Rendering::CaptureEventStart(commandList->GetCommandQueue(), "Draw");
-
 	WaitForPreviousFrame();
 
 #ifdef _DEBUG
@@ -396,6 +393,9 @@ void DX12Renderer::BeginDraw() {
 #endif
 
 	DX12Rendering::Commands::CommandListsBeginFrame();
+
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	DX12Rendering::CaptureEventStart(commandList, "Draw");
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
@@ -442,6 +442,7 @@ void DX12Renderer::EndDraw() {
 		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 	});
 
+	DX12Rendering::CaptureEventEnd(commandList);
 	DX12Rendering::Commands::CommandListsEndFrame();
 
 	m_isDrawing = false;
@@ -455,8 +456,6 @@ void DX12Renderer::EndDraw() {
 	}
 
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
-
-	DX12Rendering::CaptureEventEnd(commandList->GetCommandQueue());
 }
 
 UINT DX12Renderer::StartSurfaceSettings() {
@@ -468,7 +467,6 @@ UINT DX12Renderer::StartSurfaceSettings() {
 	}
 
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-	commandList->BeginCommandChunk();
 
 	return m_objectIndex;
 }
@@ -483,7 +481,6 @@ bool DX12Renderer::EndSurfaceSettings() {
 
 	if (!DX12_ActivatePipelineState()) {
 		// We cant draw the object, so return.
-		commandList->EndCommandChunk();
 		return false;
 	}
 	
@@ -496,8 +493,6 @@ bool DX12Renderer::EndSurfaceSettings() {
 		SetTexturePixelShaderState(currentTexture);
 		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, m_frameIndex, commandList);
 	}
-
-	commandList->EndCommandChunk();
 
 	return true;
 }
@@ -1056,10 +1051,10 @@ void DX12Renderer::CopyRenderTargetToDisplay(DX12Rendering::RenderTarget* render
 {
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
+	DX12Rendering::CaptureEventBlock captureEvent(commandList, "DX12Renderer::DXR_CopyResultToDisplay");
+
 	commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 	{
-		DX12Rendering::CaptureEventStart(commandQueue, "DX12Renderer::DXR_CopyResultToDisplay");
-
 		renderTarget->fence.GPUWait(commandQueue); // Wait for all drawing to complete.
 
 		D3D12_RESOURCE_BARRIER transition = {};
@@ -1078,8 +1073,6 @@ void DX12Renderer::CopyRenderTargetToDisplay(DX12Rendering::RenderTarget* render
 
 		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
 		commandList->ResourceBarrier(1, &transition);
-
-		DX12Rendering::CaptureEventEnd(commandQueue);
 	});
 }
 

@@ -49,11 +49,53 @@ using namespace Microsoft::WRL;
 typedef UINT64 dxHandle_t;
 
 namespace DX12Rendering {
+	namespace Commands
+	{
+		class CommandList;
+	}
+
 	// Debug Captures
-	void CaptureEventStart(ID3D12CommandQueue* commandQueue, std::string message);
-	void CaptureEventEnd(ID3D12CommandQueue* commandQueue);
+	void CaptureEventStart(Commands::CommandList* commandList, std::string message);
+	void CaptureEventEnd(Commands::CommandList* commandList);
 	void CaptureGPUBegin();
 	void CaptureGPUEnd(bool discard);
+
+	struct CaptureEventBlock
+	{
+		CaptureEventBlock(DX12Rendering::Commands::CommandList* commandList, std::string message) :
+			m_commandList(commandList)
+		{
+			DX12Rendering::CaptureEventStart(m_commandList, message);
+		}
+
+		~CaptureEventBlock()
+		{
+			DX12Rendering::CaptureEventEnd(m_commandList);
+		}
+
+	private:
+		DX12Rendering::Commands::CommandList* m_commandList;
+	};
+
+	namespace
+	{
+		struct CaptureEventBlock
+		{
+			CaptureEventBlock(DX12Rendering::Commands::CommandList* commandList, std::string message) :
+				m_commandList(commandList)
+			{
+				DX12Rendering::CaptureEventStart(m_commandList, message);
+			}
+
+			~CaptureEventBlock()
+			{
+				DX12Rendering::CaptureEventEnd(m_commandList);
+			}
+
+		private:
+			DX12Rendering::Commands::CommandList* m_commandList;
+		};
+	}
 
 	// Error messages
 	void FailMessage(LPCSTR message);
