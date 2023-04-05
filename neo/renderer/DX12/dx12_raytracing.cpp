@@ -29,7 +29,7 @@ namespace DX12Rendering {
 		m_width(screenWidth),
 		m_height(screenHeight),
 		m_tlasManager(&m_blasManager),
-		m_diffuseTarget(DXGI_FORMAT_R8G8B8A8_UNORM, L"DXR Diffuse Map")//,
+		m_diffuseTarget(DXGI_FORMAT_R8G8B8A8_UNORM, L"DXR Diffuse Map") //,
 		//m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
 		//m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
@@ -141,6 +141,7 @@ namespace DX12Rendering {
 
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
 		device->CreateUnorderedAccessView(m_diffuseTarget.resource.Get(), nullptr, &uavDesc, shadowHandle);
 	}
 
@@ -160,7 +161,7 @@ namespace DX12Rendering {
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Write the acceleration structure to the view.
-		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
+		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = GetUavHeap()->GetCPUDescriptorHandleForHeapStart();
 		shadowHandle.ptr += device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
@@ -191,12 +192,12 @@ namespace DX12Rendering {
 		}
 
 		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
-		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList);
-		DX12Rendering::CaptureEventBlock captureEvent(commandList, "RayTracing::CastRays");
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RayTracing::CastRays");
+
+		DX12Rendering::Fence* fence = &GetOutputResource()->fence;
+		commandList->AddPreFenceWait(fence);
 
 		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
-
-		//tlasManager->AddGPUWait(commandList);
 
 		// Copy the CBV data to the heap
 		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
@@ -206,16 +207,15 @@ namespace DX12Rendering {
 		Uniform4f(RENDERPARM_VIEWPORT, viewportVector);
 
 		SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, frameIndex);
-
 		
-		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{
-			std::vector<ID3D12DescriptorHeap*> heaps = { m_generalUavHeaps.Get() };
+			std::vector<ID3D12DescriptorHeap*> heaps = { GetUavHeap() };
 			commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
 
 			// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
 			D3D12_RESOURCE_BARRIER transition = {};
-			if (m_diffuseTarget.TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &transition))
+			if (GetOutputResource()->TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &transition))
 			{
 				commandList->ResourceBarrier(1, &transition);
 			}
@@ -245,9 +245,9 @@ namespace DX12Rendering {
 			// Generate the ray traced image.
 			commandList->SetPipelineState1(m_shadowStateObject.Get());
 			commandList->DispatchRays(&desc);
-
-			m_diffuseTarget.fence.Signal(DX12Rendering::Device::GetDevice(), commandQueue);
 		});
+
+		commandList->AddPostFenceSignal(fence);
 
 		return true;
 	}
@@ -320,13 +320,14 @@ namespace DX12Rendering {
 	void Raytracing::CreateShadowBindingTable()
 	{
 		m_generalSBTDesc.Reset();
+
 		D3D12_GPU_DESCRIPTOR_HANDLE srvUavHandle = m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart();
 		void* heapPointer = reinterpret_cast<void*>(srvUavHandle.ptr);
 
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Create the SBT structure
-		m_generalSBTDesc.AddRayGeneratorProgram(L"RayGen", { heapPointer });
+		m_generalSBTDesc.AddRayGeneratorProgram(L"RayGen", { heapPointer } );
 		m_generalSBTDesc.AddRayMissProgram(L"Miss", {});
 		m_generalSBTDesc.AddRayHitGroupProgram(L"HitGroup", {});
 

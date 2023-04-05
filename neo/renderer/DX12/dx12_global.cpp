@@ -16,22 +16,19 @@ namespace
 	
 }
 
-void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, std::string message) 
-{ 
-	commandList->BeginCommandChunk();
-	commandList->AddCommand([&message](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, const std::string message) 
+{
+	commandList->AddPreExecuteQueueAction([message](ID3D12CommandQueue* commandQueue)
 	{
-		PIXBeginEvent(commandList, PIX_COLOR(128, 255, 128), message.c_str());
+		PIXBeginEvent(commandQueue, PIX_COLOR(128, 255, 128), message.c_str());
 	});
 };
 
 void DX12Rendering::CaptureEventEnd(Commands::CommandList* commandList) { 
-	commandList->AddCommand([](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	commandList->AddPostExecuteQueueAction([](ID3D12CommandQueue* commandQueue)
 	{
-		PIXEndEvent(commandList);
+		PIXEndEvent(commandQueue);
 	});
-
-	commandList->EndCommandChunk();
 }
 
 void DX12Rendering::CaptureGPUBegin() 
@@ -52,9 +49,8 @@ void DX12Rendering::CaptureGPUBegin()
 
 void DX12Rendering::CaptureGPUEnd(bool discard) { PIXEndCapture(discard);  };
 #else
-void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, std::string message) {};
+void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, const std::string message) {};
 void DX12Rendering::CaptureEventEnd(Commands::CommandList* commandList) {}
-void DX12Rendering::CaptureEventBlock(Commands::CommandList* commandList, std::string message) {};
 void DX12Rendering::CaptureGPUBegin() {};
 void DX12Rendering::CaptureGPUEnd(bool discard) {};
 #endif

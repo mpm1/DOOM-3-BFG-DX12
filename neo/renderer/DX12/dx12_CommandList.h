@@ -17,7 +17,6 @@ namespace DX12Rendering
 		{
 			UNKNOWN = 0,
 			OPEN,
-			IN_CHUNK,
 			CLOSED
 		};
 
@@ -30,7 +29,8 @@ namespace DX12Rendering
 			COUNT
 		};
 
-		typedef std::function<void(ID3D12GraphicsCommandList4*, ID3D12CommandQueue*)> CommandFunction;
+		typedef std::function<void(ID3D12GraphicsCommandList4*)> CommandFunction;
+		typedef std::function<void(ID3D12CommandQueue*)> QueueFunction;
 
 		class CommandList;
 
@@ -41,9 +41,6 @@ namespace DX12Rendering
 
 		void CommandListsBeginFrame();
 		void CommandListsEndFrame();
-
-		// Defines that a section of code should be executed as a command block.
-		struct CommandChunkBlock;
 
 		// Defines that a section of code will cycle its command list on exit.
 		struct CommandListCycleBlock;
@@ -57,8 +54,6 @@ public:
 
 	CommandList(D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, const LPCWSTR name);
 	~CommandList();
-
-	bool SignalFence(DX12Rendering::Fence& fence) { fence.Signal(DX12Rendering::Device::GetDevice(), m_commandQueue.Get()); }
 
 	/// <summary>
 	/// Resets the command list. Returns true if we reset correctly; false otherwise.
@@ -82,17 +77,22 @@ public:
 
 	void Cycle() { Execute(); Reset(); }
 	
-	void AddCommand(CommandFunction func);
+	// Used to add command list actions to the command queue.
+	void AddCommandAction(CommandFunction func);
 
-	bool IsExecutable() { return m_commandCount > 0 && m_state == OPEN; }
+	// Used to add a command queue action that will be fired before executing the command list.
+	void AddPreExecuteQueueAction(QueueFunction func);
 
-	void BeginCommandChunk();
-	void EndCommandChunk();
+	// Used to add a command que action that will be fired after executing the command list.
+	void AddPostExecuteQueueAction(QueueFunction func);
+
+	bool HasRemainingActions() { return m_commandCount > 0 || m_preQueuedFunctions.size() > 0 || m_postQueuedFunctions.size() > 0;  }
+	bool IsExecutable() { return m_state == OPEN; }
 	
 #pragma region Command Shortcuts
 	void CommandSetPipelineState(ID3D12PipelineState* pipelineState)
 	{
-		AddCommand([&pipelineState](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		AddCommandAction([&pipelineState](ID3D12GraphicsCommandList4* commandList)
 		{
 			commandList->SetPipelineState(pipelineState);
 		});
@@ -100,7 +100,7 @@ public:
 
 	void CommandResourceBarrier(UINT numBarriers, const D3D12_RESOURCE_BARRIER* barriers)
 	{
-		AddCommand([&numBarriers, &barriers](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		AddCommandAction([&numBarriers, &barriers](ID3D12GraphicsCommandList4* commandList)
 		{
 			commandList->ResourceBarrier(numBarriers, barriers);
 		});
@@ -108,9 +108,25 @@ public:
 
 	void CommandSetDescriptorHeaps(UINT numHeaps, ID3D12DescriptorHeap* heaps)
 	{
-		AddCommand([&numHeaps, &heaps](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		AddCommandAction([&numHeaps, &heaps](ID3D12GraphicsCommandList4* commandList)
 		{
 			commandList->SetDescriptorHeaps(numHeaps, &heaps);
+		});
+	}
+
+	void AddPreFenceWait(DX12Rendering::Fence* fence)
+	{
+		AddPreExecuteQueueAction([fence](ID3D12CommandQueue* commandQueue)
+		{
+			fence->GPUWait(commandQueue);
+		});
+	}
+
+	void AddPostFenceSignal(DX12Rendering::Fence* fence)
+	{
+		AddPostExecuteQueueAction([fence](ID3D12CommandQueue* commandQueue)
+		{
+			fence->Signal(DX12Rendering::Device::GetDevice(), commandQueue);
 		});
 	}
 #pragma endregion
@@ -123,38 +139,32 @@ private:
 	dx12_commandListState_t m_state;
 	UINT m_commandCount;
 	UINT m_chunkDepth;
-	UINT m_commandThreshold;
+
+	std::vector<QueueFunction> m_preQueuedFunctions;
+	std::vector<QueueFunction> m_postQueuedFunctions;
 
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	ComPtr<ID3D12CommandAllocator> m_commandAllocator[DX12_FRAME_COUNT];
 	ComPtr<ID3D12GraphicsCommandList4> m_commandList;
-};
 
-struct DX12Rendering::Commands::CommandChunkBlock
-{
-	CommandChunkBlock(DX12Rendering::Commands::CommandList* commandList) :
-		m_commandList(commandList)
-	{
-		m_commandList->BeginCommandChunk();
-	}
-
-	~CommandChunkBlock()
-	{
-		m_commandList->EndCommandChunk();
-	}
-
-private:
-	DX12Rendering::Commands::CommandList* m_commandList;
+	UINT8 GetCurrentFrameIndex() { return resetPerFrame ? DX12Rendering::GetCurrentFrameIndex() : 0; }
+	UINT8 GetLastFrameIndex() { return resetPerFrame ? DX12Rendering::GetLastFrameIndex() : 0; }
 };
 
 struct DX12Rendering::Commands::CommandListCycleBlock
 {
-	CommandListCycleBlock(DX12Rendering::Commands::CommandList* commandList) :
+	/// <summary>
+	/// Signals the command cycle at the end of the block execution.
+	/// </summary>
+	CommandListCycleBlock(DX12Rendering::Commands::CommandList* commandList, const std::string message) :
 		m_commandList(commandList)
-	{}
+	{
+		DX12Rendering::CaptureEventStart(commandList, message);
+	}
 
 	~CommandListCycleBlock()
 	{
+		DX12Rendering::CaptureEventEnd(m_commandList);
 		m_commandList->Cycle();
 	}
 

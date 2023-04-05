@@ -29,14 +29,17 @@ namespace DX12Rendering
 	{
 		ImGui::Render();
 
-		auto commandList = Commands::GetCommandList(Commands::DIRECT);
-
-		commandList->AddCommand([&cbv_srv_heap](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 		{
-			commandList->SetDescriptorHeaps(1, &cbv_srv_heap);
-			ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
-		});
-		
+			auto commandList = Commands::GetCommandList(Commands::DIRECT);
+			Commands::CommandListCycleBlock cycleBlock(commandList, "ImGui");
+
+			commandList->AddCommandAction([&cbv_srv_heap](ID3D12GraphicsCommandList4* commandList)
+			{
+				commandList->SetDescriptorHeaps(1, &cbv_srv_heap);
+				ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
+			});
+		}
+
 		ImGui::EndFrame();
 	}
 }

@@ -14,11 +14,21 @@ namespace DX12Rendering
 		HRESULT removedReason = removedDevice->GetDeviceRemovedReason();
 
 		ComPtr<ID3D12DeviceRemovedExtendedData1> pDred;
-		removedDevice->QueryInterface(IID_PPV_ARGS(&pDred)); //TODO: Validate result
 		D3D12_DRED_AUTO_BREADCRUMBS_OUTPUT1 DredAutoBreadcrumbsOutput;
-		D3D12_DRED_PAGE_FAULT_OUTPUT1 DredPageFaultOutput;
-		pDred->GetAutoBreadcrumbsOutput1(&DredAutoBreadcrumbsOutput); //TODO: Validate result
-		pDred->GetPageFaultAllocationOutput1(&DredPageFaultOutput); //TODO: Validate result
+		D3D12_DRED_PAGE_FAULT_OUTPUT DredPageFaultOutput;
+
+		if (SUCCEEDED(removedDevice->QueryInterface(IID_PPV_ARGS(&pDred))))
+		{
+			if (FAILED(pDred->GetAutoBreadcrumbsOutput1(&DredAutoBreadcrumbsOutput)))
+			{
+				// TODO: Validate
+			}
+
+			if (FAILED(pDred->GetPageFaultAllocationOutput(&DredPageFaultOutput)))
+			{
+				//TODO: Validate
+			}
+		}
 
 		_com_error err(removedReason);
 		DX12Rendering::FailMessage(err.ErrorMessage());

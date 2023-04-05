@@ -27,6 +27,7 @@
 #define _vsnprintf	use_idStr_vsnPrintf
 
 #include <DXProgrammableCapture.h>
+
 #elif defined(DEBUG_NSIGHTS)
 #else
 #define DEBUG_GPU
@@ -55,14 +56,14 @@ namespace DX12Rendering {
 	}
 
 	// Debug Captures
-	void CaptureEventStart(Commands::CommandList* commandList, std::string message);
+	void CaptureEventStart(Commands::CommandList* commandList, const std::string message);
 	void CaptureEventEnd(Commands::CommandList* commandList);
 	void CaptureGPUBegin();
 	void CaptureGPUEnd(bool discard);
 
 	struct CaptureEventBlock
 	{
-		CaptureEventBlock(DX12Rendering::Commands::CommandList* commandList, std::string message) :
+		CaptureEventBlock(DX12Rendering::Commands::CommandList* commandList, const std::string message) :
 			m_commandList(commandList)
 		{
 			DX12Rendering::CaptureEventStart(m_commandList, message);
@@ -76,26 +77,6 @@ namespace DX12Rendering {
 	private:
 		DX12Rendering::Commands::CommandList* m_commandList;
 	};
-
-	namespace
-	{
-		struct CaptureEventBlock
-		{
-			CaptureEventBlock(DX12Rendering::Commands::CommandList* commandList, std::string message) :
-				m_commandList(commandList)
-			{
-				DX12Rendering::CaptureEventStart(m_commandList, message);
-			}
-
-			~CaptureEventBlock()
-			{
-				DX12Rendering::CaptureEventEnd(m_commandList);
-			}
-
-		private:
-			DX12Rendering::Commands::CommandList* m_commandList;
-		};
-	}
 
 	// Error messages
 	void FailMessage(LPCSTR message);
@@ -204,7 +185,7 @@ namespace DX12Rendering {
 				return;
 			}
 
-			commandQueue->Wait(m_fence.Get(), m_value);
+			WarnIfFailed(commandQueue->Wait(m_fence.Get(), m_value));
 		}
 
 		void Wait()
@@ -239,23 +220,6 @@ struct Vertex
 	XMFLOAT4 colour;
 };
 
-struct DX12TextureBuffer
-{
-	ComPtr<ID3D12Resource> textureBuffer;
-	D3D12_SHADER_RESOURCE_VIEW_DESC textureView;
-	D3D12_RESOURCE_STATES usageState;
-	const idStr* name;
-
-
-	DX12TextureBuffer()
-	{
-		textureBuffer = nullptr;
-		textureView = {};
-		usageState = {};
-		name = nullptr;
-	}
-};
-
 enum eStageType {
 	DEPTH_STAGE,
 };
@@ -265,7 +229,7 @@ struct DX12Stage
 	eStageType type;
 
 	UINT textureCount;
-	DX12TextureBuffer* textures[TEXTURE_REGISTER_COUNT];
+	//DX12TextureBuffer* textures[TEXTURE_REGISTER_COUNT];
 
 	// TODO: Include stage information to tell if this is for shadow testing or lighting.
 };

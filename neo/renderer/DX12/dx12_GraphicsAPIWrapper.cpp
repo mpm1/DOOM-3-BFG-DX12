@@ -36,11 +36,9 @@ void GL_DepthBoundsTest(const float zmin, const float zmax) {
 }
 
 void GL_StartDepthPass(const idScreenRect& rect) {
-	// TODO
 }
 
 void GL_FinishDepthPass() {
-	// TODO
 }
 
 void GL_GetDepthPassRect(idScreenRect& rect) {

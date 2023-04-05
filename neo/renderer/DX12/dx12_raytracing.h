@@ -144,5 +144,7 @@ private:
 	UINT GetShadowHeight() const { return m_height;  };
 
 	ID3D12RootSignature* GetGlobalRootSignature();
+
+	ID3D12DescriptorHeap* GetUavHeap() { return m_generalUavHeaps.Get(); }
 };
 #endif

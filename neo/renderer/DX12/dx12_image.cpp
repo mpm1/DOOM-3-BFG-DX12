@@ -113,11 +113,11 @@ void idImage::SubImageUpload(int mipLevel, int x, int y, int z, int width, int h
 		RGB565Image debugImg = { data, width, height };
 #endif // _DEBUG
 
-		dxRenderer.SetTextureContent(static_cast<DX12TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, data);
+		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, data);
 		delete[] data;
 	}
 	else {
-		dxRenderer.SetTextureContent(static_cast<DX12TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, pic);
+		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, pic);
 	}
 
 	//TODO: Implement
@@ -167,9 +167,11 @@ idImage::SetPixel
 */
 void idImage::SetPixel(int mipLevel, int x, int y, const void* data, int dataSize) {
 	// TODO: IS THIS EVEN USED ANYMORE? Current implementation will be very slow.
-	dxRenderer.StartTextureWrite(static_cast<DX12TextureBuffer*>(textureResource));
+	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+
+	textureManager->StartTextureWrite(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
 	SubImageUpload(mipLevel, x, y, 0, 1, 1, data);
-	dxRenderer.EndTextureWrite(static_cast<DX12TextureBuffer*>(textureResource));
+	textureManager->EndTextureWrite(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
 }
 
 /*
@@ -515,9 +517,9 @@ void idImage::AllocImage() {
 	}
 
 	// Allocate the texture
-	textureResource = new DX12TextureBuffer();
+	textureResource = dxRenderer.GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc);
 
-	if (dxRenderer.AllocTextureBuffer(static_cast<DX12TextureBuffer*>(textureResource), &textureDesc, &imgName) == nullptr) {
+	if (textureResource == nullptr) {
 		return;
 	}
 
@@ -536,7 +538,7 @@ idImage::PurgeImage
 */
 void idImage::PurgeImage() {
 	if (IsLoaded()) {
-		dxRenderer.FreeTextureBuffer(static_cast<DX12TextureBuffer*>(textureResource));
+		dxRenderer.GetTextureManager()->FreeTextureBuffer(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
 		textureResource = nullptr;
 	}
 
@@ -568,8 +570,8 @@ void idImage::Resize(int width, int height) {
 
 bool idImage::IsLoaded() const {
 	if (textureResource != nullptr) {
-		auto address = static_cast<DX12TextureBuffer*>(textureResource)->textureBuffer.GetAddressOf();
-		return address != NULL;
+		DX12Rendering::TextureBuffer* textureBuffer = static_cast<DX12Rendering::TextureBuffer*>(textureResource);
+		return textureBuffer != nullptr && textureBuffer->IsReady();
 	}
 
 	return false;

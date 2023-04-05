@@ -110,7 +110,7 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12R
 	m_device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
 
 	UINT heapIndex = m_cbvHeapIndex;
-	commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 	{
 		const CD3DX12_GPU_DESCRIPTOR_HANDLE tableHandle(m_cbvHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart(), heapIndex, m_cbvHeapIncrementor);
 		commandList->SetGraphicsRootDescriptorTable(1, tableHandle);
@@ -141,7 +141,7 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const s
 
 	// Define the Descriptor Table to use.
 	UINT heapIndex = m_cbvHeapIndex;
-	commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 	{
 		const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_cbvHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart(), heapIndex, m_cbvHeapIncrementor);
 		commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
@@ -151,9 +151,9 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const s
 	return cbvDesc;
 }
 
-DX12TextureBuffer* DX12RootSignature::SetTextureRegisterIndex(UINT textureIndex, DX12TextureBuffer* texture, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
+DX12Rendering::TextureBuffer* DX12RootSignature::SetTextureRegisterIndex(UINT textureIndex, DX12Rendering::TextureBuffer* texture, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
 	CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_cbvHeap[frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
-	m_device->CreateShaderResourceView(texture->textureBuffer.Get(), &texture->textureView, textureHandle);
+	m_device->CreateShaderResourceView(texture->resource.Get(), &texture->textureView, textureHandle);
 
 	++m_cbvHeapIndex;
 	//m_copyCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentTexture->textureBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));

@@ -32,6 +32,8 @@ namespace DX12Rendering {
 
 		const LPCWSTR GetName() { return m_name.empty() ? nullptr : m_name.c_str(); }
 		bool Exists() { return state >= Ready && state < Removed; }
+		bool IsRemoved() { return state == Removed; }
+
 	protected:
 		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps);
 
@@ -44,11 +46,15 @@ namespace DX12Rendering {
 	{
 		const UINT64 m_size; // The total memory size of the buffer
 
-		ScratchBuffer(UINT64 size, UINT alignment, LPCWSTR name) :
+		ScratchBuffer(UINT64 size, UINT alignment, D3D12_HEAP_PROPERTIES heapProps, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES resourceState, LPCWSTR name) :
 			Resource(name),
 			m_size(DX12_ALIGN(size, alignment)),
 			m_currentIndex(0),
-			m_alignment(alignment) {}
+			m_alignment(alignment),
+			m_heapProps(heapProps),
+			m_flags(flags),
+			m_resourceState(resourceState)
+		{}
 
 		ID3D12Resource* Build();
 
@@ -64,6 +70,9 @@ namespace DX12Rendering {
 	private:
 		UINT64 m_currentIndex; // The next available space to fill the scratch buffer.
 		const UINT m_alignment;
+		const D3D12_HEAP_PROPERTIES m_heapProps;
+		const D3D12_RESOURCE_FLAGS m_flags;
+		const D3D12_RESOURCE_STATES m_resourceState;
 	};
 }
 

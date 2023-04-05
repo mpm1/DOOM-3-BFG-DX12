@@ -27,7 +27,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
 
-				m_commandLists.emplace_back(&queueDesc, true, L"Copy");
+				m_commandLists.emplace_back(&queueDesc, false, L"Copy");
 			}
 
 			//  Commands
@@ -77,7 +77,6 @@ namespace DX12Rendering {
 			m_state(UNKNOWN),
 			m_commandCount(0),
 			m_chunkDepth(0),
-			m_commandThreshold(128),
 #ifdef _DEBUG
 			m_name(std::wstring(name))
 #endif
@@ -113,39 +112,26 @@ namespace DX12Rendering {
 
 		}
 
-		void CommandList::BeginCommandChunk()
-		{
-			assert(m_state == OPEN || m_state == IN_CHUNK);
-
-			++m_chunkDepth;
-			m_state = IN_CHUNK;
-		}
-
-		void CommandList::EndCommandChunk()
-		{
-			assert(m_state == IN_CHUNK);
-
-			--m_chunkDepth;
-			if (m_chunkDepth <= 0)
-			{
-				m_state = OPEN;
-			}
-		}
-
-		void CommandList::AddCommand(CommandFunction func)
+		void CommandList::AddCommandAction(CommandFunction func)
 		{
 			if (func != nullptr)
 			{
-				assert(m_state >= OPEN && m_state <= IN_CHUNK);
+				assert(m_state >= OPEN);
 
-				func(m_commandList.Get(), m_commandQueue.Get());
+				func(m_commandList.Get());
 
 				++m_commandCount;
-				if (m_commandCount >= m_commandThreshold)
-				{
-					Cycle();
-				}
 			}
+		}
+
+		void CommandList::AddPreExecuteQueueAction(QueueFunction func)
+		{
+			m_preQueuedFunctions.push_back(func);
+		}
+
+		void CommandList::AddPostExecuteQueueAction(QueueFunction func)
+		{
+			m_postQueuedFunctions.push_back(func);
 		}
 
 		bool CommandList::Execute()
@@ -159,11 +145,31 @@ namespace DX12Rendering {
 
 				m_state = CLOSED;
 
+				// Pre queued commands
+				ID3D12CommandQueue* commandQueue = GetCommandQueue();
+				std::for_each(m_preQueuedFunctions.cbegin(), m_preQueuedFunctions.cend(), [commandQueue](const QueueFunction func)
+				{
+					if (func != nullptr)
+					{
+						func(commandQueue);
+					}
+				});
+
+				// Command list actions
 				if (m_commandCount > 0)
 				{
 					ID3D12CommandList* const ppCommandLists[] = { m_commandList.Get() };
 					m_commandQueue->ExecuteCommandLists(_countof(ppCommandLists), ppCommandLists);
 				}
+
+				// Post queued commands
+				std::for_each(m_postQueuedFunctions.cbegin(), m_postQueuedFunctions.cend(), [commandQueue](const QueueFunction func)
+				{
+					if (func != nullptr)
+					{
+						func(commandQueue);
+					}
+				});
 
 				m_commandCount = 0;
 			}
@@ -178,7 +184,10 @@ namespace DX12Rendering {
 				return false;
 			}
 
-			bool result = WarnIfFailed(m_commandList->Reset(m_commandAllocator[GetCurrentFrameIndex()].Get(), NULL)); 
+			m_preQueuedFunctions.clear();
+			m_postQueuedFunctions.clear();
+
+			bool result = WarnIfFailed(m_commandList->Reset(m_commandAllocator[GetCurrentFrameIndex()].Get(), NULL));
 			m_state = OPEN;
 
 			return result;
@@ -201,7 +210,15 @@ namespace DX12Rendering {
 
 		bool CommandList::EndFrame()
 		{
-			return Execute();
+			if (resetPerFrame && m_state != CLOSED)
+			{
+				if (HasRemainingActions())
+				{
+					return false;
+				}
+			}
+			
+			return true;
 		}
 #pragma endregion
 	}

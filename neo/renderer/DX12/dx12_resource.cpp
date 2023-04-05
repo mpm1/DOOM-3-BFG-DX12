@@ -46,7 +46,7 @@ namespace DX12Rendering {
 		description.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
 		description.DepthOrArraySize = 1;
 		description.Dimension = D3D12_RESOURCE_DIMENSION_BUFFER;
-		description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+		description.Flags = m_flags;
 		description.Format = DXGI_FORMAT_UNKNOWN;
 		description.Height = 1;
 		description.Layout = D3D12_TEXTURE_LAYOUT_ROW_MAJOR;
@@ -55,17 +55,11 @@ namespace DX12Rendering {
 		description.SampleDesc.Quality = 0;
 		description.Width = m_size;
 
-		return Allocate(description, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kDefaultHeapProps);
+		return Allocate(description, m_resourceState, m_heapProps);
 	}
 
 	bool ScratchBuffer::RequestSpace(DX12Rendering::Commands::CommandList* commandList, const UINT64 size, UINT64& offset, bool waitForSpace)
 	{
-		if (waitForSpace && !fence.IsFenceCompleted())
-		{
-			offset = 0;
-			return false;
-		}
-
 		// Allocate the resource on the GPU if needed.
 		if (state == Unallocated || state >= Removed)
 		{
@@ -74,6 +68,19 @@ namespace DX12Rendering {
 				return false;
 			}
 		}
+
+		if (waitForSpace)
+		{
+			if (fence.IsFenceCompleted())
+			{
+				state = Ready;
+			}
+			else
+			{
+				offset = 0;
+				return false;
+			}
+		}		
 
 		// For now we're keeping it simple and just allowing the buffer to loop.
 		const UINT64 alignedSize = DX12_ALIGN(size, m_alignment);
@@ -85,10 +92,11 @@ namespace DX12Rendering {
 			offset = 0;
 			m_currentIndex = 0;
 
-			commandList->SignalFence(fence);
+			commandList->AddPostFenceSignal(&fence);
 
 			if (waitForSpace)
 			{
+				state = Dirty;
 				return false;
 			}
 		}

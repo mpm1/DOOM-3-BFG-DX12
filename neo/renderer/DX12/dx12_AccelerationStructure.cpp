@@ -57,7 +57,7 @@ namespace DX12Rendering {
 		//TODO: Move the BLAS resource into BLASManager and control our own alocation.
 
 		if (state == Ready) {
-			return true; // Nothing to update
+			return false; // Nothing to update
 		}
 
 		ID3D12Device5* device = Device::GetDevice();
@@ -105,12 +105,9 @@ namespace DX12Rendering {
 
 		if (isUpdate)
 		{
-			commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
-			{
-				// Provide a barrier to make sure we are done using the resource.
-				D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(resource.Get());
-				commandList->ResourceBarrier(1, &uavBarrier);
-			});
+			// Provide a barrier to make sure we are done using the resource.
+			D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(resource.Get());
+			commandList->CommandResourceBarrier(1, &uavBarrier);
 		}
 		else
 		{
@@ -136,7 +133,7 @@ namespace DX12Rendering {
 			m_sizeInBytes = resultSizeInBytes;
 		}
 
-		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{
 			// Describe the BLAS data
 			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC blasDesc = {};
@@ -151,15 +148,13 @@ namespace DX12Rendering {
 			// Wait for the building of the blas to complete.
 			D3D12_RESOURCE_BARRIER uavBarrier = CD3DX12_RESOURCE_BARRIER::UAV(resource.Get());
 			commandList->ResourceBarrier(1, &uavBarrier);
-
-			fence.Signal(device, commandQueue);
 		});
 	}
 
 #pragma endregion
 #pragma region BLASContainer
 	BLASManager::BLASManager() :
-		m_scratchBuffer(DEFAULT_BLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, L"BLAS Scratch Buffer")
+		m_scratchBuffer(DEFAULT_BLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"BLAS Scratch Buffer")
 	{}
 
 	BLASManager::~BLASManager()
@@ -212,18 +207,28 @@ namespace DX12Rendering {
 	UINT BLASManager::Generate()
 	{
 		// TODO: Define starting point for BLAS using m_blasIndex
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "BLASManager::Generate");
 
 		UINT count = 0;
 		for (auto blasPair = m_objectMap.begin(); blasPair != m_objectMap.end(); ++blasPair)
 		{
 			if (blasPair->second.Generate(m_scratchBuffer))
 			{
+				DX12Rendering::Fence* fence = &blasPair->second.fence;
+				commandList->AddPostFenceSignal(fence); // Add our fence that we will signal on exit.
+
 				++count;
 
 				if (count >= m_blasPerFrame)
 				{
 					break;
 				}
+			}
+			else if (m_scratchBuffer.state == DX12Rendering::Resource::Dirty)
+			{
+				// Our scratch buffer is full, so we should wait.
+				break;
 			}
 		}
 
@@ -415,7 +420,7 @@ namespace DX12Rendering {
 		descriptor.SourceAccelerationStructureData = pSourceAS;
 
 		// Build the top level AS
-		commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
+		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{
 			commandList->BuildRaytracingAccelerationStructure(&descriptor, 0, nullptr);
 
@@ -476,7 +481,7 @@ namespace DX12Rendering {
 #pragma region TLASManager
 	TLASManager::TLASManager(BLASManager* blasManager) :
 		m_blasManager(blasManager),
-		m_scratch(DEFAULT_TLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, L"TLAS Scratch Buffer"),
+		m_scratch(DEFAULT_TLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"TLAS Scratch Buffer"),
 		m_tlas{ TopLevelAccelerationStructure(L"TLAS 0"), TopLevelAccelerationStructure(L"TLAS 1") }
 	{
 		Reset();
@@ -496,7 +501,7 @@ namespace DX12Rendering {
 	bool TLASManager::Generate()
 	{
 		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
-		DX12Rendering::CaptureEventBlock captureEvent(commandList, "TLASManager::Generate");
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "TLASManager::Generate");
 
 		if (m_scratch.state != Resource::Ready)
 		{

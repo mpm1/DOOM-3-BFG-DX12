@@ -10,6 +10,7 @@
 #include "./dx12_CommandList.h"
 #include "./dx12_RootSignature.h"
 #include "./dx12_raytracing.h"
+#include "./dx12_TextureManager.h"
 
 // Use D3D clip space.
 #define CLIP_SPACE_D3D
@@ -99,16 +100,9 @@ public:
 	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset);
 
 	// Textures
+	DX12Rendering::TextureManager* GetTextureManager() { return &m_textureManager; }
 	void SetActiveTextureRegister(UINT8 index);
-	DX12TextureBuffer* AllocTextureBuffer(DX12TextureBuffer* buffer, D3D12_RESOURCE_DESC* textureDesc, const idStr* name);
-	void FreeTextureBuffer(DX12TextureBuffer* buffer);
-	void SetTextureContent(DX12TextureBuffer* buffer, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);
-	void SetTexture(DX12TextureBuffer* buffer);
-	void StartTextureWrite(DX12TextureBuffer* buffer);
-	void EndTextureWrite(DX12TextureBuffer* buffer);
-	bool SetTextureCopyState(DX12TextureBuffer* buffer, const UINT mipLevel);
-	bool SetTexturePixelShaderState(DX12TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
-	bool SetTextureState(DX12TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	void SetTexture(DX12Rendering::TextureBuffer* buffer);
 
 	// Draw commands
 	void BeginDraw();
@@ -191,12 +185,9 @@ private:
 	DX12Rendering::Fence m_copyFence;
 
 	// Textures
-	ComPtr<ID3D12Resource> m_textureBufferUploadHeap; // Intermediate texture upload space.
-	UINT64 m_textureBufferUploadIndex = 0; // Intermediate offset to the texture upload.
-	UINT64 m_textureBufferUploadMax = 0; // The max space for uploading textures.
-
+	DX12Rendering::TextureManager m_textureManager;
 	UINT8 m_activeTextureRegister;
-	DX12TextureBuffer* m_activeTextures[TEXTURE_REGISTER_COUNT];
+	DX12Rendering::TextureBuffer* m_activeTextures[TEXTURE_REGISTER_COUNT];
 
 	// Device removal
 	HANDLE m_deviceRemovedHandle;

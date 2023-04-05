@@ -421,8 +421,9 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 
 void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList);
-	DX12Rendering::Commands::CommandChunkBlock chunkBlock(commandList);
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawElementsWithCounters");
+
+	dxRenderer.SetCommandListDefaults(false);
 
 	// Connect to a new surfae renderer
 	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
@@ -750,6 +751,9 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 
 	renderLog.OpenMainBlock(MRB_FILL_DEPTH_BUFFER);
 	renderLog.OpenBlock("RB_FillDepthBufferFast");
+
+	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DepthPass");
 
 	GL_StartDepthPass(backEnd.viewDef->scissor);
 
@@ -1789,8 +1793,10 @@ static void RB_DrawInteractions() {
 	renderLog.OpenMainBlock(MRB_DRAW_INTERACTIONS);
 	renderLog.OpenBlock("RB_DrawInteractions");
 
-	GL_SelectTexture(0);
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DrawInteractions");
 
+	GL_SelectTexture(0);
 
 	const bool useLightDepthBounds = r_useLightDepthBounds.GetBool();
 
@@ -2647,6 +2653,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	//-------------------------------------------------
 	int processed = 0;
 	if (!r_skipShaderPasses.GetBool()) {
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "Draw_ShaderPasses");
+
 		renderLog.OpenMainBlock(MRB_DRAW_SHADER_PASSES);
 		float guiScreenOffset;
 		if (viewDef->viewEntitys != NULL) {
@@ -2658,9 +2667,6 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		}
 		processed = RB_DrawShaderPasses(drawSurfs, numDrawSurfs, guiScreenOffset, stereoEye);
 		renderLog.CloseMainBlock();
-
-		//dxRenderer.ExecuteCommandList();
-		//dxRenderer.ResetCommandList();
 	}
 
 	//-------------------------------------------------
