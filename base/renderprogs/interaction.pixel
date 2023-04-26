@@ -52,8 +52,8 @@ struct PS_OUT {
 
 void main( PS_IN fragment, out PS_OUT result ) {
 	half4 bumpMap =			samp0.Sample(baseSampler, fragment.texcoord1.xy );
-	half4 lightFalloff =	idtex2Dproj( samp1, fragment.texcoord2 );
-	half4 lightProj	=		idtex2Dproj( samp2, fragment.texcoord3 );
+	half4 lightFalloff =	idtex2Dproj( samp1, lightSampler, fragment.texcoord2 );
+	half4 lightProj	=		idtex2Dproj( samp2, lightSampler, fragment.texcoord3 );
 	half4 YCoCG =			samp3.Sample(baseSampler, fragment.texcoord4.xy );
 	half4 specMap =			samp4.Sample(baseSampler, fragment.texcoord5.xy );
 

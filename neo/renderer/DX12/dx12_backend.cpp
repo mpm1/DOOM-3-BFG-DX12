@@ -1635,8 +1635,8 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 				// tranform the light/view origin into model local space
 				idVec4 localLightOrigin(0.0f);
 				idVec4 localViewOrigin(1.0f);
-				R_GlobalPointToLocal(surf->space->modelMatrix, vLight->globalLightOrigin, localLightOrigin.ToVec3());
-				R_GlobalPointToLocal(surf->space->modelMatrix, backEnd.viewDef->renderView.vieworg, localViewOrigin.ToVec3());
+				R_GlobalPointToLocal(&surf->space->modelMatrix[0], vLight->globalLightOrigin, localLightOrigin.ToVec3());
+				R_GlobalPointToLocal(&surf->space->modelMatrix[0], backEnd.viewDef->renderView.vieworg, localViewOrigin.ToVec3());
 
 				// set the local light/view origin
 				SetVertexParm(RENDERPARM_LOCALLIGHTORIGIN, localLightOrigin.ToFloatPtr());

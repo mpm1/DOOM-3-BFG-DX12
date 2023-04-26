@@ -1511,6 +1511,12 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="packages.config" />
+    <None Include="..\base\renderprogs\gbuffer.pixel">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\base\renderprogs\gbuffer.vertex">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sys\win32\rc\doom.rc">

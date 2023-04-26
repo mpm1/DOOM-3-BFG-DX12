@@ -44,6 +44,7 @@ namespace DX12Rendering
 
 	private:
 		ScratchBuffer m_textureUploadHeap;
+		// TODO: Create bindless textures.
 		std::vector<DX12Rendering::TextureBuffer> m_textures; // Stores the active texture information in the scene.
 	};
 }

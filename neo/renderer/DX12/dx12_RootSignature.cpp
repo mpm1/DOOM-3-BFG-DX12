@@ -35,11 +35,12 @@ void DX12RootSignature::CreateRootSignature()
 	jointDescriptorTableRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0, 1, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 	rootParameters[1].InitAsDescriptorTable(1, &jointDescriptorTableRanges[0]);
 
-	CD3DX12_STATIC_SAMPLER_DESC staticSampler[1];
-	staticSampler[0].Init(0, D3D12_FILTER_ANISOTROPIC);
+	CD3DX12_STATIC_SAMPLER_DESC staticSampler[2];
+	staticSampler[0].Init(0, D3D12_FILTER_ANISOTROPIC); // Base Sampler
+	staticSampler[1].Init(1, D3D12_FILTER_ANISOTROPIC, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // Light projection sampler
 
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init_1_1(2, rootParameters, 1, &staticSampler[0], rootSignatureFlags);
+	rootSignatureDesc.Init_1_1(2, rootParameters, 2, &staticSampler[0], rootSignatureFlags);
 
 	ComPtr<ID3DBlob> signature;
 	ComPtr<ID3DBlob> error;
