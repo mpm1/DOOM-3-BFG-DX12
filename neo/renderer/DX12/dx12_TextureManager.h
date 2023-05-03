@@ -4,9 +4,12 @@
 #include "./dx12_resource.h"
 
 namespace DX12Rendering
-{//Mark start here. This was renamed from DX12TextureBuffer. We need to move the copy fence and the texture upload heap over to the manager.
+{
 	struct TextureBuffer : Resource
 	{
+	public:
+		friend class TextureManager;
+
 		D3D12_SHADER_RESOURCE_VIEW_DESC textureView;
 		D3D12_RESOURCE_STATES m_lastTransitionState;
 
@@ -19,6 +22,9 @@ namespace DX12Rendering
 		bool Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc);
 
 		const bool IsReady() { return Exists(); }
+
+	private:
+		D3D12_RESOURCE_DESC m_textureDesc;
 	};
 
 	class TextureManager {
@@ -40,7 +46,7 @@ namespace DX12Rendering
 		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc);
 		TextureBuffer* GetTextureBuffer(uint64 textureHandle); //TODO: Move everything to a reference to create bindless textures.
 		void FreeTextureBuffer(TextureBuffer* buffer);
-		void SetTextureContent(TextureBuffer* buffer, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);
+		void SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);
 
 	private:
 		ScratchBuffer m_textureUploadHeap;

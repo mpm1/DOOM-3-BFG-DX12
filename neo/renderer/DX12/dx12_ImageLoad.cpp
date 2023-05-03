@@ -482,6 +482,9 @@ void idImage::Bind() {
 			qglBindMultiTextureEXT(GL_TEXTURE0_ARB + texUnit, GL_TEXTURE_2D, texnum);
 		}*/
 	}
+	else if (opts.textureType == TT_CUBIC) {
+		dxRenderer.SetTexture(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
+	}
 	/*if (opts.textureType == TT_2D) {
 		if (tmu->current2DMap != texnum) {
 			tmu->current2DMap = texnum;

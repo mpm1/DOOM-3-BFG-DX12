@@ -106,18 +106,19 @@ void idImage::SubImageUpload(int mipLevel, int x, int y, int z, int width, int h
 	UINT imageSize = IsCompressed() ? compressedSize : bytePitch * height;
 
 	if (opts.format == FMT_RGB565) {
-		byte* data = new byte[imageSize];
-		RGB565SwapBytes(imageSize, reinterpret_cast<const byte*>(pic), data);
+
+		auto data = std::make_unique<byte[]>(imageSize);
+		RGB565SwapBytes(imageSize, static_cast<const byte*>(pic), data.get());
 
 #ifdef _DEBUG
-		RGB565Image debugImg = { data, width, height };
+		RGB565Image debugImg = { data.get(), width, height };
+		RGB565Image debugImgFull = { data.get(), width << 1, height << 1 };
 #endif // _DEBUG
 
-		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, data);
-		delete[] data;
+		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, data.get());
 	}
 	else {
-		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, pic);
+		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, pic);
 	}
 
 	//TODO: Implement
@@ -338,19 +339,20 @@ void idImage::AllocImage() {
 	// allocate all the mip levels with NULL data
 	//----------------------------------------------------
 
-	int numSides;
+	int numSides = 1;
 	uint width = opts.width;
 	uint height = opts.height;
+	uint alignment = 0;
 
 	//int target;
 	//int uploadTarget;
 	if (opts.textureType == TT_2D) {
-		//textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, opts.width, opts.height);
+		//textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN);
 		//target = uploadTarget = GL_TEXTURE_2D;
 		numSides = 1;
 	}
 	else if (opts.textureType == TT_CUBIC) {
-		//textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, opts.width, opts.height, 1U, 0U, 6U);
+		//textureDesc = CD3DX12_RESOURCE_DESC::(DXGI_FORMAT_UNKNOWN, opts.width, opts.height, 1U, 0U, 6U);
 		//target = GL_TEXTURE_CUBE_MAP_EXT;
 		//uploadTarget = GL_TEXTURE_CUBE_MAP_POSITIVE_X_EXT;
 		numSides = 6;
@@ -361,9 +363,24 @@ void idImage::AllocImage() {
 		numSides = 1;
 	}
 
-	if (IsCompressed()) {
+	
+	if (IsCompressed()) 
+	{
 		width = (width + 3) & ~0x03;
 		height = (height + 3) & ~0x03;
+	}
+	else
+	{
+		// make sure the pixel store alignment is correct so that lower mips get created
+		// properly for odd shaped textures - this fixes the mip mapping issues with
+		// fonts
+		int unpackAlignment = width * BitsForFormat((textureFormat_t)opts.format) / 8;
+		if ((unpackAlignment & 3) == 0) {
+			alignment = 4;
+		}
+		else {
+			alignment = 1;
+		}
 	}
 
 	//TODO: Check if this is needed.
@@ -406,7 +423,8 @@ void idImage::AllocImage() {
 		}
 	}*/
 
-	CD3DX12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, width, height, numSides, opts.numLevels);
+	D3D12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, width, height, numSides, opts.numLevels);
+	//textureDesc.Alignment = alignment;
 
 	// Set texture format/
 	switch (opts.format) {

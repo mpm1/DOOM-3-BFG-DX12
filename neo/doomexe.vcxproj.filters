@@ -1360,18 +1360,6 @@
     <None Include="..\base\renderprogs\bloodorb3_capture.vertex">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="..\base\renderprogs\bumpyenvironment.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\bumpyenvironment.vertex">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\bumpyenvironment_skinned.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\bumpyenvironment_skinned.vertex">
-      <Filter>Shaders</Filter>
-    </None>
     <None Include="..\base\renderprogs\color.pixel">
       <Filter>Shaders</Filter>
     </None>
@@ -1624,6 +1612,18 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\general_miss.ray">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\bumpyenvironment_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\bumpyenvironment_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\bumpyenvironment.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\bumpyenvironment.pixel">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

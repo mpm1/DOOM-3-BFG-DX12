@@ -37,7 +37,7 @@ struct VS_IN {
 };
 
 struct VS_OUT {
-	float4 position		: POSITION;
+	float4 position		: SV_POSITION;
 	float2 texcoord0	: TEXCOORD0;
 	float3 texcoord1	: TEXCOORD1;
 	float3 texcoord2	: TEXCOORD2;
@@ -52,29 +52,29 @@ void main( VS_IN vertex, out VS_OUT result ) {
 	float4 tangent = vertex.tangent * 2.0 - 1.0;
 	float3 binormal = cross( normal.xyz, tangent.xyz ) * tangent.w;
 
-	result.position.x = dot4( vertex.position, rpMVPmatrixX );
-	result.position.y = dot4( vertex.position, rpMVPmatrixY );
-	result.position.z = dot4( vertex.position, rpMVPmatrixZ );
-	result.position.w = dot4( vertex.position, rpMVPmatrixW );
+	result.position.x = dot4( vertex.position, sceneConstants.rpMVPmatrixX );
+	result.position.y = dot4( vertex.position, sceneConstants.rpMVPmatrixY );
+	result.position.z = dot4( vertex.position, sceneConstants.rpMVPmatrixZ );
+	result.position.w = dot4( vertex.position, sceneConstants.rpMVPmatrixW );
 
 	result.texcoord0 = vertex.texcoord.xy;
 
-	float4 toEye = rpLocalViewOrigin - vertex.position;
-	result.texcoord1.x = dot3( toEye, rpModelMatrixX );
-	result.texcoord1.y = dot3( toEye, rpModelMatrixY );
-	result.texcoord1.z = dot3( toEye, rpModelMatrixZ );
+	float4 toEye = sceneConstants.rpLocalViewOrigin - vertex.position;
+	result.texcoord1.x = dot3( toEye, sceneConstants.rpModelMatrixX );
+	result.texcoord1.y = dot3( toEye, sceneConstants.rpModelMatrixY );
+	result.texcoord1.z = dot3( toEye, sceneConstants.rpModelMatrixZ );
 
-	result.texcoord2.x = dot3( tangent, rpModelMatrixX );
-	result.texcoord3.x = dot3( tangent, rpModelMatrixY );
-	result.texcoord4.x = dot3( tangent, rpModelMatrixZ );
+	result.texcoord2.x = dot3( tangent, sceneConstants.rpModelMatrixX );
+	result.texcoord3.x = dot3( tangent, sceneConstants.rpModelMatrixY );
+	result.texcoord4.x = dot3( tangent, sceneConstants.rpModelMatrixZ );
 
-	result.texcoord2.y = dot3( binormal, rpModelMatrixX );
-	result.texcoord3.y = dot3( binormal, rpModelMatrixY );
-	result.texcoord4.y = dot3( binormal, rpModelMatrixZ );
+	result.texcoord2.y = dot3( binormal, sceneConstants.rpModelMatrixX );
+	result.texcoord3.y = dot3( binormal, sceneConstants.rpModelMatrixY );
+	result.texcoord4.y = dot3( binormal, sceneConstants.rpModelMatrixZ );
 
-	result.texcoord2.z = dot3( normal, rpModelMatrixX );
-	result.texcoord3.z = dot3( normal, rpModelMatrixY );
-	result.texcoord4.z = dot3( normal, rpModelMatrixZ );
+	result.texcoord2.z = dot3( normal, sceneConstants.rpModelMatrixX );
+	result.texcoord3.z = dot3( normal, sceneConstants.rpModelMatrixY );
+	result.texcoord4.z = dot3( normal, sceneConstants.rpModelMatrixZ );
 
-	result.color = rpColor;
+	result.color = sceneConstants.rpColor;
 }

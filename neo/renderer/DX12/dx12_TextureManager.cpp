@@ -11,6 +11,8 @@ namespace DX12Rendering
 	{
 		Release();
 
+		m_textureDesc = textureDesc;
+
 		Allocate(textureDesc, D3D12_RESOURCE_STATE_COPY_DEST, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT));
 
 		m_lastTransitionState = D3D12_RESOURCE_STATE_COPY_DEST;
@@ -89,7 +91,7 @@ namespace DX12Rendering
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 		srvDesc.Format = textureDesc.Format;
-		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.ViewDimension = textureDesc.DepthOrArraySize == 6 ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MipLevels = textureDesc.MipLevels;
 
 		if (buffer->Build(textureDesc, srvDesc))
@@ -108,22 +110,7 @@ namespace DX12Rendering
 		}
 	}
 
-	void TextureManager::SetTextureContent(TextureBuffer* buffer, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image) {
-		D3D12_SUBRESOURCE_DATA textureData = {};
-		textureData.pData = image;
-		textureData.RowPitch = bytesPerRow;
-		textureData.SlicePitch = imageSize;
-
-		//UINT64 intermediateOffset = 0;
-		//if (mipLevel > 0) {
-		//	size_t lastSize = imageSize;
-
-		//	for (UINT mipCheck = mipLevel; mipCheck > 0; --mipCheck) {
-		//		intermediateOffset += ((lastSize + 511) & ~511); // 512 byte align.
-		//		lastSize = lastSize << 2;
-		//	}
-		//}
-
+	void TextureManager::SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image) {
 		if (buffer != nullptr && buffer->IsReady())
 		{
 			auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
@@ -139,7 +126,14 @@ namespace DX12Rendering
 
 			copyCommands->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 			{
-				UpdateSubresources(commandList, buffer->resource.Get(), m_textureUploadHeap.resource.Get(), intermediateOffset, mipLevel, 1, &textureData);
+				D3D12_SUBRESOURCE_DATA textureData = {};
+				textureData.pData = image;
+				textureData.RowPitch = bytesPerRow;
+				textureData.SlicePitch = imageSize;
+
+				UINT subresource = D3D12CalcSubresource(mipLevel, resourceIndex, 0, buffer->m_textureDesc.MipLevels, buffer->m_textureDesc.DepthOrArraySize);
+
+				UpdateSubresources(commandList, buffer->resource.Get(), m_textureUploadHeap.resource.Get(), intermediateOffset, subresource, 1, &textureData);
 			});
 		}
 		else
