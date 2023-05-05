@@ -103,7 +103,7 @@ void idImage::SubImageUpload(int mipLevel, int x, int y, int z, int width, int h
 
 	//TODO: Load by the x or y coordinate.
 	UINT bytePitch = ((pixelPitch == 0 ? width : pixelPitch) * BitsForFormat(opts.format)) / (IsCompressed() ? 2 : 8);
-	UINT imageSize = IsCompressed() ? compressedSize : bytePitch * height;
+	UINT imageSize = bytePitch * height;// IsCompressed() ? compressedSize : bytePitch * height;
 
 	if (opts.format == FMT_RGB565) {
 

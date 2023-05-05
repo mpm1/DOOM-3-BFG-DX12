@@ -131,7 +131,7 @@ namespace DX12Rendering
 				textureData.RowPitch = bytesPerRow;
 				textureData.SlicePitch = imageSize;
 
-				UINT subresource = D3D12CalcSubresource(mipLevel, resourceIndex, 0, buffer->m_textureDesc.MipLevels, buffer->m_textureDesc.DepthOrArraySize);
+				const UINT subresource = D3D12CalcSubresource(mipLevel, resourceIndex, 0, buffer->m_textureDesc.MipLevels, buffer->m_textureDesc.DepthOrArraySize);
 
 				UpdateSubresources(commandList, buffer->resource.Get(), m_textureUploadHeap.resource.Get(), intermediateOffset, subresource, 1, &textureData);
 			});
