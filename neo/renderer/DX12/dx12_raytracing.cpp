@@ -28,8 +28,7 @@ namespace DX12Rendering {
 		m_hitSignature(NONE),
 		m_width(screenWidth),
 		m_height(screenHeight),
-		m_tlasManager(&m_blasManager),
-		m_diffuseTarget(DXGI_FORMAT_R8G8B8A8_UNORM, L"DXR Diffuse Map") //,
+		m_tlasManager(&m_blasManager)
 		//m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
 		//m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
@@ -114,13 +113,14 @@ namespace DX12Rendering {
 	void Raytracing::CreateOutputBuffers()
 	{
 		//TODO: Make shadow atlas for lights. Right now were putting the depth into the diffuse buffer for testing
-		m_diffuseTarget.Resize(GetShadowWidth(), GetShadowHeight());
 	}
 
 	void Raytracing::Resize(UINT width, UINT height)
 	{
 		m_width = width;
 		m_height = height;
+
+		DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap)->Resize(width, height);
 
 		// TODO: Check if the buffers already exists and clear them
 		CreateOutputBuffers();
@@ -142,7 +142,9 @@ namespace DX12Rendering {
 		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
 		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 
-		device->CreateUnorderedAccessView(m_diffuseTarget.resource.Get(), nullptr, &uavDesc, shadowHandle);
+		RenderSurface* duffuseSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap);
+
+		device->CreateUnorderedAccessView(duffuseSurface->resource.Get(), nullptr, &uavDesc, shadowHandle);
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
@@ -194,7 +196,9 @@ namespace DX12Rendering {
 		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
 		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RayTracing::CastRays");
 
-		DX12Rendering::Fence* fence = &GetOutputResource()->fence;
+		RenderSurface* outputSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap);
+
+		DX12Rendering::Fence* fence = &outputSurface->fence;
 		commandList->AddPreFenceWait(fence);
 
 		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
@@ -215,7 +219,7 @@ namespace DX12Rendering {
 
 			// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
 			D3D12_RESOURCE_BARRIER transition = {};
-			if (GetOutputResource()->TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &transition))
+			if (outputSurface->TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &transition))
 			{
 				commandList->ResourceBarrier(1, &transition);
 			}

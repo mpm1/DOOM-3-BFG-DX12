@@ -5,7 +5,7 @@
 #include <assert.h>
 
 namespace DX12Rendering {
-	ID3D12Resource* Resource::Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps)
+	ID3D12Resource* Resource::Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps, const D3D12_CLEAR_VALUE* clearValue)
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 		if(device == nullptr)
@@ -15,7 +15,7 @@ namespace DX12Rendering {
 
 		assert(state == Unallocated || state >= Removed);
 
-		if (!DX12Rendering::WarnIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, nullptr, IID_PPV_ARGS(&resource))))
+		if (!DX12Rendering::WarnIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, clearValue, IID_PPV_ARGS(&resource))))
 		{
 			state = Unallocated;
 			return nullptr;

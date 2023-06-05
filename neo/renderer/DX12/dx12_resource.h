@@ -35,7 +35,7 @@ namespace DX12Rendering {
 		bool IsRemoved() { return state == Removed; }
 
 	protected:
-		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps);
+		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps, const D3D12_CLEAR_VALUE* clearValue = nullptr);
 
 	private:
 		//TODO: define to only work with debug.

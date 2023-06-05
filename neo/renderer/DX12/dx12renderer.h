@@ -30,26 +30,6 @@ struct viewLight_t;
 #endif
 
 namespace DX12Rendering {
-	struct GBuffer
-	{
-		enum BufferTarget
-		{
-			DISPLAY_TARGET = 0,
-			POSITION_TARGET,
-
-			COUNT
-		};
-
-		GBuffer() :
-			m_depthBuffer(L"Depth Buffer"),
-			m_renderTargets{ RenderTarget(DXGI_FORMAT_R8G8B8A8_UNORM, L"Display Target"), RenderTarget(DXGI_FORMAT_R32G32B32_FLOAT, L"Position Buffer") }
-		{} //Mark start here. We need to use this GBuffer to render to the position target. That way we only need to trace shadow rays from points.
-
-	private:
-		DepthBuffer m_depthBuffer;
-		RenderTarget m_renderTargets[BufferTarget::COUNT];
-	};
-
 	// TODO: Start setting frame data to it's own object to make it easier to manage.
 	struct DX12FrameDataBuffer
 	{
@@ -167,9 +147,7 @@ private:
 	ComPtr<IDXGISwapChain3> m_swapChain;
 	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
 	UINT m_rtvDescriptorSize;
-	ComPtr<ID3D12Resource> m_renderTargets[DX12_FRAME_COUNT];
     ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
-	ComPtr<ID3D12Resource> m_depthBuffer;
 	DX12RootSignature* m_rootSignature;
 
 	XMFLOAT4 m_constantBuffer[53];
@@ -214,11 +192,13 @@ private:
 	/// <param name="ry">The result y location</param>
 	/// <param name="width">The width of pixels to copy</param>
 	/// <param name="height">The height of the pixels to copy</param>
-	void CopyRenderTargetToDisplay(DX12Rendering::RenderTarget* renderTarget, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height);
+	void CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height);
 
 	bool CreateBackBuffer();
 
 	bool IsScissorWindowValid();
+
+	DX12Rendering::RenderSurface* GetCurrentRenderTarget() { return DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex);  }
 
 #ifdef _DEBUG
 	std::vector<viewLight_t> m_debugLights;

@@ -92,6 +92,8 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 
 	DX12Rendering::Device::InitializeDevice(factory.Get());
 
+	DX12Rendering::GenerateRenderSurfaces();
+
 	DX12Rendering::Commands::InitializeCommandLists();
 
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
@@ -117,10 +119,6 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	DX12Rendering::ThrowIfFailed(factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
 
 	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
-
-	if (!CreateBackBuffer()) {
-		common->FatalError("Could not initailze backbuffer.");
-	}
 
 	// Create Frame Resources
 	ZeroMemory(&this->m_constantBuffer, sizeof(m_constantBuffer));
@@ -154,21 +152,19 @@ bool DX12Renderer::CreateBackBuffer() {
 		return false;
 	}
 
+	// TODO: Move the RTV heap into the render target manager.
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHandle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart());
 
 	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
+		DX12Rendering::RenderSurface& renderTarget = *DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + frameIndex);
+
 		// Create RTV for each frame
-		if (FAILED(m_swapChain->GetBuffer(frameIndex, IID_PPV_ARGS(&m_renderTargets[frameIndex])))) {
+		if (FAILED(m_swapChain->GetBuffer(frameIndex, IID_PPV_ARGS(&renderTarget.resource)))) {
 			return false;
 		}
 
-		device->CreateRenderTargetView(m_renderTargets[frameIndex].Get(), nullptr, rtvHandle);
+		renderTarget.CreateRenderTargetView(rtvHandle);
 		rtvHandle.Offset(1, m_rtvDescriptorSize);
-
-		WCHAR nameDest[16];
-		wsprintfW(nameDest, L"Render Target %d", frameIndex);
-
-		m_renderTargets[frameIndex]->SetName(static_cast<LPCWSTR>(nameDest));
 	}
 
 	// Create the DSV
@@ -176,14 +172,10 @@ bool DX12Renderer::CreateBackBuffer() {
 	clearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	clearValue.DepthStencil = { 1.0f, 128 };
 
-	if (FAILED(device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
-		D3D12_HEAP_FLAG_NONE,
-		&CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_D24_UNORM_S8_UINT, m_width, m_height, 1, 0, 1, 0, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL),
-		D3D12_RESOURCE_STATE_DEPTH_WRITE,
-		&clearValue,
-		IID_PPV_ARGS(&m_depthBuffer)
-	))) {
+	DX12Rendering::RenderSurface* depthBuffer = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+
+	if (!depthBuffer->Resize(m_width, m_height, D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL, &clearValue))
+	{
 		return false;
 	}
 
@@ -193,7 +185,7 @@ bool DX12Renderer::CreateBackBuffer() {
 	dsv.Texture2D.MipSlice = 0;
 	dsv.Flags = D3D12_DSV_FLAG_NONE;
 
-	device->CreateDepthStencilView(m_depthBuffer.Get(), &dsv, m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
+	depthBuffer->CreateDepthStencilView(m_dsvHeap->GetCPUDescriptorHandleForHeapStart());
 
 	return true;
 }
@@ -400,7 +392,11 @@ void DX12Renderer::BeginDraw() {
 		//}
 	}
 
-	commandList->CommandResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	D3D12_RESOURCE_BARRIER transition = {};
+	if (GetCurrentRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transition))
+	{
+		commandList->CommandResourceBarrier(1, &transition);
+	}
 
 	SetCommandListDefaults(false);
 }
@@ -421,7 +417,11 @@ void DX12Renderer::EndDraw() {
 	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 	{
 		// present the backbuffer
-		commandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+		D3D12_RESOURCE_BARRIER transition = {};
+		if (GetCurrentRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_PRESENT, &transition))
+		{
+			commandList->ResourceBarrier(1, &transition);
+		}
 	});
 
 	DX12Rendering::CaptureEventEnd(commandList);
@@ -597,7 +597,8 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 		}
 
 		for (int frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
-			m_renderTargets[frameIndex].Reset();
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + frameIndex)->Resize(width, height);
+			//m_renderTargets[frameIndex].Reset();
 		}
 
 		if (FAILED(m_swapChain->ResizeBuffers(DX12_FRAME_COUNT, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, NULL))) {
@@ -890,41 +891,45 @@ void DX12Renderer::DXR_GenerateResult()
 
 void DX12Renderer::DXR_CopyResultToDisplay()
 {
-	// TODO: Get the desired resource to display
-	DX12Rendering::RenderTarget* renderTarget = m_raytracing->GetOutputResource();
-
 	//renderTarget->fence.Wait();
-	CopyRenderTargetToDisplay(renderTarget, 0, 0, 0, 0, m_width, m_height);
+	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceDiffuseMap, 0, 0, 0, 0, m_width, m_height);
 }
 
-void DX12Renderer::CopyRenderTargetToDisplay(DX12Rendering::RenderTarget* renderTarget, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)
+void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)
 {
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::CopyRenderTargetToDisplay");
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::CopySurfaceToDisplay");
 
-	commandList->AddPreFenceWait(&renderTarget->fence); // Wait for all drawing to complete.
+	DX12Rendering::RenderSurface& surface = *DX12Rendering::GetSurface(surfaceId);
+	DX12Rendering::RenderSurface& renderTarget = *GetCurrentRenderTarget();
+
+	commandList->AddPreFenceWait(&surface.fence); // Wait for all drawing to complete.
 
 	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 	{
 		D3D12_RESOURCE_BARRIER transition = {};
-		if (renderTarget->TryTransition(D3D12_RESOURCE_STATE_COPY_SOURCE, &transition))
+		if (surface.TryTransition(D3D12_RESOURCE_STATE_COPY_SOURCE, &transition))
 		{
 			commandList->ResourceBarrier(1, &transition);
 		}
 
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_COPY_DEST);
-		commandList->ResourceBarrier(1, &transition);
+		if (renderTarget.TryTransition(D3D12_RESOURCE_STATE_COPY_DEST, &transition))
+		{
+			commandList->ResourceBarrier(1, &transition);
+		}
 
-		CD3DX12_TEXTURE_COPY_LOCATION dst(m_renderTargets[m_frameIndex].Get());
-		CD3DX12_TEXTURE_COPY_LOCATION src(renderTarget->resource.Get());
+		CD3DX12_TEXTURE_COPY_LOCATION dst(renderTarget.resource.Get());
+		CD3DX12_TEXTURE_COPY_LOCATION src(surface.resource.Get());
 		CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
 		commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
 
-		transition = CD3DX12_RESOURCE_BARRIER::Transition(m_renderTargets[m_frameIndex].Get(), D3D12_RESOURCE_STATE_COPY_DEST, D3D12_RESOURCE_STATE_RENDER_TARGET);
-		commandList->ResourceBarrier(1, &transition);
+		if (renderTarget.TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transition))
+		{
+			commandList->ResourceBarrier(1, &transition);
+		}
 	});
 
-	commandList->AddPostFenceSignal(&renderTarget->fence);
+	commandList->AddPostFenceSignal(&surface.fence);
 }
 
 #ifdef _DEBUG

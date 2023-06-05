@@ -77,8 +77,6 @@ public:
 		const CD3DX12_RECT& scissorRect
 	);
 
-	RenderTarget* GetOutputResource() { return &m_diffuseTarget; }
-
 	/// <summary>
 	/// Adds the desired object to the various top level acceleration structures.
 	/// </summary>
@@ -115,8 +113,6 @@ private:
 
 	TLASManager m_tlasManager;
 	BLASManager m_blasManager;
-
-	RenderTarget m_diffuseTarget;
 
 	ComPtr<ID3D12DescriptorHeap> m_generalUavHeaps;
 	ComPtr<ID3D12Resource> m_generalSBTData;
