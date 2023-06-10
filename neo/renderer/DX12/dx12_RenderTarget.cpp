@@ -1,37 +1,100 @@
 #pragma hdrstop
 
 #include "./dx12_RenderTarget.h"
+#include <algorithm>
+
 
 namespace
 {
 	std::vector<DX12Rendering::RenderSurface> m_surfaces;
+	ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
+	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
 }
 
 namespace DX12Rendering
 {
-	RenderSurface::RenderSurface(const LPCWSTR name, const DXGI_FORMAT format) :
+	RenderSurface::RenderSurface(const LPCWSTR name, const DXGI_FORMAT format, const eRenderSurface surfaceId, const RENDER_SURFACE_FLAGS flags, const D3D12_CLEAR_VALUE clearValue) :
 		Resource(name),
+		surfaceId(surfaceId),
 		m_width(0),
 		m_height(0),
-		m_lastTransitionState(D3D12_RESOURCE_STATE_STREAM_OUT),
+		m_lastTransitionState(D3D12_RESOURCE_STATE_COPY_SOURCE),
 		m_format(format),
-		m_dsv({}),
-		m_rtv({})
+		m_clearValue(clearValue),
+		m_flags(flags),
+		m_dsv({MAXSIZE_T}),
+		m_rtv({MAXSIZE_T})
 	{
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+		
+		// Create the RTV handle index
+		{
+			auto index = std::find(ViewRenderTarget.cbegin(), ViewRenderTarget.cend(), surfaceId);
+			if (index != ViewRenderTarget.cend())
+			{
+				const UINT descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
+				const UINT offset = index - ViewRenderTarget.cbegin();
+
+				const CD3DX12_CPU_DESCRIPTOR_HANDLE handle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), offset, descriptorSize);
+				m_rtv = handle;
+			}
+		}
+
+		// Create the dsv handle index
+		{
+			auto index = std::find(ViewDepthStencils.cbegin(), ViewDepthStencils.cend(), surfaceId);
+			if (index != ViewDepthStencils.cend())
+			{
+				const UINT descriptorSize = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
+				const UINT offset = index - ViewDepthStencils.cbegin();
+
+				const CD3DX12_CPU_DESCRIPTOR_HANDLE handle(m_dsvHeap->GetCPUDescriptorHandleForHeapStart(), offset, descriptorSize);
+				m_dsv = handle;
+			}
+		}
+
 	}
 
 	RenderSurface::~RenderSurface()
 	{
 	}
 
-	bool RenderSurface::Resize(UINT width, UINT height, D3D12_RESOURCE_FLAGS flags, const D3D12_CLEAR_VALUE* clearValue)
+	bool RenderSurface::AttachSwapchain(UINT index, IDXGISwapChain3& swapChain)
 	{
-		assert(width > 0 && height > 0);
+		if (FAILED(swapChain.GetBuffer(index, IID_PPV_ARGS(&resource))))
+		{
+			return false;
+		}
 
-		bool resourceUpdated = false;
+		state = Ready;
 
+		return true;
+	}
+
+	void RenderSurface::UpdateData(UINT width, UINT height)
+	{
 		m_width = width;
 		m_height = height;
+
+		CreateDepthStencilView();
+		CreateRenderTargetView();
+	}
+
+	bool RenderSurface::Resize(UINT width, UINT height)
+	{
+		if (m_flags & RENDER_SURFACE_FLAG_SWAPCHAIN != 0)
+		{
+			// The swapchain will update the buffer, so we just want to update our metadata.
+			UpdateData(width, height);
+			return true;
+		}
+
+		if (width == m_width && height == m_height)
+		{
+			return true;
+		}
+
+		bool resourceUpdated = false;
 
 		Release();
 
@@ -40,16 +103,33 @@ namespace DX12Rendering
 		description.DepthOrArraySize = 1;
 		description.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 		description.Format = m_format; //DXGI_FORMAT_R8_UINT;
-		description.Flags = flags;
-		description.Width = m_width;
-		description.Height = m_height;
+		description.Flags = D3D12_RESOURCE_FLAG_NONE;
+		description.Width = width;
+		description.Height = height;
 		description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
 		description.MipLevels = 1;
 		description.SampleDesc.Count = 1;
 
-		if (Allocate(description, D3D12_RESOURCE_STATE_COPY_SOURCE, kDefaultHeapProps, clearValue) != nullptr)
+		if (m_rtv.ptr != MAXSIZE_T)
+		{
+			description.Flags |= D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
+		}
+
+		if (m_dsv.ptr != MAXSIZE_T)
+		{
+			description.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+		}
+
+		if (description.Flags == D3D12_RESOURCE_FLAG_NONE)
+		{
+			description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+		}
+
+		if (Allocate(description, D3D12_RESOURCE_STATE_COPY_SOURCE, kDefaultHeapProps, m_clearValue.Format == DXGI_FORMAT_UNKNOWN  ? nullptr : &m_clearValue) != nullptr)
 		{
 			resourceUpdated = true;
+
+			UpdateData(width, height);
 		}
 
 		m_lastTransitionState = D3D12_RESOURCE_STATE_COPY_SOURCE;
@@ -57,9 +137,12 @@ namespace DX12Rendering
 		return resourceUpdated;
 	}
 
-	void RenderSurface::CreateDepthStencilView(D3D12_CPU_DESCRIPTOR_HANDLE descDest)
+	void RenderSurface::CreateDepthStencilView()
 	{
-		assert(m_dsv.ptr == 0);
+		if (m_dsv.ptr == MAXSIZE_T)
+		{
+			return;
+		}
 
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
@@ -71,22 +154,21 @@ namespace DX12Rendering
 		dsv.Texture2D.MipSlice = 0;
 		dsv.Flags = D3D12_DSV_FLAG_NONE;
 
-		device->CreateDepthStencilView(resource.Get(), &dsv, descDest);
-
-		m_dsv = descDest;
+		device->CreateDepthStencilView(resource.Get(), &dsv, m_dsv);
 	}
 
-	void RenderSurface::CreateRenderTargetView(D3D12_CPU_DESCRIPTOR_HANDLE descDest)
+	void RenderSurface::CreateRenderTargetView()
 	{
-		assert(m_rtv.ptr == 0);
+		if (m_rtv.ptr == MAXSIZE_T)
+		{
+			return;
+		}
 
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		assert(device);
 
-		device->CreateRenderTargetView(resource.Get(), nullptr, descDest);
-
-		m_rtv = descDest;
+		device->CreateRenderTargetView(resource.Get(), nullptr, m_rtv);
 	}
 
 	bool RenderSurface::TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier)
@@ -109,24 +191,67 @@ namespace DX12Rendering
 
 	void GenerateRenderSurfaces()
 	{
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+		assert(device != nullptr);
+
+		// Create RTV Heap
+		{
+			D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
+			rtvHeapDesc.NumDescriptors = ViewRenderTarget.size();
+			rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
+			rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+			device->CreateDescriptorHeap(&rtvHeapDesc, IID_PPV_ARGS(&m_rtvHeap));
+		}
+
+		// Create DSV Heap
+		{
+			D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
+			dsvHeapDesc.NumDescriptors = ViewDepthStencils.size();
+			dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
+			dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
+
+			device->CreateDescriptorHeap(&dsvHeapDesc, IID_PPV_ARGS(&m_dsvHeap));
+		}
+
+		// Create all the surfaces
 		m_surfaces.reserve(eRenderSurface::Count);
-		
-		m_surfaces.emplace_back(L"DepthStencil", DXGI_FORMAT_D24_UNORM_S8_UINT);
 
-		m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R8G8B8A8_UNORM);
-		m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R8G8B8A8_UNORM);
+		{
+			D3D12_CLEAR_VALUE clearValue = {};
+			clearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			clearValue.DepthStencil = { 1.0f, 128 };
 
-		m_surfaces.emplace_back(L"RaytraceShadowMap", DXGI_FORMAT_R8_UNORM);
-		m_surfaces.emplace_back(L"RayTraceDiffuseMap", DXGI_FORMAT_R8G8B8A8_UNORM); // Temp for now.
+			m_surfaces.emplace_back(L"DepthStencil", DXGI_FORMAT_D24_UNORM_S8_UINT, eRenderSurface::DepthStencil, RENDER_SURFACE_FLAG_NONE, clearValue);
+		}
 
-		m_surfaces.emplace_back(L"RenderTarget1", DXGI_FORMAT_R8G8B8A8_UNORM);
-		m_surfaces.emplace_back(L"RenderTarget2", DXGI_FORMAT_R8G8B8A8_UNORM);
+		{
+			D3D12_CLEAR_VALUE clearValue = {}; // Set to unknown.
+
+			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_NONE, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
+			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_NONE, clearValue);
+			
+			m_surfaces.emplace_back(L"RaytraceShadowMap", DXGI_FORMAT_R8_UNORM, eRenderSurface::RaytraceShadowMap, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"RayTraceDiffuseMap", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RaytraceDiffuseMap, RENDER_SURFACE_FLAG_NONE, clearValue); // Temp for now.
+
+			m_surfaces.emplace_back(L"RenderTarget1", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget1, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);
+			m_surfaces.emplace_back(L"RenderTarget2", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget2, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);
+		}
+	}
+
+	void DestroySurfaces()
+	{
+		m_dsvHeap = nullptr;
+		m_rtvHeap = nullptr;
+
+		m_surfaces.clear();
 	}
 
 	RenderSurface* GetSurface(eRenderSurface surface)
 	{
 		assert(surface >= 0 && surface < eRenderSurface::Count);
+		auto loc = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
 
-		return &m_surfaces[surface];
+		return &m_surfaces.at(surface);
 	}
 }

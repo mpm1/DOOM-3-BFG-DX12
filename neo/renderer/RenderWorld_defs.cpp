@@ -432,6 +432,11 @@ static void R_DeriveLightData( idRenderLightLocal * light ) {
 	// 'baseLightProject' goes from global space -> light local space -> light projective space
 	idRenderMatrix::Multiply( localProject, inverseLightMatrix, light->baseLightProject );
 
+	if (IsNAN(light->baseLightProject[0][0]))
+	{
+		idLib::Warning("We got one!!!!!");
+	}
+
 	// Invert the light projection so we can deform zero-to-one cubes into
 	// the light model and calculate global bounds.
 	if ( !idRenderMatrix::Inverse( light->baseLightProject, light->inverseBaseLightProject ) ) {

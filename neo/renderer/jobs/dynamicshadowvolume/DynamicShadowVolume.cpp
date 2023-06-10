@@ -1101,7 +1101,8 @@ void DynamicShadowVolumeJob( const dynamicShadowVolumeParms_t * parms ) {
 	// Calculate the shadow depth bounds.
 	float shadowZMin = parms->lightZMin;
 	float shadowZMax = parms->lightZMax;
-	if ( parms->useShadowDepthBounds ) {
+	if (parms->useShadowDepthBounds ) {
+
 		idRenderMatrix::DepthBoundsForShadowBounds( shadowZMin, shadowZMax, parms->triangleMVP, parms->triangleBounds, parms->localLightOrigin, true );
 		shadowZMin = Max( shadowZMin, parms->lightZMin );
 		shadowZMax = Min( shadowZMax, parms->lightZMax );

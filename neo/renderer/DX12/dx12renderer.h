@@ -145,9 +145,6 @@ private:
 	CD3DX12_VIEWPORT m_viewport;
 	CD3DX12_RECT m_scissorRect;
 	ComPtr<IDXGISwapChain3> m_swapChain;
-	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
-	UINT m_rtvDescriptorSize;
-    ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
 	DX12RootSignature* m_rootSignature;
 
 	XMFLOAT4 m_constantBuffer[53];
