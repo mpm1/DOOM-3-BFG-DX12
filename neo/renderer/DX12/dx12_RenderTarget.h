@@ -7,8 +7,9 @@ namespace DX12Rendering {
 	typedef
 		enum RENDER_SURFACE_FLAGS
 	{
-		RENDER_SURFACE_FLAG_NONE		= 0,
-		RENDER_SURFACE_FLAG_SWAPCHAIN	= 1 << 0,
+		RENDER_SURFACE_FLAG_NONE				= 0,
+		RENDER_SURFACE_FLAG_SWAPCHAIN			= 1 << 0,
+		RENDER_SURFACE_FLAG_ALLOW_UAV			= 1 << 1
 	} 	RENDER_SURFACE_FLAGS;
 
 	DEFINE_ENUM_FLAG_OPERATORS(RENDER_SURFACE_FLAGS);
@@ -69,6 +70,8 @@ namespace DX12Rendering {
 
 		const D3D12_CPU_DESCRIPTOR_HANDLE& GetRtv() const { return m_rtv; }
 		const D3D12_CPU_DESCRIPTOR_HANDLE& GetDsv() const { return m_dsv; }
+
+		void RenderSurface::CreateUnorderedAccessView(D3D12_CPU_DESCRIPTOR_HANDLE& uavHeap);
 
 	private:
 		const DXGI_FORMAT m_format;

@@ -139,12 +139,8 @@ namespace DX12Rendering {
 		m_generalUavHeaps = CreateDescriptorHeap(device, 3, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 
-		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
-		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-
 		RenderSurface* duffuseSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap);
-
-		device->CreateUnorderedAccessView(duffuseSurface->resource.Get(), nullptr, &uavDesc, shadowHandle);
+		duffuseSurface->CreateUnorderedAccessView(shadowHandle);
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
@@ -199,7 +195,7 @@ namespace DX12Rendering {
 		RenderSurface* outputSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap);
 
 		DX12Rendering::Fence* fence = &outputSurface->fence;
-		commandList->AddPreFenceWait(fence);
+		//commandList->AddPreFenceWait(fence);
 
 		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
 

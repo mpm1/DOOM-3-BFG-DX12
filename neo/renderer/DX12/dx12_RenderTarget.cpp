@@ -52,7 +52,6 @@ namespace DX12Rendering
 				m_dsv = handle;
 			}
 		}
-
 	}
 
 	RenderSurface::~RenderSurface()
@@ -82,7 +81,7 @@ namespace DX12Rendering
 
 	bool RenderSurface::Resize(UINT width, UINT height)
 	{
-		if (m_flags & RENDER_SURFACE_FLAG_SWAPCHAIN != 0)
+		if ((m_flags & RENDER_SURFACE_FLAG_SWAPCHAIN) != 0)
 		{
 			// The swapchain will update the buffer, so we just want to update our metadata.
 			UpdateData(width, height);
@@ -120,9 +119,9 @@ namespace DX12Rendering
 			description.Flags |= D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 		}
 
-		if (description.Flags == D3D12_RESOURCE_FLAG_NONE)
+		if ((m_flags & RENDER_SURFACE_FLAG_ALLOW_UAV) != 0)
 		{
-			description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
+			description.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 		}
 
 		if (Allocate(description, D3D12_RESOURCE_STATE_COPY_SOURCE, kDefaultHeapProps, m_clearValue.Format == DXGI_FORMAT_UNKNOWN  ? nullptr : &m_clearValue) != nullptr)
@@ -169,6 +168,18 @@ namespace DX12Rendering
 		assert(device);
 
 		device->CreateRenderTargetView(resource.Get(), nullptr, m_rtv);
+	}
+
+	void RenderSurface::CreateUnorderedAccessView(D3D12_CPU_DESCRIPTOR_HANDLE& uavHeap)
+	{
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
+		assert(device);
+
+		D3D12_UNORDERED_ACCESS_VIEW_DESC uavDesc = {};
+		uavDesc.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+
+		device->CreateUnorderedAccessView(resource.Get(), nullptr, &uavDesc, uavHeap);
 	}
 
 	bool RenderSurface::TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier)
@@ -231,8 +242,8 @@ namespace DX12Rendering
 			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_NONE, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
 			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_NONE, clearValue);
 			
-			m_surfaces.emplace_back(L"RaytraceShadowMap", DXGI_FORMAT_R8_UNORM, eRenderSurface::RaytraceShadowMap, RENDER_SURFACE_FLAG_NONE, clearValue);
-			m_surfaces.emplace_back(L"RayTraceDiffuseMap", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RaytraceDiffuseMap, RENDER_SURFACE_FLAG_NONE, clearValue); // Temp for now.
+			m_surfaces.emplace_back(L"RaytraceShadowMap", DXGI_FORMAT_R8_UNORM, eRenderSurface::RaytraceShadowMap, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
+			m_surfaces.emplace_back(L"RayTraceDiffuseMap", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RaytraceDiffuseMap, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue); // Temp for now.
 
 			m_surfaces.emplace_back(L"RenderTarget1", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget1, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);
 			m_surfaces.emplace_back(L"RenderTarget2", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget2, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);

@@ -10,7 +10,7 @@ extern idCommon* common;
 
 using namespace Microsoft::WRL;
 
-#ifdef USE_PIX
+#if defined(USE_PIX)
 namespace
 {
 	

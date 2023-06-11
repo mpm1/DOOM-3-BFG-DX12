@@ -7,7 +7,7 @@
 #include <comdef.h>
 #include <type_traits>
 
-idCVar r_useRayTraycing("r_useRayTraycing", "0", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
