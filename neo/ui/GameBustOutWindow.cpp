@@ -219,7 +219,7 @@ BOBrick::BOBrick( BOEntity *_ent, float _x, float _y, float _width, float _heigh
 	ent->SetSize( width, height );
 	ent->SetMaterial( "game/bustout/brick" );
 
-	ent->game->entities.Append( ent );
+	ent->game->m_entities.Append( ent );
 }
 
 BOBrick::~BOBrick() {
@@ -239,7 +239,7 @@ void BOBrick::WriteToSaveGame( idFile *savefile ) {
 	savefile->Write( &powerup, sizeof(powerup) );
 	savefile->Write( &isBroken, sizeof(isBroken) );
 
-	int index = ent->game->entities.FindIndex( ent );
+	int index = ent->game->m_entities.FindIndex( ent );
 	savefile->Write( &index, sizeof(index) );
 }
 
@@ -259,7 +259,7 @@ void BOBrick::ReadFromSaveGame( idFile *savefile, idGameBustOutWindow *game ) {
 
 	int index;
 	savefile->Read( &index, sizeof(index) );
-	ent = game->entities[index];
+	ent = game->m_entities[index];
 }
 
 /*
@@ -412,7 +412,7 @@ idGameBustOutWindow::idGameBustOutWindow(idUserInterfaceLocal *g) : idWindow(g) 
 }
 
 idGameBustOutWindow::~idGameBustOutWindow() {
-	entities.DeleteContents(true);
+	m_entities.DeleteContents(true);
 
 	Mem_Free( levelBoardData );
 }
@@ -454,17 +454,17 @@ void idGameBustOutWindow::WriteToSaveGame( idFile *savefile ) {
 
 	// Write Entities
 	int i;
-	int numberOfEnts = entities.Num();
+	int numberOfEnts = m_entities.Num();
 	savefile->Write( &numberOfEnts, sizeof(numberOfEnts) );
 	for ( i=0; i<numberOfEnts; i++ ) {
-		entities[i]->WriteToSaveGame( savefile );
+		m_entities[i]->WriteToSaveGame( savefile );
 	}
 
 	// Write Balls
 	numberOfEnts = balls.Num();
 	savefile->Write( &numberOfEnts, sizeof(numberOfEnts) );
 	for ( i=0; i<numberOfEnts; i++ ) {
-		int ballIndex = entities.FindIndex( balls[i] );
+		int ballIndex = m_entities.FindIndex( balls[i] );
 		savefile->Write( &ballIndex, sizeof(ballIndex) );
 	}
 
@@ -472,7 +472,7 @@ void idGameBustOutWindow::WriteToSaveGame( idFile *savefile ) {
 	numberOfEnts = powerUps.Num();
 	savefile->Write( &numberOfEnts, sizeof(numberOfEnts) );
 	for ( i=0; i<numberOfEnts; i++ ) {
-		int powerIndex = entities.FindIndex( powerUps[i] );
+		int powerIndex = m_entities.FindIndex( powerUps[i] );
 		savefile->Write( &powerIndex, sizeof(powerIndex) );
 	}
 
@@ -500,7 +500,7 @@ void idGameBustOutWindow::ReadFromSaveGame( idFile *savefile ) {
 
 	// Clear out existing paddle and entities from GUI load
 	delete paddle;
-	entities.DeleteContents( true );
+	m_entities.DeleteContents( true );
 
 	gamerunning.ReadFromSaveGame( savefile );
 	onFire.ReadFromSaveGame( savefile );
@@ -539,7 +539,7 @@ void idGameBustOutWindow::ReadFromSaveGame( idFile *savefile ) {
 
 		ent = new (TAG_OLD_UI) BOEntity( this );
 		ent->ReadFromSaveGame( savefile, this );
-		entities.Append( ent );
+		m_entities.Append( ent );
 	}
 
 	// Read balls
@@ -547,7 +547,7 @@ void idGameBustOutWindow::ReadFromSaveGame( idFile *savefile ) {
 	for ( i=0; i<numberOfEnts; i++ ) {
 		int ballIndex;
 		savefile->Read( &ballIndex, sizeof(ballIndex) );
-		balls.Append( entities[ballIndex] );
+		balls.Append( m_entities[ballIndex] );
 	}
 
 	// Read powerups
@@ -555,7 +555,7 @@ void idGameBustOutWindow::ReadFromSaveGame( idFile *savefile ) {
 	for ( i=0; i<numberOfEnts; i++ ) {
 		int powerIndex;
 		savefile->Read( &powerIndex, sizeof(powerIndex) );
-		balls.Append( entities[powerIndex] );
+		balls.Append( m_entities[powerIndex] );
 	}
 
 	// Read paddle
@@ -759,8 +759,8 @@ void idGameBustOutWindow::Draw(int time, float x, float y) {
 	//Update the game every frame before drawing
 	UpdateGame();
 
-	for( i = entities.Num()-1; i >= 0; i-- ) {
-		entities[i]->Draw();
+	for( i = m_entities.Num()-1; i >= 0; i-- ) {
+		m_entities[i]->Draw();
 	}
 }
 
@@ -978,7 +978,7 @@ BOEntity * idGameBustOutWindow::CreateNewBall() {
 	ballsInPlay++;
 
 	balls.Append( ball );
-	entities.Append( ball );
+	m_entities.Append( ball );
 
 	return ball;
 }
@@ -1014,7 +1014,7 @@ BOEntity * idGameBustOutWindow::CreatePowerup( BOBrick *brick ) {
 	powerEnt->SetVisible( true );
 
 	powerUps.Append( powerEnt );
-	entities.Append( powerEnt );
+	m_entities.Append( powerEnt );
 
 	return powerEnt;
 }
@@ -1314,16 +1314,16 @@ void idGameBustOutWindow::UpdateGame() {
 		UpdateBall();
 		UpdatePowerups();
 
-		for( i = 0; i < entities.Num(); i++ ) {
-			entities[i]->Update( timeSlice, gui->GetTime() );
+		for( i = 0; i < m_entities.Num(); i++ ) {
+			m_entities[i]->Update( timeSlice, gui->GetTime() );
 		}
 
 		// Delete entities that need to be deleted
-		for( i = entities.Num()-1; i >= 0; i-- ) {
-			if( entities[i]->removed ) {
-				BOEntity* ent = entities[i];
+		for( i = m_entities.Num()-1; i >= 0; i-- ) {
+			if( m_entities[i]->removed ) {
+				BOEntity* ent = m_entities[i];
 				delete ent;
-				entities.RemoveIndex(i);
+				m_entities.RemoveIndex(i);
 			}
 		}
 

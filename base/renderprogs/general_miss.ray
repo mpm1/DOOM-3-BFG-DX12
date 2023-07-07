@@ -1,0 +1,13 @@
+#include "raytracing_global.inc"
+
+// General shader functions
+[shader("miss")]
+void Miss(inout HitInfo payload : SV_RayPayload)
+{
+    float angle = WorldRayDirection().y;
+    float3 color = (WorldRayDirection() + 1.0f) * 0.5f;
+
+    payload.diffuse = color;
+    payload.indirect = float3(0.0f, 0.0f, 0.0f);
+    payload.specular = float3(0.0f, 0.0f, 0.0f);
+}

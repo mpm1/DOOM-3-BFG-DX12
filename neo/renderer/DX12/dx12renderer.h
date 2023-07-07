@@ -1,22 +1,16 @@
 #ifndef __DX12_RENDERER_H__
 #define __DX12_RENDERER_H__
 
-#include <wrl.h>
-#include <initguid.h>
-#include "./d3dx12.h"
-#include <dxgi1_6.h>
-#include <DirectXMath.h>
-#include <debugapi.h>
-#include <dxcapi.h>
-#include <DirectXMath.h>
+#include <map>
+#include <functional>
+#include <mutex>
 
-// Will be automatically enabled with preprocessor symbols: USE_PIX, DBG, _DEBUG, PROFILE, or PROFILE_BUILD
-#include <pix3.h>
-
-#pragma comment (lib, "dxguid.lib")
-#pragma comment (lib, "d3d12.lib")
-#pragma comment (lib, "dxgi.lib")
-#pragma comment (lib, "dxcompiler.lib")
+#include "./dx12_global.h"
+#include "./dx12_DeviceManager.h"
+#include "./dx12_CommandList.h"
+#include "./dx12_RootSignature.h"
+#include "./dx12_raytracing.h"
+#include "./dx12_TextureManager.h"
 
 // Use D3D clip space.
 #define CLIP_SPACE_D3D
@@ -26,73 +20,31 @@
 
 #define COMMAND_LIST_COUNT 5
 
-// TODO: We will separate the CBV and materials into two separate heap objects. This will allow us to define objects positional properties differently from the material properties.
-#define TEXTURE_REGISTER_COUNT 5
-#define MAX_DESCRIPTOR_COUNT 6 // 1 CBV and 5 Shader Resource View
-#define MAX_HEAP_OBJECT_COUNT 3000
-
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
-const UINT FrameCount = 2;
+class idRenderModel;
 
-struct Vertex
-{
-	XMFLOAT4 position;
-	XMFLOAT4 colour;
-};
+#ifdef _DEBUG
+struct viewLight_t;
+#endif
 
-struct DX12VertexBuffer
-{
-	ComPtr<ID3D12Resource> vertexBuffer;
-	D3D12_VERTEX_BUFFER_VIEW vertexBufferView;
-};
+namespace DX12Rendering {
+	// TODO: Start setting frame data to it's own object to make it easier to manage.
+	struct DX12FrameDataBuffer
+	{
+		// Render Data
+		ComPtr<ID3D12Resource> renderTargets;
 
-struct DX12IndexBuffer
-{
-	ComPtr<ID3D12Resource> indexBuffer;
-	D3D12_INDEX_BUFFER_VIEW indexBufferView;
-	UINT indexCount;
-};
+		// CBV Heap data
+		ComPtr<ID3D12DescriptorHeap> cbvHeap;
+		ComPtr<ID3D12Resource> cbvUploadHeap;
+		UINT cbvHeapIndex;
+		UINT8* m_constantBufferGPUAddress;
+	};
+}
 
-struct DX12CompiledShader
-{
-	byte* data;
-	size_t size;
-};
-
-struct DX12TextureBuffer
-{
-	ComPtr<ID3D12Resource> textureBuffer;
-	D3D12_SHADER_RESOURCE_VIEW_DESC textureView;
-	D3D12_RESOURCE_STATES usageState;
-	const idStr* name;
-};
-
-struct DX12JointBuffer
-{
-	// TODO: Check if any of this is correct.
-	ComPtr<ID3D12Resource> jointBuffer;
-};
-
-// TODO: Start setting frame data to it's own object to make it easier to manage.
-struct DX12FrameDataBuffer
-{
-	// Render Data
-	ComPtr<ID3D12Resource> renderTargets;
-
-	// CBV Heap data
-	ComPtr<ID3D12DescriptorHeap> cbvHeap;
-	ComPtr<ID3D12Resource> cbvUploadHeap;
-	UINT cbvHeapIndex;
-	UINT8* m_constantBufferGPUAddress;
-};
-
-enum eShader {
-	VERTEX,
-	PIXEL
-};
-
+//TODO: move everything into the correct namespace
 bool DX12_ActivatePipelineState();
 
 class DX12Renderer {
@@ -104,8 +56,8 @@ public:
 	bool SetScreenParams(UINT width, UINT height, int fullscreen);
 	void OnDestroy();
 
-	void UpdateViewport(FLOAT topLeftX, FLOAT topLeftY, FLOAT width, FLOAT height, FLOAT minDepth = 0.0f, FLOAT maxDepth = 1.0f); // Used to put us into right hand depth space.
-	void UpdateScissorRect(LONG left, LONG top, LONG right, LONG bottom);
+	void UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, const FLOAT width, const FLOAT height, const FLOAT minDepth = 0.0f, const FLOAT maxDepth = 1.0f); // Used to put us into right hand depth space.
+	void UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h);
 	void UpdateStencilRef(UINT ref);
 
 	void ReadPixels(int x, int y, int width, int height, UINT readBuffer, byte* buffer);
@@ -117,37 +69,65 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	// Buffers
-	DX12VertexBuffer* AllocVertexBuffer(DX12VertexBuffer* buffer, UINT numBytes);
-	void FreeVertexBuffer(DX12VertexBuffer* buffer);
+	DX12Rendering::Geometry::VertexBuffer* AllocVertexBuffer(UINT numBytes, LPCWSTR name);
+	void FreeVertexBuffer(DX12Rendering::Geometry::VertexBuffer* buffer);
 
-	DX12IndexBuffer* AllocIndexBuffer(DX12IndexBuffer* buffer, UINT numBytes);
-	void FreeIndexBuffer(DX12IndexBuffer* buffer);
+	DX12Rendering::Geometry::IndexBuffer* AllocIndexBuffer(UINT numBytes, LPCWSTR name);
+	void FreeIndexBuffer(DX12Rendering::Geometry::IndexBuffer* buffer);
 
-	DX12JointBuffer* AllocJointBuffer(DX12JointBuffer* buffer, UINT numBytes);
-	void FreeJointBuffer(DX12JointBuffer* buffer);
+	DX12Rendering::Geometry::JointBuffer* AllocJointBuffer(UINT numBytes);
+	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
+	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset);
 
 	// Textures
+	DX12Rendering::TextureManager* GetTextureManager() { return &m_textureManager; }
 	void SetActiveTextureRegister(UINT8 index);
-	DX12TextureBuffer* AllocTextureBuffer(DX12TextureBuffer* buffer, D3D12_RESOURCE_DESC* textureDesc, const idStr* name);
-	void FreeTextureBuffer(DX12TextureBuffer* buffer);
-	void SetTextureContent(DX12TextureBuffer* buffer, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);
-	void SetTexture(DX12TextureBuffer* buffer);
-	void StartTextureWrite(DX12TextureBuffer* buffer);
-	void EndTextureWrite(DX12TextureBuffer* buffer);
-	bool SetTextureCopyState(DX12TextureBuffer* buffer, const UINT mipLevel);
-	bool SetTexturePixelShaderState(DX12TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
-	bool SetTextureState(DX12TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, ID3D12GraphicsCommandList *commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+	void SetTexture(DX12Rendering::TextureBuffer* buffer);
 
 	// Draw commands
 	void BeginDraw();
-	void Clear(bool color, bool depth, bool stencil, byte stencilValue, float* colorRGBA);
+	void Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4]);
 	void EndDraw();
 	void PresentBackbuffer();
-	void ResetCommandList(bool waitForBackBuffer = false);
-	void ExecuteCommandList();
+	void SetCommandListDefaults(const bool resetPipelineState = true);
+	void CycleDirectCommandList();
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
 	bool EndSurfaceSettings(); // Records the the surface entry into the heap.
-	void DrawModel(DX12VertexBuffer* vertexBuffer, UINT vertexOffset, DX12IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+	void DrawModel(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+
+#pragma region RayTracing
+	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.
+	void DXR_UpdateAccelerationStructure();
+
+	void DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRenderModel* model);
+	void DXR_UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
+
+	void DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16]);
+
+	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
+	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);
+
+	bool DXR_CastRays(); // Sets the appropriate matricies and casts the rays to the scene.
+
+	void DXR_DenoiseResult(); // Performs a Denoise pass on all rendering channels.
+	void DXR_GenerateResult(); // Collapses all channels into a single image.
+	void DXR_CopyResultToDisplay(); // Copies the resulting image to the user display.
+
+#pragma region Top Level Acceleration Structure
+	//TODO
+#pragma endregion
+
+	bool IsRaytracingEnabled() const { return m_raytracing != nullptr && m_raytracing->isRaytracingSupported; };
+#pragma endregion
+
+	// Converters
+	template<typename T>
+	const dxHandle_t GetHandle(const T* qEntity);
+
+#ifdef _DEBUG
+	void DebugAddLight(const viewLight_t& light);
+	void DebugClearLights();
+#endif
 
 private:
 	UINT m_width;
@@ -164,52 +144,33 @@ private:
 	// Pipeline
 	CD3DX12_VIEWPORT m_viewport;
 	CD3DX12_RECT m_scissorRect;
-	ComPtr<ID3D12Device5> m_device;
 	ComPtr<IDXGISwapChain3> m_swapChain;
-	ComPtr<ID3D12DescriptorHeap> m_rtvHeap;
-	UINT m_rtvDescriptorSize;
-	ComPtr<ID3D12Resource> m_renderTargets[FrameCount];
-	ComPtr<ID3D12RootSignature> m_rootsSignature;
-    ComPtr<ID3D12DescriptorHeap> m_dsvHeap;
-	ComPtr<ID3D12Resource> m_depthBuffer;
+	DX12RootSignature* m_rootSignature;
 
-	// Command List
-	ComPtr<ID3D12CommandQueue> m_directCommandQueue;
-	ComPtr<ID3D12CommandQueue> m_copyCommandQueue;
-	ComPtr<ID3D12CommandAllocator> m_directCommandAllocator[FrameCount];
-	ComPtr<ID3D12CommandAllocator> m_copyCommandAllocator;
-	ComPtr<ID3D12GraphicsCommandList> m_commandList;
-	ComPtr<ID3D12GraphicsCommandList> m_copyCommandList;
-
-	ComPtr<ID3D12DescriptorHeap> m_cbvHeap[FrameCount];
-	ComPtr<ID3D12Resource> m_cbvUploadHeap[FrameCount];
-	UINT m_cbvHeapIncrementor;
-	UINT m_cbvHeapIndex;
 	XMFLOAT4 m_constantBuffer[53];
-	UINT8* m_constantBufferGPUAddress[FrameCount];
+	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;
 
+	UINT m_objectIndex = 0;
+
 	// Synchronization
 	UINT m_frameIndex;
-    HANDLE m_fenceEvent;
-    ComPtr<ID3D12Fence> m_fence;
-    UINT16 m_fenceValue;
-	HANDLE m_copyFenceEvent;
-	ComPtr<ID3D12Fence> m_copyFence;
-	UINT16 m_copyFenceValue;
+	DX12Rendering::Fence m_frameFence;
+	DX12Rendering::Fence m_copyFence;
 
 	// Textures
-	ComPtr<ID3D12Resource> m_textureBufferUploadHeap;
+	DX12Rendering::TextureManager m_textureManager;
 	UINT8 m_activeTextureRegister;
-	DX12TextureBuffer* m_activeTextures[TEXTURE_REGISTER_COUNT];
+	DX12Rendering::TextureBuffer* m_activeTextures[TEXTURE_REGISTER_COUNT];
 
 	// Device removal
 	HANDLE m_deviceRemovedHandle;
 	HANDLE m_removeDeviceEvent;
 
-	void ThrowIfFailed(HRESULT hr);
-	bool WarnIfFailed(HRESULT hr);
+	// Raytracing
+	DX12Rendering::Raytracing* m_raytracing;
+	DX12Rendering::dx12_lock m_raytracingLock;
 
 	void LoadPipeline(HWND hWnd);
 	void LoadAssets();
@@ -218,11 +179,45 @@ private:
     void WaitForPreviousFrame();
 	void WaitForCopyToComplete();
 
+	/// <summary>
+	/// Copies the contents of a render target to the display buffer.
+	/// </summary>
+	/// <param name="renderTarget"></param>
+	/// <param name="sx">The source x location</param>
+	/// <param name="sy">The source y location</param>
+	/// <param name="rx">The result x location</param>
+	/// <param name="ry">The result y location</param>
+	/// <param name="width">The width of pixels to copy</param>
+	/// <param name="height">The height of the pixels to copy</param>
+	void CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height);
+
 	bool CreateBackBuffer();
 
 	bool IsScissorWindowValid();
+
+	DX12Rendering::RenderSurface* GetCurrentRenderTarget() { return DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex);  }
+
+#ifdef _DEBUG
+	std::vector<viewLight_t> m_debugLights;
+
+#ifdef DEBUG_IMGUI
+	enum e_debugmode_t
+	{
+		DEBUG_UNKNOWN = 0,
+		DEBUG_LIGHTS,
+		DEBUG_RAYTRACING
+	};
+
+	ComPtr<ID3D12DescriptorHeap> m_imguiSrvDescHeap;
+	e_debugmode_t m_debugMode;
+
+	void InitializeImGui(HWND hWnd);
+	void ReleaseImGui();
+	void ImGuiDebugWindows();
+#endif
+
+#endif
 };
 
 extern DX12Renderer dxRenderer;
-
 #endif

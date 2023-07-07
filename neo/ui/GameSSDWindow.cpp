@@ -1045,7 +1045,7 @@ void SSDPowerup::OnHit(int key) {
 
 		//Small explosion to indicate it is opened
 		SSDExplosion* explosion = SSDExplosion::GetNewExplosion(game, position, size*2.0f, 300, SSDExplosion::EXPLOSION_NORMAL, this, false, true);
-		game->entities.Append(explosion);
+		game->m_entities.Append(explosion);
 		
 
 		powerupState = POWERUP_STATE_OPEN;
@@ -1053,7 +1053,7 @@ void SSDPowerup::OnHit(int key) {
 	} else {
 		//Destory the powerup with a big explosion
 		SSDExplosion* explosion = SSDExplosion::GetNewExplosion(game, position, size*2, 300, SSDExplosion::EXPLOSION_NORMAL, this);
-		game->entities.Append(explosion);
+		game->m_entities.Append(explosion);
 		game->PlaySound("arcade_explode");
 
 		noHit = true;
@@ -1245,11 +1245,11 @@ void idGameSSDWindow::WriteToSaveGame( idFile *savefile ) {
 	SSDProjectile::WriteProjectiles(savefile);
 	SSDPowerup::WritePowerups(savefile);
 
-	int entCount = entities.Num();
+	int entCount = m_entities.Num();
 	savefile->Write(&entCount, sizeof(entCount));
 	for(int i = 0; i < entCount; i++) {
-		savefile->Write(&(entities[i]->type), sizeof(entities[i]->type));
-		savefile->Write(&(entities[i]->id), sizeof(entities[i]->id));
+		savefile->Write(&(m_entities[i]->type), sizeof(m_entities[i]->type));
+		savefile->Write(&(m_entities[i]->id), sizeof(m_entities[i]->id));
 	}
 }
 
@@ -1316,7 +1316,7 @@ void idGameSSDWindow::ReadFromSaveGame( idFile *savefile ) {
 
 		SSDEntity* ent = GetSpecificEntity(type, id);
 		if(ent) {
-			entities.Append(ent);
+			m_entities.Append(ent);
 		}
 	}
 }
@@ -1387,8 +1387,8 @@ void idGameSSDWindow::Draw(int time, float x, float y) {
 		ZOrderEntities();
 
 		//Draw from back to front
-		for(int i = entities.Num()-1; i >= 0; i--) {
-			entities[i]->Draw();
+		for(int i = m_entities.Num()-1; i >= 0; i--) {
+			m_entities[i]->Draw();
 		}
 
 		//The last thing to draw is the crosshair
@@ -1651,10 +1651,10 @@ void idGameSSDWindow::ResetLevelStats() {
 
 void idGameSSDWindow::ResetEntities() {
 	//Destroy all of the entities
-	for(int i = 0; i < entities.Num(); i++) {
-		entities[i]->DestroyEntity();
+	for(int i = 0; i < m_entities.Num(); i++) {
+		m_entities[i]->DestroyEntity();
 	}
-	entities.Clear();
+	m_entities.Clear();
 }
 
 void idGameSSDWindow::StartGame() {
@@ -1785,18 +1785,18 @@ void idGameSSDWindow::UpdateGame() {
 		gameStats.levelStats.targetEnt = EntityHitTest(cursor);
 
 		//Update from back to front
-		for(int i = entities.Num()-1; i >= 0; i--) {
-			entities[i]->Update();
+		for(int i = m_entities.Num()-1; i >= 0; i--) {
+			m_entities[i]->Update();
 		}
 
 		CheckForHits();
 
 		//Delete entities that need to be deleted
-		for(int i = entities.Num()-1; i >= 0; i--) {
-			if(entities[i]->destroyed) {
-				SSDEntity* ent = entities[i];
+		for(int i = m_entities.Num()-1; i >= 0; i--) {
+			if(m_entities[i]->destroyed) {
+				SSDEntity* ent = m_entities[i];
 				ent->DestroyEntity();
-				entities.RemoveIndex(i);
+				m_entities.RemoveIndex(i);
 			}
 		}
 
@@ -1814,8 +1814,8 @@ void idGameSSDWindow::UpdateGame() {
 void idGameSSDWindow::CheckForHits() {
 	
 	//See if the entity has gotten close enough
-	for(int i = 0; i < entities.Num(); i++) {
-		SSDEntity* ent = entities[i];
+	for(int i = 0; i < m_entities.Num(); i++) {
+		SSDEntity* ent = m_entities[i];
 		if(ent->position.z <= Z_NEAR) {
 
 			if(!ent->noPlayerDamage) {
@@ -1849,13 +1849,13 @@ void idGameSSDWindow::CheckForHits() {
 void idGameSSDWindow::ZOrderEntities() {
 	//Z-Order the entities
 	//Using a simple sorting method
-	for (int i = entities.Num()-1; i >= 0; i--) { 
+	for (int i = m_entities.Num()-1; i >= 0; i--) { 
 		bool flipped = false;
 		for (int j = 0;  j<i ; j++) { 
-			if (entities[j]->position.z > entities[j+1]->position.z) { 
-				SSDEntity* ent = entities[j];
-				entities[j] = entities[j+1]; 
-				entities[j+1] = ent; 
+			if (m_entities[j]->position.z > m_entities[j+1]->position.z) { 
+				SSDEntity* ent = m_entities[j];
+				m_entities[j] = m_entities[j+1]; 
+				m_entities[j+1] = ent; 
 				flipped = true; 
 			} 
 		} 
@@ -1888,7 +1888,7 @@ void idGameSSDWindow::SpawnAsteroid() {
 	float rotate = (random.RandomFloat() * (asteroidData[gameStats.currentLevel].rotateMax - asteroidData[gameStats.currentLevel].rotateMin)) + asteroidData[gameStats.currentLevel].rotateMin;
 	
 	SSDAsteroid* asteroid = SSDAsteroid::GetNewAsteroid(this, startPosition, idVec2(size, size), speed, rotate, asteroidData[gameStats.currentLevel].asteroidHealth);
-	entities.Append(asteroid);
+	m_entities.Append(asteroid);
 	
 	gameStats.levelStats.nextAsteroidSpawnTime = currentTime + random.RandomInt(asteroidData[gameStats.currentLevel].spawnMax - asteroidData[gameStats.currentLevel].spawnMin) + asteroidData[gameStats.currentLevel].spawnMin;
 }
@@ -1909,7 +1909,7 @@ void idGameSSDWindow::FireWeapon(int key) {
 			//Aim the projectile from the bottom of the screen directly at the ent
 			//SSDProjectile* newProj = new (TAG_OLD_UI) SSDProjectile(this, idVec3(320,0,0), gameStats.levelStats.targetEnt->position, weaponData[gameStats.currentWeapon].speed, weaponData[gameStats.currentWeapon].size);
 			SSDProjectile* newProj = SSDProjectile::GetNewProjectile(this, idVec3(0,-180,0), gameStats.levelStats.targetEnt->position, weaponData[gameStats.currentWeapon].speed, weaponData[gameStats.currentWeapon].size);
-			entities.Append(newProj);
+			m_entities.Append(newProj);
 			//newProj = SSDProjectile::GetNewProjectile(this, idVec3(-320,-0,0), gameStats.levelStats.targetEnt->position, weaponData[gameStats.currentWeapon].speed, weaponData[gameStats.currentWeapon].size);
 			//entities.Append(newProj);
 
@@ -1931,7 +1931,7 @@ void idGameSSDWindow::FireWeapon(int key) {
 			idVec3 vec = idVec3(cursorWorld.x, cursorWorld.y, (Z_FAR-Z_NEAR)/8.0f);
 			vec *= 8;
 			SSDProjectile* newProj = SSDProjectile::GetNewProjectile(this, idVec3(0,-180,0), vec, weaponData[gameStats.currentWeapon].speed, weaponData[gameStats.currentWeapon].size);
-			entities.Append(newProj);	
+			m_entities.Append(newProj);	
 			
 		}
 
@@ -1950,11 +1950,11 @@ void idGameSSDWindow::FireWeapon(int key) {
 
 SSDEntity* idGameSSDWindow::EntityHitTest(const idVec2& pt) {
 
-	for(int i = 0; i < entities.Num(); i++) {
+	for(int i = 0; i < m_entities.Num(); i++) {
 		//Since we ZOrder the entities every frame we can stop at the first entity we hit.
 		//ToDo: Make sure this assumption is true
-		if(entities[i]->HitTest(pt)) {
-			return entities[i];
+		if(m_entities[i]->HitTest(pt)) {
+			return m_entities[i];
 		}
 	}
 	return NULL;
@@ -1970,7 +1970,7 @@ void idGameSSDWindow::HitAsteroid(SSDAsteroid* asteroid, int key) {
 		
 		//The asteroid has been destroyed
 		SSDExplosion* explosion = SSDExplosion::GetNewExplosion(this, asteroid->position, asteroid->size*2, 300, SSDExplosion::EXPLOSION_NORMAL, asteroid);
-		entities.Append(explosion);
+		m_entities.Append(explosion);
 		PlaySound("arcade_explode");
 
 		AddScore(asteroid, asteroidData[gameStats.currentLevel].asteroidPoints);
@@ -1986,7 +1986,7 @@ void idGameSSDWindow::HitAsteroid(SSDAsteroid* asteroid, int key) {
 	} else {
 		//This was a damage hit so create a real small quick explosion
 		SSDExplosion* explosion = SSDExplosion::GetNewExplosion(this, asteroid->position, asteroid->size/2.0f, 200, SSDExplosion::EXPLOSION_NORMAL, asteroid, false, false);
-		entities.Append(explosion);
+		m_entities.Append(explosion);
 	}
 }
 
@@ -1998,7 +1998,7 @@ void idGameSSDWindow::AsteroidStruckPlayer(SSDAsteroid* asteroid) {
 	AddDamage(asteroidData[gameStats.currentLevel].asteroidDamage);
 
 	SSDExplosion* explosion = SSDExplosion::GetNewExplosion(this, asteroid->position, asteroid->size*2, 300, SSDExplosion::EXPLOSION_NORMAL, asteroid);
-	entities.Append(explosion);
+	m_entities.Append(explosion);
 	PlaySound("arcade_explode");
 }
 
@@ -2011,7 +2011,7 @@ void idGameSSDWindow::AddScore(SSDEntity* ent, int points) {
 	} else {
 		pointsEnt = SSDPoints::GetNewPoints(this, ent, points, 1000, 50, idVec4(1,0,0,1));
 	}
-	entities.Append(pointsEnt);
+	m_entities.Append(pointsEnt);
 
 	gameStats.score += points;
 	gui->SetStateString( "player_score", va("%i", gameStats.score ) );
@@ -2040,18 +2040,18 @@ void idGameSSDWindow::OnNuke() {
 	gui->HandleNamedEvent("nuke");
 
 	//Destory All Asteroids
-	for(int i = 0 ; i < entities.Num(); i++) {
+	for(int i = 0 ; i < m_entities.Num(); i++) {
 
-		if(entities[i]->type == SSD_ENTITY_ASTEROID) {
+		if(m_entities[i]->type == SSD_ENTITY_ASTEROID) {
 			
 			//The asteroid has been destroyed
-			SSDExplosion* explosion = SSDExplosion::GetNewExplosion(this, entities[i]->position, entities[i]->size*2, 300, SSDExplosion::EXPLOSION_NORMAL, entities[i]);
-			entities.Append(explosion);
+			SSDExplosion* explosion = SSDExplosion::GetNewExplosion(this, m_entities[i]->position, m_entities[i]->size*2, 300, SSDExplosion::EXPLOSION_NORMAL, m_entities[i]);
+			m_entities.Append(explosion);
 
-			AddScore(entities[i], asteroidData[gameStats.currentLevel].asteroidPoints);
+			AddScore(m_entities[i], asteroidData[gameStats.currentLevel].asteroidPoints);
 
 			//Don't let the player hit it anymore because 
-			entities[i]->noHit = true;
+			m_entities[i]->noHit = true;
 
 			gameStats.levelStats.destroyedAsteroids++;
 		}
@@ -2070,11 +2070,11 @@ void idGameSSDWindow::OnRescueAll() {
 	gui->HandleNamedEvent("rescueAll");
 
 	//Rescue All Astronauts
-	for(int i = 0 ; i < entities.Num(); i++) {
+	for(int i = 0 ; i < m_entities.Num(); i++) {
 
-		if(entities[i]->type == SSD_ENTITY_ASTRONAUT) {
+		if(m_entities[i]->type == SSD_ENTITY_ASTRONAUT) {
 
-			AstronautStruckPlayer((SSDAstronaut*)entities[i]);
+			AstronautStruckPlayer((SSDAstronaut*)m_entities[i]);
 		}
 	}
 }
@@ -2164,7 +2164,7 @@ void idGameSSDWindow::SpawnAstronaut() {
 	float rotate = (random.RandomFloat() * (astronautData[gameStats.currentLevel].rotateMax - astronautData[gameStats.currentLevel].rotateMin)) + astronautData[gameStats.currentLevel].rotateMin;
 
 	SSDAstronaut* astronaut = SSDAstronaut::GetNewAstronaut(this, startPosition, speed, rotate, astronautData[gameStats.currentLevel].health);
-	entities.Append(astronaut);
+	m_entities.Append(astronaut);
 
 	gameStats.levelStats.nextAstronautSpawnTime = currentTime + random.RandomInt(astronautData[gameStats.currentLevel].spawnMax - astronautData[gameStats.currentLevel].spawnMin) + astronautData[gameStats.currentLevel].spawnMin;
 }
@@ -2181,7 +2181,7 @@ void idGameSSDWindow::HitAstronaut(SSDAstronaut* astronaut, int key) {
 
 			//The astronaut has been destroyed
 			SSDExplosion* explosion = SSDExplosion::GetNewExplosion(this, astronaut->position, astronaut->size*2, 300, SSDExplosion::EXPLOSION_NORMAL, astronaut);
-			entities.Append(explosion);
+			m_entities.Append(explosion);
 			PlaySound("arcade_explode");
 
 			//Add the penalty for killing the astronaut
@@ -2192,7 +2192,7 @@ void idGameSSDWindow::HitAstronaut(SSDAstronaut* astronaut, int key) {
 		} else {
 			//This was a damage hit so create a real small quick explosion
 			SSDExplosion* explosion = SSDExplosion::GetNewExplosion(this, astronaut->position, astronaut->size/2.0f, 200, SSDExplosion::EXPLOSION_NORMAL, astronaut, false, false);
-			entities.Append(explosion);
+			m_entities.Append(explosion);
 		}
 	}
 }
@@ -2206,7 +2206,7 @@ void idGameSSDWindow::AstronautStruckPlayer(SSDAstronaut* astronaut) {
 
 	//We are saving an astronaut
 	SSDExplosion* explosion = SSDExplosion::GetNewExplosion(this, astronaut->position, astronaut->size*2, 300, SSDExplosion::EXPLOSION_TELEPORT, astronaut);
-	entities.Append(explosion);
+	m_entities.Append(explosion);
 	PlaySound("arcade_capture");
 
 	//Give the player points for saving the astronaut
@@ -2231,7 +2231,7 @@ void idGameSSDWindow::SpawnPowerup() {
 	float rotate = (random.RandomFloat() * (powerupData[gameStats.currentLevel].rotateMax - powerupData[gameStats.currentLevel].rotateMin)) + powerupData[gameStats.currentLevel].rotateMin;
 
 	SSDPowerup* powerup = SSDPowerup::GetNewPowerup(this, speed, rotate);
-	entities.Append(powerup);
+	m_entities.Append(powerup);
 
 	gameStats.levelStats.nextPowerupSpawnTime = currentTime + random.RandomInt(powerupData[gameStats.currentLevel].spawnMax - powerupData[gameStats.currentLevel].spawnMin) + powerupData[gameStats.currentLevel].spawnMin;
 

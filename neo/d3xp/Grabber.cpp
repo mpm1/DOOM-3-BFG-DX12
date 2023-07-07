@@ -475,7 +475,7 @@ int idGrabber::Update( idPlayer *player, bool hide ) {
 		gameLocal.clip.TraceBounds( trace, player->firstPersonViewOrigin, end, bounds, MASK_SHOT_RENDERMODEL|CONTENTS_PROJECTILE|CONTENTS_MOVEABLECLIP, player );
 		// If the trace hit something
 		if ( trace.fraction < 1.0f ) {
-			newEnt = gameLocal.entities[ trace.c.entityNum ];
+			newEnt = gameLocal.m_entities[ trace.c.entityNum ];
 
 			// if entity is already being grabbed then bypass
 			if ( common->IsMultiplayer() && newEnt && newEnt->IsGrabbed() ) {

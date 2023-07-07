@@ -3029,8 +3029,8 @@ void idPlayer::UpdateHudWeapon( bool flashWeapon ) {
 
 	idMenuScreen_HUD * curDisplay = hud;		
 	idPlayer *p = this;
-	if ( gameLocal.GetLocalClientNum() >= 0 && gameLocal.entities[ gameLocal.GetLocalClientNum() ] && gameLocal.entities[ gameLocal.GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
-		p = static_cast< idPlayer * >( gameLocal.entities[ gameLocal.GetLocalClientNum() ] );
+	if ( gameLocal.GetLocalClientNum() >= 0 && gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] && gameLocal.m_entities[ gameLocal.GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
+		p = static_cast< idPlayer * >( gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] );
 		if ( p->spectating && p->spectator == entityNumber ) {
 			assert( p->hud );
 			curDisplay = p->hud;
@@ -3053,8 +3053,8 @@ void idPlayer::UpdateChattingHud() {
 
 	idMenuScreen_HUD * curDisplay = hud;		
 	idPlayer *p = this;
-	if ( gameLocal.GetLocalClientNum() >= 0 && gameLocal.entities[ gameLocal.GetLocalClientNum() ] && gameLocal.entities[ gameLocal.GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
-		p = static_cast< idPlayer * >( gameLocal.entities[ gameLocal.GetLocalClientNum() ] );
+	if ( gameLocal.GetLocalClientNum() >= 0 && gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] && gameLocal.m_entities[ gameLocal.GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
+		p = static_cast< idPlayer * >( gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] );
 		if ( p->spectating && p->spectator == entityNumber ) {
 			assert( p->hud );
 			curDisplay = p->hud;
@@ -3078,8 +3078,8 @@ void idPlayer::UpdateSpectatingText() {
 
 	idSWF * spectatorMessages = mpMessages;		
 	idPlayer *p = this;
-	if ( gameLocal.GetLocalClientNum() >= 0 && gameLocal.entities[ gameLocal.GetLocalClientNum() ] && gameLocal.entities[ gameLocal.GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
-		p = static_cast< idPlayer * >( gameLocal.entities[ gameLocal.GetLocalClientNum() ] );
+	if ( gameLocal.GetLocalClientNum() >= 0 && gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] && gameLocal.m_entities[ gameLocal.GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
+		p = static_cast< idPlayer * >( gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] );
 		if ( p && p->spectating ) {
 			spectatorMessages = p->mpMessages;
 		}
@@ -3089,7 +3089,7 @@ void idPlayer::UpdateSpectatingText() {
 		return;
 	}
 
-	idPlayer * viewPlayer = static_cast<idPlayer *>( gameLocal.entities[ p->spectator ] );
+	idPlayer * viewPlayer = static_cast<idPlayer *>( gameLocal.m_entities[ p->spectator ] );
 	if ( viewPlayer == NULL ) {
 		return;
 	}
@@ -3195,7 +3195,7 @@ void idPlayer::DrawHUD( idMenuHandler_HUD * _hudManager ) {
 	}
 
 	// Always draw the local client's messages so that chat works correctly while spectating another player.
-	idPlayer * localPlayer = static_cast< idPlayer * >( gameLocal.entities[ gameLocal.GetLocalClientNum() ] );
+	idPlayer * localPlayer = static_cast< idPlayer * >( gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] );
 
 	if ( localPlayer != NULL && localPlayer->mpMessages != NULL ) {
 		localPlayer->mpMessages->Render( renderSystem, Sys_Milliseconds() );
@@ -5451,7 +5451,7 @@ bool idPlayer::Collide( const trace_t &collision, const idVec3 &velocity ) {
 		return false;
 	}
 
-	other = gameLocal.entities[ collision.c.entityNum ];
+	other = gameLocal.m_entities[ collision.c.entityNum ];
 	if ( other ) {
 		other->Signal( SIG_TOUCH );
 		if ( !spectating ) {
@@ -6478,7 +6478,7 @@ void idPlayer::UseVehicle() {
 		end = start + viewAngles.ToForward() * 80.0f;
 		gameLocal.clip.TracePoint( trace, start, end, MASK_SHOT_RENDERMODEL, this );
 		if ( trace.fraction < 1.0f ) {
-			ent = gameLocal.entities[ trace.c.entityNum ];
+			ent = gameLocal.m_entities[ trace.c.entityNum ];
 			if ( ent && ent->IsType( idAFEntity_Vehicle::Type ) ) {
 				Hide();
 				static_cast<idAFEntity_Vehicle*>(ent)->Use( this );
@@ -7343,9 +7343,9 @@ void idPlayer::UpdateHud() {
 
 	if ( gameLocal.realClientTime == lastMPAimTime ) {
 		if ( MPAim != -1 && gameLocal.mpGame.IsGametypeTeamBased() /* CTF */
-			&& gameLocal.entities[ MPAim ] && gameLocal.entities[ MPAim ]->IsType( idPlayer::Type )
-			&& static_cast< idPlayer * >( gameLocal.entities[ MPAim ] )->team == team ) {
-				aimed = static_cast< idPlayer * >( gameLocal.entities[ MPAim ] );
+			&& gameLocal.m_entities[ MPAim ] && gameLocal.m_entities[ MPAim ]->IsType( idPlayer::Type )
+			&& static_cast< idPlayer * >( gameLocal.m_entities[ MPAim ] )->team == team ) {
+				aimed = static_cast< idPlayer * >( gameLocal.m_entities[ MPAim ] );
 
 				hud->TriggerHitTarget( true, session->GetActingGameStateLobbyBase().GetLobbyUserName( gameLocal.lobbyUserIDs[ MPAim ] ), aimed->team + 1 );
 				MPAimHighlight = true;
@@ -9165,8 +9165,8 @@ void idPlayer::SetLastHitTime( int time ) {
 	}
 
 	if ( MPAim != -1 ) {
-		if ( gameLocal.entities[ MPAim ] && gameLocal.entities[ MPAim ]->IsType( idPlayer::Type ) ) {
-			aimed = static_cast< idPlayer * >( gameLocal.entities[ MPAim ] );
+		if ( gameLocal.m_entities[ MPAim ] && gameLocal.m_entities[ MPAim ]->IsType( idPlayer::Type ) ) {
+			aimed = static_cast< idPlayer * >( gameLocal.m_entities[ MPAim ] );
 		}
 		assert( aimed );
 		// full highlight, no fade till loosing aim
@@ -9181,8 +9181,8 @@ void idPlayer::SetLastHitTime( int time ) {
 		MPAimHighlight = true;
 		MPAimFadeTime = 0;
 	} else if ( lastMPAim != -1 ) {
-		if ( gameLocal.entities[ lastMPAim ] && gameLocal.entities[ lastMPAim ]->IsType( idPlayer::Type ) ) {
-			aimed = static_cast< idPlayer * >( gameLocal.entities[ lastMPAim ] );
+		if ( gameLocal.m_entities[ lastMPAim ] && gameLocal.m_entities[ lastMPAim ]->IsType( idPlayer::Type ) ) {
+			aimed = static_cast< idPlayer * >( gameLocal.m_entities[ lastMPAim ] );
 		}
 		assert( aimed );
 		// start fading right away
@@ -9610,7 +9610,7 @@ void idPlayer::Event_ExitTeleporter() {
 
 	if ( teleportKiller != -1 ) {
 		// we got killed while being teleported
-		Damage( gameLocal.entities[ teleportKiller ], gameLocal.entities[ teleportKiller ], vec3_origin, "damage_telefrag", 1.0f, INVALID_JOINT );
+		Damage( gameLocal.m_entities[ teleportKiller ], gameLocal.m_entities[ teleportKiller ], vec3_origin, "damage_telefrag", 1.0f, INVALID_JOINT );
 		teleportKiller = -1;
 	} else {
 		// kill anything that would have waited at teleport exit

@@ -1099,7 +1099,7 @@ void idTarget_SetInfluence::Event_Activate( idEntity *activator ) {
 	}
 
 	for ( i = 0; i < genericList.Num(); i++ ) {
-		ent = gameLocal.entities[genericList[i]];
+		ent = gameLocal.m_entities[genericList[i]];
 		if ( ent == NULL ) {
 			continue;
 		}
@@ -1110,7 +1110,7 @@ void idTarget_SetInfluence::Event_Activate( idEntity *activator ) {
 	}
 
 	for ( i = 0; i < lightList.Num(); i++ ) {
-		ent = gameLocal.entities[lightList[i]];
+		ent = gameLocal.m_entities[lightList[i]];
 		if ( ent == NULL || !ent->IsType( idLight::Type ) ) {
 			continue;
 		}
@@ -1127,7 +1127,7 @@ void idTarget_SetInfluence::Event_Activate( idEntity *activator ) {
 	}
 
 	for ( i = 0; i < soundList.Num(); i++ ) {
-		ent = gameLocal.entities[soundList[i]];
+		ent = gameLocal.m_entities[soundList[i]];
 		if ( ent == NULL || !ent->IsType( idSound::Type ) ) {
 			continue;
 		}
@@ -1144,7 +1144,7 @@ void idTarget_SetInfluence::Event_Activate( idEntity *activator ) {
 	}
 
 	for ( i = 0; i < guiList.Num(); i++ ) {
-		ent = gameLocal.entities[guiList[i]];
+		ent = gameLocal.m_entities[guiList[i]];
 		if ( ent == NULL || ent->GetRenderEntity() == NULL ) {
 			continue;
 		}
@@ -1235,7 +1235,7 @@ void idTarget_SetInfluence::Event_RestoreInfluence() {
 	}
 
 	for ( i = 0; i < genericList.Num(); i++ ) {
-		ent = gameLocal.entities[genericList[i]];
+		ent = gameLocal.m_entities[genericList[i]];
 		if ( ent == NULL ) {
 			continue;
 		}
@@ -1246,7 +1246,7 @@ void idTarget_SetInfluence::Event_RestoreInfluence() {
 	}
 
 	for ( i = 0; i < lightList.Num(); i++ ) {
-		ent = gameLocal.entities[lightList[i]];
+		ent = gameLocal.m_entities[lightList[i]];
 		if ( ent == NULL || !ent->IsType( idLight::Type ) ) {
 			continue;
 		}
@@ -1261,7 +1261,7 @@ void idTarget_SetInfluence::Event_RestoreInfluence() {
 	}
 
 	for ( i = 0; i < soundList.Num(); i++ ) {
-		ent = gameLocal.entities[soundList[i]];
+		ent = gameLocal.m_entities[soundList[i]];
 		if ( ent == NULL || !ent->IsType( idSound::Type ) ) {
 			continue;
 		}
@@ -1271,7 +1271,7 @@ void idTarget_SetInfluence::Event_RestoreInfluence() {
 	}
 
 	for ( i = 0; i < guiList.Num(); i++ ) {
-		ent = gameLocal.entities[guiList[i]];
+		ent = gameLocal.m_entities[guiList[i]];
 		if ( ent == NULL || GetRenderEntity() == NULL ) {
 			continue;
 		}
@@ -1563,17 +1563,17 @@ void idTarget_EnableLevelWeapons::Event_Activate( idEntity *activator ) {
 
 	if ( spawnArgs.GetBool( "disable" ) ) {
 		for( i = 0; i < gameLocal.numClients; i++ ) {
-			if ( gameLocal.entities[ i ] ) {
-				gameLocal.entities[ i ]->ProcessEvent( &EV_Player_DisableWeapon );
+			if ( gameLocal.m_entities[ i ] ) {
+				gameLocal.m_entities[ i ]->ProcessEvent( &EV_Player_DisableWeapon );
 			}
 		}
 	} else {
 		weap = spawnArgs.GetString( "weapon" );
 		for( i = 0; i < gameLocal.numClients; i++ ) {
-			if ( gameLocal.entities[ i ] ) {
-				gameLocal.entities[ i ]->ProcessEvent( &EV_Player_EnableWeapon );
+			if ( gameLocal.m_entities[ i ] ) {
+				gameLocal.m_entities[ i ]->ProcessEvent( &EV_Player_EnableWeapon );
 				if ( weap != NULL && weap[ 0 ] != NULL ) {
-					gameLocal.entities[ i ]->PostEventSec( &EV_Player_SelectWeapon, 0.5f, weap );
+					gameLocal.m_entities[ i ]->PostEventSec( &EV_Player_SelectWeapon, 0.5f, weap );
 				}
 			}
 		}
@@ -1725,8 +1725,8 @@ idTarget_RemoveWeapons::Event_Activate
 */
 void idTarget_RemoveWeapons::Event_Activate( idEntity *activator ) {
 	for( int i = 0; i < gameLocal.numClients; i++ ) {
-		if ( gameLocal.entities[ i ] ) {
-			idPlayer *player = static_cast< idPlayer* >( gameLocal.entities[i] );
+		if ( gameLocal.m_entities[ i ] ) {
+			idPlayer *player = static_cast< idPlayer* >( gameLocal.m_entities[i] );
 
 			// Everywhere that we use target_removeweapons the intent is to remove ALL of the
 			// weapons that hte player has (save a few: flashlights, fists, soul cube).
@@ -1756,8 +1756,8 @@ idTarget_LevelTrigger::Event_Activate
 */
 void idTarget_LevelTrigger::Event_Activate( idEntity *activator ) {
 	for( int i = 0; i < gameLocal.numClients; i++ ) {
-		if ( gameLocal.entities[ i ] ) {
-			idPlayer *player = static_cast< idPlayer* >( gameLocal.entities[i] );
+		if ( gameLocal.m_entities[ i ] ) {
+			idPlayer *player = static_cast< idPlayer* >( gameLocal.m_entities[i] );
 			player->SetLevelTrigger( spawnArgs.GetString( "levelName" ), spawnArgs.GetString( "triggerName" ) );
 		}
 	}
@@ -1808,8 +1808,8 @@ idTarget_EnableStamina::Event_Activate
 */
 void idTarget_EnableStamina::Event_Activate( idEntity *activator ) {
 	for( int i = 0; i < gameLocal.numClients; i++ ) {
-		if ( gameLocal.entities[ i ] ) {
-			idPlayer *player = static_cast< idPlayer* >( gameLocal.entities[i] );
+		if ( gameLocal.m_entities[ i ] ) {
+			idPlayer *player = static_cast< idPlayer* >( gameLocal.m_entities[i] );
 			if ( spawnArgs.GetBool( "enable" ) ) {
 				pm_stamina.SetFloat( player->spawnArgs.GetFloat( "pm_stamina" ) );
 			} else {

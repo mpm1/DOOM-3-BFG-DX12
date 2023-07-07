@@ -584,7 +584,7 @@ bool idProjectile::Collide( const trace_t &collision, const idVec3 &velocity ) {
 	}
 
 	// get the entity the projectile collided with
-	ent = gameLocal.entities[ collision.c.entityNum ];
+	ent = gameLocal.m_entities[ collision.c.entityNum ];
 	if ( ent == owner.GetEntity() ) {
 		assert( 0 );
 		return true;
@@ -1077,8 +1077,8 @@ void idProjectile::Explode( const trace_t &collision, idEntity *ignore ) {
 	gameLocal.AlertAI( owner.GetEntity() );
 
 	// bind the projectile to the impact entity if necesary
-	if ( gameLocal.entities[collision.c.entityNum] && spawnArgs.GetBool( "bindOnImpact" ) ) {
-		Bind( gameLocal.entities[collision.c.entityNum], true );
+	if ( gameLocal.m_entities[collision.c.entityNum] && spawnArgs.GetBool( "bindOnImpact" ) ) {
+		Bind( gameLocal.m_entities[collision.c.entityNum], true );
 	}
 
 	// splash damage
@@ -1310,7 +1310,7 @@ bool idProjectile::ClientPredictionCollide( idEntity *soundEnt, const idDict &pr
 	}
 
 	// get the entity the projectile collided with
-	ent = gameLocal.entities[ collision.c.entityNum ];
+	ent = gameLocal.m_entities[ collision.c.entityNum ];
 	if ( ent == NULL ) {
 		return false;
 	}

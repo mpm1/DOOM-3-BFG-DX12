@@ -552,7 +552,7 @@ void idPhysics_Base::ClearContacts() {
 	idEntity *ent;
 
 	for ( i = 0; i < contacts.Num(); i++ ) {
-		ent = gameLocal.entities[ contacts[i].entityNum ];
+		ent = gameLocal.m_entities[ contacts[i].entityNum ];
 		if ( ent ) {
 			ent->RemoveContactEntity( self );
 		}
@@ -753,7 +753,7 @@ void idPhysics_Base::AddContactEntitiesForContacts() {
 	idEntity *ent;
 
 	for ( i = 0; i < contacts.Num(); i++ ) {
-		ent = gameLocal.entities[ contacts[i].entityNum ];
+		ent = gameLocal.m_entities[ contacts[i].entityNum ];
 		if ( ent && ent != self ) {
 			ent->AddContactEntity( self );
 		}

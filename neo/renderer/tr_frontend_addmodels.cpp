@@ -362,6 +362,12 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 	if ( renderEntity->hModel == NULL ||
 			renderEntity->hModel->ModelHasInteractingSurfaces() ||
 			renderEntity->hModel->ModelHasShadowCastingSurfaces() ) {
+
+		// Add the object to the general tlas
+		float modelMatrix[16];
+		R_AxisToModelMatrix(renderEntity->axis, renderEntity->origin, modelMatrix);
+		dxRenderer.DXR_AddEntityToTLAS(dxRenderer.GetHandle(entityDef), modelMatrix);
+
 		SCOPED_PROFILE_EVENT( "Find lights" );
 		for ( viewLight_t * vLight = viewDef->viewLights; vLight != NULL; vLight = vLight->next ) {
 			if ( vLight->scissorRect.IsEmpty() ) {
@@ -372,6 +378,7 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 				if ( vLight->entityInteractionState[entityIndex] == viewLight_t::INTERACTION_YES ) {
 					contactedLights[numContactedLights] = vLight;
 					staticInteractions[numContactedLights] = world->interactionTable[vLight->lightDef->index * world->interactionTableWidth + entityIndex];
+
 					if ( ++numContactedLights == MAX_CONTACTED_LIGHTS ) {
 						break;
 					}
@@ -1068,6 +1075,7 @@ void R_AddModels() {
 	for ( viewEntity_t * vEntity = tr.viewDef->viewEntitys; vEntity != NULL; vEntity = vEntity->next ) {
 		for ( drawSurf_t * ds = vEntity->drawSurfs; ds != NULL; ) {
 			drawSurf_t * next = ds->nextOnLight;
+
 			if ( ds->linkChain == NULL ) {
 				R_LinkDrawSurfToView( ds, tr.viewDef );
 			} else {

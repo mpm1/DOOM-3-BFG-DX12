@@ -248,7 +248,7 @@ public:
 	int						numClients;				// pulled from serverInfo and verified
 	idArray< lobbyUserID_t, MAX_CLIENTS >	lobbyUserIDs;	// Maps from a client (player) number to a lobby user
 	idDict					persistentPlayerInfo[MAX_CLIENTS];
-	idEntity *				entities[MAX_GENTITIES];// index to entities
+	idEntity *				m_entities[MAX_GENTITIES];// index to entities
 	int						spawnIds[MAX_GENTITIES];// for use in idEntityPtr
 	idArray< int, 2 >		firstFreeEntityIndex;	// first free index in the entities array. [0] for replicated entities, [1] for non-replicated
 	int						num_entities;			// current number <= MAX_GENTITIES
@@ -702,7 +702,7 @@ template< class type >
 ID_INLINE type *idEntityPtr<type>::GetEntity() const {
 	int entityNum = spawnId & ( ( 1 << GENTITYNUM_BITS ) - 1 );
 	if ( ( gameLocal.spawnIds[ entityNum ] == ( spawnId >> GENTITYNUM_BITS ) ) ) {
-		return static_cast<type *>( gameLocal.entities[ entityNum ] );
+		return static_cast<type *>( gameLocal.m_entities[ entityNum ] );
 	}
 	return NULL;
 }

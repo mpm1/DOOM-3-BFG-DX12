@@ -4,6 +4,8 @@
 #include "../tr_local.h"
 #include "../../framework/Common_local.h"
 
+#include <memory>
+
 idCVar r_drawEyeColor("r_drawEyeColor", "0", CVAR_RENDERER | CVAR_BOOL, "Draw a colored box, red = left eye, blue = right eye, grey = non-stereo");
 idCVar r_motionBlur("r_motionBlur", "0", CVAR_RENDERER | CVAR_INTEGER | CVAR_ARCHIVE, "1 - 5, log2 of the number of motion blur samples");
 idCVar r_forceZPassStencilShadows("r_forceZPassStencilShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force Z-pass rendering for performance testing");
@@ -16,7 +18,22 @@ extern idCVar stereoRender_swapEyes;
 
 backEndState_t	backEnd;
 
-bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) {
+// Debug funcitons for the renderer
+#ifdef _DEBUG_COMMAND_LIST
+void DebugCycleCommandList(std::string caller, std::string file, int line)
+{
+	common->DPrintf("Cycling CommandList for %s in %s:line %d\n", caller.c_str(), file.c_str(), line);
+
+	dxRenderer.CycleDirectCommandList();
+}
+
+#define CYCLE_COMMAND_LIST() DebugCycleCommandList(__FUNCTION__, __FILE__, __LINE__)
+#else
+#define CYCLE_COMMAND_LIST() dxRenderer.CycleDirectCommandList()
+#endif
+
+bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
+{
 	// TODO: Implement
 	for (int i = 0; i <= displayNum; ++i) {
 		vidMode_t mode;
@@ -35,7 +52,8 @@ bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 SetVertexParm
 ================
 */
-static ID_INLINE void SetVertexParm(renderParm_t rp, const float* value) {
+static ID_INLINE void SetVertexParm(renderParm_t rp, const float* value) 
+{
 	renderProgManager.SetUniformValue(rp, value);
 }
 
@@ -44,7 +62,8 @@ static ID_INLINE void SetVertexParm(renderParm_t rp, const float* value) {
 SetVertexParms
 ================
 */
-static ID_INLINE void SetVertexParms(renderParm_t rp, const float* value, int num) {
+static ID_INLINE void SetVertexParms(renderParm_t rp, const float* value, int num) 
+{
 	for (int i = 0; i < num; i++) {
 		renderProgManager.SetUniformValue((renderParm_t)(rp + i), value + (i * 4));
 	}
@@ -55,7 +74,8 @@ static ID_INLINE void SetVertexParms(renderParm_t rp, const float* value, int nu
 SetFragmentParm
 ================
 */
-static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value) {
+static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value) 
+{
 	renderProgManager.SetUniformValue(rp, value);
 }
 
@@ -399,6 +419,120 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 	SetVertexParm(RENDERPARM_TEXGEN_0_ENABLED, useTexGenParm);
 }
 
+void RB_DrawElementsWithCounters(const drawSurf_t* surf, bool addToObjectList) {
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawElementsWithCounters");
+
+	dxRenderer.SetCommandListDefaults(false);
+
+	// Connect to a new surfae renderer
+	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
+
+	// get vertex buffer
+	const vertCacheHandle_t vbHandle = surf->ambientCache;
+	idVertexBuffer* vertexBuffer;
+	if (vertexCache.CacheIsStatic(vbHandle)) {
+		vertexBuffer = &vertexCache.staticData.vertexBuffer;
+	}
+	else {
+		const uint64 frameNum = (int)(vbHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
+		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
+			idLib::Warning("RB_DrawElementsWithCounters, vertexBuffer == NULL");
+			return;
+		}
+		vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
+	}
+	const int vertOffset = (int)(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+
+	// get index buffer
+	const vertCacheHandle_t ibHandle = surf->indexCache;
+	idIndexBuffer* indexBuffer;
+	if (vertexCache.CacheIsStatic(ibHandle)) {
+		indexBuffer = &vertexCache.staticData.indexBuffer;
+	}
+	else {
+		const uint64 frameNum = (int)(ibHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
+		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
+			idLib::Warning("RB_DrawElementsWithCounters, indexBuffer == NULL");
+			return;
+		}
+		indexBuffer = &vertexCache.frameData[vertexCache.drawListNum].indexBuffer;
+	}
+	const int indexOffset = (int)(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+
+	RENDERLOG_PRINTF("Binding Buffers: %p:%i %p:%i\n", vertexBuffer, vertOffset, indexBuffer, indexOffset);
+
+	if (surf->jointCache) {
+		if (!verify(renderProgManager.ShaderUsesJoints())) {
+			return;
+		}
+	}
+	else {
+		if (!verify(!renderProgManager.ShaderUsesJoints() || renderProgManager.ShaderHasOptionalSkinning())) {
+			return;
+		}
+	}
+
+	if (surf->jointCache) {
+		idJointBuffer jointBuffer;
+		if (!vertexCache.GetJointBuffer(surf->jointCache, &jointBuffer)) {
+			idLib::Warning("RB_DrawElementsWithCounters, jointBuffer == NULL");
+			return;
+		}
+		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
+
+		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset());
+	}
+
+	const triIndex_t* test = (triIndex_t*)indexOffset;
+
+	if (dxRenderer.EndSurfaceSettings()) {
+		dxRenderer.DrawModel(reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject()),
+			vertOffset / sizeof(idDrawVert),
+			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
+			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
+			r_singleTriangle.GetBool() ? 3 : surf->numIndexes);
+
+		//TODO: Eventually do the creation of the acceleration structure outside of these commands.
+	}
+
+	/*if (backEnd.glState.currentIndexBuffer != (GLuint)indexBuffer->GetAPIObject() || !r_useStateCaching.GetBool()) {
+		qglBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, (GLuint)indexBuffer->GetAPIObject());
+		backEnd.glState.currentIndexBuffer = (GLuint)indexBuffer->GetAPIObject();
+	}
+
+	if ((backEnd.glState.vertexLayout != LAYOUT_DRAW_VERT) || (backEnd.glState.currentVertexBuffer != (GLuint)vertexBuffer->GetAPIObject()) || !r_useStateCaching.GetBool()) {
+		qglBindBufferARB(GL_ARRAY_BUFFER_ARB, (GLuint)vertexBuffer->GetAPIObject());
+		backEnd.glState.currentVertexBuffer = (GLuint)vertexBuffer->GetAPIObject();
+
+		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_VERTEX);
+		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_NORMAL);
+		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_COLOR);
+		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_COLOR2);
+		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_ST);
+		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_TANGENT);
+
+		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_VERTEX, 3, GL_FLOAT, GL_FALSE, sizeof(idDrawVert), (void*)(DRAWVERT_XYZ_OFFSET));
+		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_NORMAL, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_NORMAL_OFFSET));
+		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_COLOR_OFFSET));
+		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_COLOR2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_COLOR2_OFFSET));
+		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_ST, 2, GL_HALF_FLOAT, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_ST_OFFSET));
+		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_TANGENT, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_TANGENT_OFFSET));
+
+		backEnd.glState.vertexLayout = LAYOUT_DRAW_VERT;
+	}
+
+	qglDrawElementsBaseVertex(GL_TRIANGLES,
+		r_singleTriangle.GetBool() ? 3 : surf->numIndexes,
+		GL_INDEX_TYPE,
+		(triIndex_t*)indexOffset,
+		vertOffset / sizeof(idDrawVert));*/
+}
+
+void RB_DrawElementsWithCounters(const drawSurf_t* surf) {
+	RB_DrawElementsWithCounters(surf, false);
+}
+
 /*
 ==================
 RB_FillDepthBufferGeneric
@@ -538,7 +672,7 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 				assert((GL_GetCurrentState() & GLS_DEPTHFUNC_BITS) == GLS_DEPTHFUNC_LESS);
 
 				// draw it
-				RB_DrawElementsWithCounters(drawSurf);
+				RB_DrawElementsWithCounters(drawSurf, true);
 
 				// clean up
 				RB_FinishStageTexturing(pStage, drawSurf);
@@ -575,7 +709,7 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 			assert((GL_GetCurrentState() & GLS_DEPTHFUNC_BITS) == GLS_DEPTHFUNC_LESS);
 
 			// draw it
-			RB_DrawElementsWithCounters(drawSurf);
+			RB_DrawElementsWithCounters(drawSurf, true);
 		}
 
 		renderLog.CloseBlock();
@@ -617,6 +751,9 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 
 	renderLog.OpenMainBlock(MRB_FILL_DEPTH_BUFFER);
 	renderLog.OpenBlock("RB_FillDepthBufferFast");
+
+	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DepthPass");
 
 	GL_StartDepthPass(backEnd.viewDef->scissor);
 
@@ -1350,6 +1487,10 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 		GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHMASK | depthFunc | GLS_STENCIL_FUNC_ALWAYS);
 	}
 
+#ifdef _DEBUG
+	dxRenderer.DebugAddLight(*vLight);
+#endif
+
 	// some rare lights have multiple animating stages, loop over them outside the surface list
 	const idMaterial* lightShader = vLight->lightShader;
 	const float* lightRegs = vLight->shaderRegisters;
@@ -1494,8 +1635,8 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 				// tranform the light/view origin into model local space
 				idVec4 localLightOrigin(0.0f);
 				idVec4 localViewOrigin(1.0f);
-				R_GlobalPointToLocal(surf->space->modelMatrix, vLight->globalLightOrigin, localLightOrigin.ToVec3());
-				R_GlobalPointToLocal(surf->space->modelMatrix, backEnd.viewDef->renderView.vieworg, localViewOrigin.ToVec3());
+				R_GlobalPointToLocal(&surf->space->modelMatrix[0], vLight->globalLightOrigin, localLightOrigin.ToVec3());
+				R_GlobalPointToLocal(&surf->space->modelMatrix[0], backEnd.viewDef->renderView.vieworg, localViewOrigin.ToVec3());
 
 				// set the local light/view origin
 				SetVertexParm(RENDERPARM_LOCALLIGHTORIGIN, localLightOrigin.ToFloatPtr());
@@ -1652,8 +1793,10 @@ static void RB_DrawInteractions() {
 	renderLog.OpenMainBlock(MRB_DRAW_INTERACTIONS);
 	renderLog.OpenBlock("RB_DrawInteractions");
 
-	GL_SelectTexture(0);
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DrawInteractions");
 
+	GL_SelectTexture(0);
 
 	const bool useLightDepthBounds = r_useLightDepthBounds.GetBool();
 
@@ -1690,7 +1833,7 @@ static void RB_DrawInteractions() {
 
 		// mirror flips the sense of the stencil select, and I don't want to risk accidentally breaking it
 		// in the normal case, so simply disable the stencil select in the mirror case
-		const bool useLightStencilSelect = (r_useLightStencilSelect.GetBool() && backEnd.viewDef->isMirror == false);
+		const bool useLightStencilSelect = backEnd.viewDef->isMirror == false;//&& r_useLightStencilSelect.GetBool() && backEnd.viewDef->isMirror == false;
 
 		if (performStencilTest) {
 			if (useLightStencilSelect) {
@@ -2407,116 +2550,6 @@ static void RB_FogAllLights() {
 	renderLog.CloseMainBlock();
 }
 
-void RB_DrawElementsWithCounters(const drawSurf_t* surf) {
-	// Connect to a new surfae renderer
-	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
-
-	// get vertex buffer
-	const vertCacheHandle_t vbHandle = surf->ambientCache;
-	idVertexBuffer* vertexBuffer;
-	if (vertexCache.CacheIsStatic(vbHandle)) {
-		vertexBuffer = &vertexCache.staticData.vertexBuffer;
-	}
-	else {
-		const uint64 frameNum = (int)(vbHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
-		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
-			idLib::Warning("RB_DrawElementsWithCounters, vertexBuffer == NULL");
-			return;
-		}
-		vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
-	}
-	const int vertOffset = (int)(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
-
-	// get index buffer
-	const vertCacheHandle_t ibHandle = surf->indexCache;
-	idIndexBuffer* indexBuffer;
-	if (vertexCache.CacheIsStatic(ibHandle)) {
-		indexBuffer = &vertexCache.staticData.indexBuffer;
-	}
-	else {
-		const uint64 frameNum = (int)(ibHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
-		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
-			idLib::Warning("RB_DrawElementsWithCounters, indexBuffer == NULL");
-			return;
-		}
-		indexBuffer = &vertexCache.frameData[vertexCache.drawListNum].indexBuffer;
-	}
-	const int indexOffset = (int)(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
-
-	RENDERLOG_PRINTF("Binding Buffers: %p:%i %p:%i\n", vertexBuffer, vertOffset, indexBuffer, indexOffset);
-
-	if (surf->jointCache) {
-		if (!verify(renderProgManager.ShaderUsesJoints())) {
-			return;
-		}
-	}
-	else {
-		if (!verify(!renderProgManager.ShaderUsesJoints() || renderProgManager.ShaderHasOptionalSkinning())) {
-			return;
-		}
-	}
-
-	// TODO: Add joint support
-	if (surf->jointCache) {
-		idJointBuffer jointBuffer;
-		if (!vertexCache.GetJointBuffer(surf->jointCache, &jointBuffer)) {
-			idLib::Warning("RB_DrawElementsWithCounters, jointBuffer == NULL");
-			return;
-		}
-		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
-
-		// TODO: Bind Joint buffer.
-
-		//const GLuint ubo = reinterpret_cast<GLuint>(jointBuffer.GetAPIObject());
-		//qglBindBufferRange(GL_UNIFORM_BUFFER, 0, ubo, jointBuffer.GetOffset(), jointBuffer.GetNumJoints() * sizeof(idJointMat));
-	}
-
-	const triIndex_t* test = (triIndex_t*)indexOffset;
-
-	if (dxRenderer.EndSurfaceSettings()) {
-		dxRenderer.DrawModel(reinterpret_cast<DX12VertexBuffer*>(vertexBuffer->GetAPIObject()),
-			vertOffset / sizeof(idDrawVert),
-			reinterpret_cast<DX12IndexBuffer*>(indexBuffer->GetAPIObject()),
-			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
-			r_singleTriangle.GetBool() ? 3 : surf->numIndexes);
-
-		dxRenderer.ExecuteCommandList();
-		dxRenderer.ResetCommandList();
-	}
-
-	/*if (backEnd.glState.currentIndexBuffer != (GLuint)indexBuffer->GetAPIObject() || !r_useStateCaching.GetBool()) {
-		qglBindBufferARB(GL_ELEMENT_ARRAY_BUFFER_ARB, (GLuint)indexBuffer->GetAPIObject());
-		backEnd.glState.currentIndexBuffer = (GLuint)indexBuffer->GetAPIObject();
-	}
-
-	if ((backEnd.glState.vertexLayout != LAYOUT_DRAW_VERT) || (backEnd.glState.currentVertexBuffer != (GLuint)vertexBuffer->GetAPIObject()) || !r_useStateCaching.GetBool()) {
-		qglBindBufferARB(GL_ARRAY_BUFFER_ARB, (GLuint)vertexBuffer->GetAPIObject());
-		backEnd.glState.currentVertexBuffer = (GLuint)vertexBuffer->GetAPIObject();
-
-		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_VERTEX);
-		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_NORMAL);
-		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_COLOR);
-		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_COLOR2);
-		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_ST);
-		qglEnableVertexAttribArrayARB(PC_ATTRIB_INDEX_TANGENT);
-
-		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_VERTEX, 3, GL_FLOAT, GL_FALSE, sizeof(idDrawVert), (void*)(DRAWVERT_XYZ_OFFSET));
-		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_NORMAL, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_NORMAL_OFFSET));
-		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_COLOR_OFFSET));
-		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_COLOR2, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_COLOR2_OFFSET));
-		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_ST, 2, GL_HALF_FLOAT, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_ST_OFFSET));
-		qglVertexAttribPointerARB(PC_ATTRIB_INDEX_TANGENT, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(idDrawVert), (void*)(DRAWVERT_TANGENT_OFFSET));
-
-		backEnd.glState.vertexLayout = LAYOUT_DRAW_VERT;
-	}
-
-	qglDrawElementsBaseVertex(GL_TRIANGLES,
-		r_singleTriangle.GetBool() ? 3 : surf->numIndexes,
-		GL_INDEX_TYPE,
-		(triIndex_t*)indexOffset,
-		vertOffset / sizeof(idDrawVert));*/
-}
-
 void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	renderLog.OpenBlock("RB_DrawViewInternal");
 
@@ -2600,10 +2633,13 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
 	}
 
-	//-------------------------------------------------
-	// fill the depth buffer and clear color buffer to black except on subviews
-	//-------------------------------------------------
-	RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
+	// if we are just doing 2D rendering, no need to fill the depth buffer
+	if (backEnd.viewDef->viewEntitys != NULL) {
+		//-------------------------------------------------
+		// fill the depth buffer and clear color buffer to black except on subviews
+		//-------------------------------------------------
+		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
+	}
 
 	//-------------------------------------------------
 	// main light renderer
@@ -2617,6 +2653,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	//-------------------------------------------------
 	int processed = 0;
 	if (!r_skipShaderPasses.GetBool()) {
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "Draw_ShaderPasses");
+
 		renderLog.OpenMainBlock(MRB_DRAW_SHADER_PASSES);
 		float guiScreenOffset;
 		if (viewDef->viewEntitys != NULL) {
@@ -2628,9 +2667,6 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		}
 		processed = RB_DrawShaderPasses(drawSurfs, numDrawSurfs, guiScreenOffset, stereoEye);
 		renderLog.CloseMainBlock();
-
-		//dxRenderer.ExecuteCommandList();
-		//dxRenderer.ResetCommandList();
 	}
 
 	//-------------------------------------------------
@@ -2685,7 +2721,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 		// render the remaining surfaces
 		renderLog.OpenMainBlock(MRB_DRAW_SHADER_PASSES_POST);
-		RB_DrawShaderPasses(drawSurfs + processed, numDrawSurfs - processed, 0.0f /* definitely not a gui */, stereoEye);
+		//RB_DrawShaderPasses(drawSurfs + processed, numDrawSurfs - processed, 0.0f /* definitely not a gui */, stereoEye);
 		renderLog.CloseMainBlock();
 	}	
 
@@ -2731,6 +2767,221 @@ void RB_DrawView(const void* data, const int stereoEye) {
 	}
 }
 
+void RB_PathTraceViewInternal(const viewDef_t* viewDef)
+{
+	renderLog.OpenBlock("RB_PathTraceView");
+
+	//-------------------------------------------------
+	// guis can wind up referencing purged images that need to be loaded.
+	// this used to be in the gui emit code, but now that it can be running
+	// in a separate thread, it must not try to load images, so do it here.
+	//-------------------------------------------------
+	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
+	const int numDrawSurfs = viewDef->numDrawSurfs;
+
+	for (int i = 0; i < numDrawSurfs; i++) {
+		const drawSurf_t* ds = drawSurfs[i];
+		if (ds->material != NULL) {
+			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
+		}
+	}
+
+	//-------------------------------------------------
+	// RB_PathTraceView
+	//
+	// We will be running a fully path traced system. For this we need to:
+	//	- Set the viewport and scissor window
+	//	- Cast all rays.
+	//	- Accumulate light based off of emissive textures.
+	//-------------------------------------------------
+
+	// Verify the acceleration structure is properly updated
+	dxRenderer.DXR_UpdateAccelerationStructure();
+
+	// set the window clipping
+	GL_Viewport(viewDef->viewport.x1,
+		viewDef->viewport.y1,
+		viewDef->viewport.x2 + 1 - viewDef->viewport.x1,
+		viewDef->viewport.y2 + 1 - viewDef->viewport.y1);
+
+	// the scissor may be smaller than the viewport for subviews
+	GL_Scissor(backEnd.viewDef->viewport.x1 + viewDef->scissor.x1,
+		backEnd.viewDef->viewport.y1 + viewDef->scissor.y1,
+		viewDef->scissor.x2 + 1 - viewDef->scissor.x1,
+		viewDef->scissor.y2 + 1 - viewDef->scissor.y1);
+	backEnd.currentScissor = viewDef->scissor;
+
+	backEnd.glState.faceCulling = -1;		// force face culling to set next time
+
+	// ensures that depth writes are enabled for the depth clear
+	GL_State(GLS_DEFAULT);
+
+	// Clear the depth buffer and clear the stencil to 128 for stencil shadows as well as gui masking
+	GL_Clear(false, true, true, STENCIL_SHADOW_TEST_VALUE, 0.0f, 0.0f, 0.0f, 0.0f);
+
+	// normal face culling
+	GL_Cull(CT_FRONT_SIDED);
+
+	//------------------------------------
+	// sets variables that can be used by all programs
+	//------------------------------------
+	{
+		//
+		// set eye position in global space
+		//
+		float parm[4];
+		parm[0] = backEnd.viewDef->renderView.vieworg[0];
+		parm[1] = backEnd.viewDef->renderView.vieworg[1];
+		parm[2] = backEnd.viewDef->renderView.vieworg[2];
+		parm[3] = 1.0f;
+		SetVertexParm(RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
+		dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
+
+		// sets overbright to make world brighter
+		// This value is baked into the specularScale and diffuseScale values so
+		// the interaction programs don't need to perform the extra multiply,
+		// but any other renderprogs that want to obey the brightness value
+		// can reference this.
+		float overbright = r_lightScale.GetFloat() * 0.5f;
+		parm[0] = overbright;
+		parm[1] = overbright;
+		parm[2] = overbright;
+		parm[3] = overbright;
+		SetFragmentParm(RENDERPARM_OVERBRIGHT, parm);
+
+		// Set Projection Matrix
+		float projMatrixTranspose[16];
+		R_MatrixTranspose(backEnd.viewDef->projectionMatrix, projMatrixTranspose);
+		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
+
+		// Set the inverse prokection matrix
+		idRenderMatrix inverseProjection;
+		/*idRenderMatrix projectionMatrix(
+			backEnd.viewDef->projectionMatrix[0], backEnd.viewDef->projectionMatrix[1], backEnd.viewDef->projectionMatrix[2], backEnd.viewDef->projectionMatrix[3],
+			backEnd.viewDef->projectionMatrix[4], backEnd.viewDef->projectionMatrix[5], backEnd.viewDef->projectionMatrix[6], backEnd.viewDef->projectionMatrix[7],
+			backEnd.viewDef->projectionMatrix[8], backEnd.viewDef->projectionMatrix[9], backEnd.viewDef->projectionMatrix[10], backEnd.viewDef->projectionMatrix[11],
+			backEnd.viewDef->projectionMatrix[12], backEnd.viewDef->projectionMatrix[13], backEnd.viewDef->projectionMatrix[14], backEnd.viewDef->projectionMatrix[15]
+		);*/
+		idRenderMatrix projectionMatrix(
+			projMatrixTranspose[0], projMatrixTranspose[1], projMatrixTranspose[2], projMatrixTranspose[3],
+			projMatrixTranspose[4], projMatrixTranspose[5], projMatrixTranspose[6], projMatrixTranspose[7],
+			projMatrixTranspose[8], projMatrixTranspose[9], projMatrixTranspose[10], projMatrixTranspose[11],
+			projMatrixTranspose[12], projMatrixTranspose[13], projMatrixTranspose[14], projMatrixTranspose[15]
+		);
+		idRenderMatrix::Inverse(projectionMatrix, inverseProjection);
+		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_PROJMATRIX_X, inverseProjection[0], 4);
+		
+
+		// Set the Inverse View Matrix
+		idRenderMatrix viewRenderMatrix;
+		idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrix);
+		float viewMatrixTranspose[16];
+		R_MatrixTranspose(viewRenderMatrix[0], viewMatrixTranspose);
+		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, viewRenderMatrix[0], 4);
+	}
+
+	//-------------------------------------------------
+	// Run the depth pass. This will make filling the Gbuffer faster.
+	//-------------------------------------------------
+	RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
+
+	//-------------------------------------------------
+	// Fill the Gbuffer.
+	// This buffer will include:
+	//		- Occlusion Map
+	//		- Motion Vector Map
+	//-------------------------------------------------
+	// TODO: Create this for denoising
+	if (dxRenderer.DXR_CastRays())
+	{
+		//-------------------------------------------------
+		// Cast rays into the scene
+		//-------------------------------------------------
+
+		//-------------------------------------------------
+		// Copy the raytraced buffer to view
+		//-------------------------------------------------
+		dxRenderer.DXR_DenoiseResult();
+		dxRenderer.DXR_GenerateResult();
+	}
+	dxRenderer.DXR_CopyResultToDisplay();
+	CYCLE_COMMAND_LIST();
+
+	//-------------------------------------------------
+	// fog and blend lights, drawn after emissive surfaces
+	// so they are properly dimmed down
+	//-------------------------------------------------
+	RB_FogAllLights();
+
+	//-------------------------------------------------
+	// capture the depth for the motion blur before rendering any post process surfaces that may contribute to the depth
+	//-------------------------------------------------
+	if (r_motionBlur.GetInteger() > 0) {
+		const idScreenRect& viewport = backEnd.viewDef->viewport;
+		globalImages->currentDepthImage->CopyDepthbuffer(viewport.x1, viewport.y1, viewport.GetWidth(), viewport.GetHeight());
+	}
+
+	//-------------------------------------------------
+	// now draw any screen warping post-process effects using _currentRender
+	//-------------------------------------------------
+	int processed = INT_MAX; // TODO: Add any post processing.
+	if (processed < numDrawSurfs && !r_skipPostProcess.GetBool()) {
+		int x = backEnd.viewDef->viewport.x1;
+		int y = backEnd.viewDef->viewport.y1;
+		int	w = backEnd.viewDef->viewport.x2 - backEnd.viewDef->viewport.x1 + 1;
+		int	h = backEnd.viewDef->viewport.y2 - backEnd.viewDef->viewport.y1 + 1;
+
+		RENDERLOG_PRINTF("Resolve to %i x %i buffer\n", w, h);
+
+		GL_SelectTexture(0);
+
+		// resolve the screen
+		globalImages->currentRenderImage->CopyFramebuffer(x, y, w, h);
+		backEnd.currentRenderCopied = true;
+
+		// RENDERPARM_SCREENCORRECTIONFACTOR amd RENDERPARM_WINDOWCOORD overlap
+		// diffuseScale and specularScale
+
+		// screen power of two correction factor (no longer relevant now)
+		float screenCorrectionParm[4];
+		screenCorrectionParm[0] = 1.0f;
+		screenCorrectionParm[1] = 1.0f;
+		screenCorrectionParm[2] = 0.0f;
+		screenCorrectionParm[3] = 1.0f;
+		SetFragmentParm(RENDERPARM_SCREENCORRECTIONFACTOR, screenCorrectionParm); // rpScreenCorrectionFactor
+
+		// window coord to 0.0 to 1.0 conversion
+		float windowCoordParm[4];
+		windowCoordParm[0] = 1.0f / w;
+		windowCoordParm[1] = 1.0f / h;
+		windowCoordParm[2] = 0.0f;
+		windowCoordParm[3] = 1.0f;
+		SetFragmentParm(RENDERPARM_WINDOWCOORD, windowCoordParm); // rpWindowCoord
+
+		// render the remaining surfaces
+		renderLog.OpenMainBlock(MRB_DRAW_SHADER_PASSES_POST);
+		RB_DrawShaderPasses(drawSurfs + processed, numDrawSurfs - processed, 0.0f /* definitely not a gui */, 0);
+		renderLog.CloseMainBlock();
+	}
+
+	renderLog.CloseBlock();
+}
+
+void RB_PathTraceView(const void* data)
+{
+	const drawSurfsCommand_t* cmd = (const drawSurfsCommand_t*)data;
+	backEnd.viewDef = cmd->viewDef;
+
+	backEnd.currentRenderCopied = false;
+
+	// if there aren't any drawsurfs, do nothing
+	if (!backEnd.viewDef->numDrawSurfs) {
+		return;
+	}
+
+	RB_PathTraceViewInternal(cmd->viewDef);
+}
+
 void RB_CopyRender(const void* data) {
 	// TODO: Copy the render
 }
@@ -2762,14 +3013,24 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 		switch (cmds->commandId) {
 		case RC_NOP:
 			break;
+
 		case RC_DRAW_VIEW_GUI:
-		case RC_DRAW_VIEW_3D:
 			RB_DrawView(cmds, 0);
+			c_draw2d++;
+			break;
+
+		case RC_DRAW_VIEW_3D:
+			if (dxRenderer.IsRaytracingEnabled())
+			{
+				RB_PathTraceView(cmds);
+			}
+			else
+			{
+				RB_DrawView(cmds, 0);
+			}
+
 			if (((const drawSurfsCommand_t*)cmds)->viewDef->viewEntitys) {
 				c_draw3d++;
-			}
-			else {
-				c_draw2d++;
 			}
 			break;
 		case RC_SET_BUFFER:
@@ -2795,7 +3056,7 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 	dxRenderer.EndDraw();
 	dxRenderer.PresentBackbuffer();
 
-	uint64 backEndFinishTime = Sys_Microseconds();
+	const uint64 backEndFinishTime = Sys_Microseconds();
 	backEnd.pc.totalMicroSec = backEndFinishTime - backEndStartTime;
 
 	if (r_debugRenderToTexture.GetInteger() == 1) {

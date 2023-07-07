@@ -1032,7 +1032,7 @@ void idAI::List_f( const idCmdArgs &args ) {
 	gameLocal.Printf( "%-4s  %-20s %s\n", " Num", "EntityDef", "Name" );
 	gameLocal.Printf( "------------------------------------------------\n" );
 	for( e = 0; e < MAX_GENTITIES; e++ ) {
-		check = static_cast<idAI *>(gameLocal.entities[ e ]);
+		check = static_cast<idAI *>(gameLocal.m_entities[ e ]);
 		if ( !check || !check->IsType( idAI::Type ) ) {
 			continue;
 		}

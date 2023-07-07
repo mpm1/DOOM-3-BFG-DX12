@@ -60,7 +60,7 @@ void idPhysics_Monster::CheckGround( monsterPState_t &state ) {
 		return;
 	}
 
-	groundEntityPtr = gameLocal.entities[ groundTrace.c.entityNum ];
+	groundEntityPtr = gameLocal.m_entities[ groundTrace.c.entityNum ];
 
 	if ( ( groundTrace.c.normal * -gravityNormal ) < minFloorCosine ) {
 		state.onGround = false;
@@ -108,7 +108,7 @@ monsterMoveResult_t idPhysics_Monster::SlideMove( idVec3 &start, idVec3 &velocit
 
 		if ( tr.c.entityNum != ENTITYNUM_NONE ) {
 			assert( tr.c.entityNum < MAX_GENTITIES );
-			blockingEntity = gameLocal.entities[ tr.c.entityNum ];
+			blockingEntity = gameLocal.m_entities[ tr.c.entityNum ];
 		} 
 		
 		// clip the movement delta and velocity

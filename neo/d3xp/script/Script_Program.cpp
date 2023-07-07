@@ -38,8 +38,8 @@ idTypeDef	type_scriptevent( ev_scriptevent, &def_scriptevent, "scriptevent", siz
 idTypeDef	type_namespace( ev_namespace, &def_namespace, "namespace", sizeof( void * ), NULL );
 idTypeDef	type_string( ev_string, &def_string, "string", MAX_STRING_LEN, NULL );
 idTypeDef	type_float( ev_float, &def_float, "float", sizeof(uintptr_t), NULL );
-idTypeDef	type_vector( ev_vector, &def_vector, "vector", sizeof( idVec3 ), NULL );
-idTypeDef	type_entity( ev_entity, &def_entity, "entity", sizeof( short * ), NULL );					// stored as entity number pointer
+idTypeDef	type_vector( ev_vector, &def_vector, "vector", sizeof(uintptr_t) * 3, NULL ); // We multiply here as the uintptr_t is our smallest saved sive, then multiply by 3 for the vector.
+idTypeDef	type_entity( ev_entity, &def_entity, "entity", sizeof( int * ), NULL );					// stored as entity number pointer
 idTypeDef	type_field( ev_field, &def_field, "field", sizeof( void * ), NULL );
 idTypeDef	type_function( ev_function, &def_function, "function", sizeof( void * ), &type_void );
 idTypeDef	type_virtualfunction( ev_virtualfunction, &def_virtualfunction, "virtual function", sizeof( uintptr_t ), NULL );

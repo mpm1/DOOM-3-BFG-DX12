@@ -201,7 +201,7 @@ void idGameLocal::Clear() {
 	for ( i = 0; i < MAX_CLIENTS; i++ ) {
 		persistentPlayerInfo[i].Clear();
 	}
-	memset( entities, 0, sizeof( entities ) );
+	memset( m_entities, 0, sizeof( m_entities ) );
 	memset( spawnIds, -1, sizeof( spawnIds ) );
 	firstFreeEntityIndex[0] = 0;
 	firstFreeEntityIndex[1] = ENTITYNUM_FIRST_NON_REPLICATED;
@@ -470,7 +470,7 @@ void idGameLocal::SaveGame( idFile *f, idFile *strings ) {
 
 	// go through all entities and threads and add them to the object list
 	for( i = 0; i < MAX_GENTITIES; i++ ) {
-		ent = entities[i];
+		ent = m_entities[i];
 
 		if ( ent ) {
 			if ( ent->GetTeamMaster() && ent->GetTeamMaster() != ent ) {
@@ -512,7 +512,7 @@ void idGameLocal::SaveGame( idFile *f, idFile *strings ) {
 	}
 
 	for( i = 0; i < MAX_GENTITIES; i++ ) {
-		savegame.WriteObject( entities[ i ] );
+		savegame.WriteObject( m_entities[ i ] );
 		savegame.WriteInt( spawnIds[ i ] );
 	}
 
@@ -684,7 +684,7 @@ const idDict &idGameLocal::GetPersistentPlayerInfo( int clientNum ) {
 	idEntity	*ent;
 
 	persistentPlayerInfo[ clientNum ].Clear();
-	ent = entities[ clientNum ];
+	ent = m_entities[ clientNum ];
 	if ( ent && ent->IsType( idPlayer::Type ) ) {
 		static_cast<idPlayer *>(ent)->SavePersistantInfo();
 	}
@@ -907,7 +907,7 @@ void idGameLocal::LoadMap( const char * mapName, int randseed ) {
 	numClients = 0;
 
 	// initialize all entities for this game
-	memset( entities, 0, sizeof( entities ) );
+	memset( m_entities, 0, sizeof( m_entities ) );
 	memset( spawnIds, -1, sizeof( spawnIds ) );
 	spawnCount = INITIAL_SPAWN_COUNT;
 	
@@ -1038,8 +1038,8 @@ void idGameLocal::LocalMapRestart( ) {
 	gamestate = GAMESTATE_SHUTDOWN;
 
 	for ( i = 0; i < MAX_CLIENTS; i++ ) {
-		if ( entities[ i ] && entities[ i ]->IsType( idPlayer::Type ) ) {
-			static_cast< idPlayer * >( entities[ i ] )->PrepareForRestart();
+		if ( m_entities[ i ] && m_entities[ i ]->IsType( idPlayer::Type ) ) {
+			static_cast< idPlayer * >( m_entities[ i ] )->PrepareForRestart();
 		}
 	}
 
@@ -1080,8 +1080,8 @@ void idGameLocal::LocalMapRestart( ) {
 
 	// setup the client entities again
 	for ( i = 0; i < MAX_CLIENTS; i++ ) {
-		if ( entities[ i ] && entities[ i ]->IsType( idPlayer::Type ) ) {
-			static_cast< idPlayer * >( entities[ i ] )->Restart();
+		if ( m_entities[ i ] && m_entities[ i ]->IsType( idPlayer::Type ) ) {
+			static_cast< idPlayer * >( m_entities[ i ] )->Restart();
 		}
 	}
 	
@@ -1269,12 +1269,12 @@ bool idGameLocal::InitFromSaveGame( const char *mapName, idRenderWorld *renderWo
 	}
 
 	for( i = 0; i < MAX_GENTITIES; i++ ) {
-		savegame.ReadObject( reinterpret_cast<idClass *&>( entities[ i ] ) );
+		savegame.ReadObject( reinterpret_cast<idClass *&>( m_entities[ i ] ) );
 		savegame.ReadInt( spawnIds[ i ] );
 
 		// restore the entityNumber
-		if ( entities[ i ] != NULL ) {
-			entities[ i ]->entityNumber = i;
+		if ( m_entities[ i ] != NULL ) {
+			m_entities[ i ]->entityNumber = i;
 		}
 	}
 
@@ -1285,7 +1285,7 @@ bool idGameLocal::InitFromSaveGame( const char *mapName, idRenderWorld *renderWo
 	int lobbyUserNum = 0;
 	assert( numLobbyUsers == 1 );
 	for ( int i = 0; i < MAX_PLAYERS && lobbyUserNum < numLobbyUsers; i++ ) {
-		if ( entities[i] == NULL ) {
+		if ( m_entities[i] == NULL ) {
 			continue;
 		}
 		lobbyUserIDs[i] = lobby.GetLobbyUserIdByOrdinal( lobbyUserNum++ );
@@ -1458,10 +1458,10 @@ void idGameLocal::MapClear( bool clearClients ) {
 	int i;
 
 	for( i = ( clearClients ? 0 : MAX_CLIENTS ); i < MAX_GENTITIES; i++ ) {
-		delete entities[ i ];
+		delete m_entities[ i ];
 		// ~idEntity is in charge of setting the pointer to NULL
 		// it will also clear pending events for this entity
-		assert( !entities[ i ] );
+		assert( !m_entities[ i ] );
 		spawnIds[ i ] = -1;
 	}
 
@@ -1470,10 +1470,10 @@ void idGameLocal::MapClear( bool clearClients ) {
 	if ( !clearClients ) {
 		// add back the hashes of the clients
 		for ( i = 0; i < MAX_CLIENTS; i++ ) {
-			if ( !entities[ i ] ) {
+			if ( !m_entities[ i ] ) {
 				continue;
 			}
-			entityHash.Add( entityHash.GenerateKey( entities[ i ]->name.c_str(), true ), i );
+			entityHash.Add( entityHash.GenerateKey( m_entities[ i ]->name.c_str(), true ), i );
 		}
 	}
 
@@ -1903,7 +1903,7 @@ void idGameLocal::SpawnPlayer( int clientNum ) {
 		numClients = clientNum + 1;
 	}
 
-	if ( !SpawnEntityDef( args, &ent ) || clientNum >= MAX_GENTITIES || entities[ clientNum ] == NULL ) {
+	if ( !SpawnEntityDef( args, &ent ) || clientNum >= MAX_GENTITIES || m_entities[ clientNum ] == NULL ) {
 		Error( "Failed to spawn player as '%s'", args.GetString( "classname" ) );
 	}
 
@@ -1923,8 +1923,8 @@ idPlayer *idGameLocal::GetClientByNum( int current ) const {
 	if ( current < 0 || current >= numClients ) {
 		current = 0;
 	}
-	if ( entities[current] ) {
-		return static_cast<idPlayer *>( entities[ current ] );
+	if ( m_entities[current] ) {
+		return static_cast<idPlayer *>( m_entities[ current ] );
 	}
 	return NULL;
 }
@@ -1940,7 +1940,7 @@ int idGameLocal::GetNextClientNum( int _current ) const {
 	current = 0;
 	for ( i = 0; i < numClients; i++) {
 		current = ( _current + i + 1 ) % numClients;
-		if ( entities[ current ] && entities[ current ]->IsType( idPlayer::Type ) ) {
+		if ( m_entities[ current ] && m_entities[ current ]->IsType( idPlayer::Type ) ) {
 			return current;
 		}
 	}
@@ -1963,11 +1963,11 @@ idPlayer *idGameLocal::GetLocalPlayer() const {
 		return NULL;
 	}
 
-	if ( !entities[ GetLocalClientNum() ] || !entities[ GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
+	if ( !m_entities[ GetLocalClientNum() ] || !m_entities[ GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
 		// not fully in game yet
 		return NULL;
 	}
-	return static_cast<idPlayer *>( entities[ GetLocalClientNum() ] );
+	return static_cast<idPlayer *>( m_entities[ GetLocalClientNum() ] );
 }
 
 /*
@@ -1998,7 +1998,7 @@ void idGameLocal::SetupPlayerPVS() {
 
 	playerPVS.i = -1;
 	for ( i = 0; i < numClients; i++ ) {
-		ent = entities[i];
+		ent = m_entities[i];
 		if ( !ent || !ent->IsType( idPlayer::Type ) ) {
 			continue;
 		}
@@ -2546,11 +2546,11 @@ void idGameLocal::RunAllUserCmdsForPlayer( idUserCmdMgr & cmdMgr, const int play
 	// Run thinks on any players that have queued up usercmds for networking.
 	assert( playerNumber < MAX_PLAYERS );
 
-	if ( entities[ playerNumber ] == NULL ) {
+	if ( m_entities[ playerNumber ] == NULL ) {
 		return;
 	}
 
-	idPlayer & player = static_cast< idPlayer & >( *entities[ playerNumber ] );
+	idPlayer & player = static_cast< idPlayer & >( *m_entities[ playerNumber ] );
 
 	// Only run a single userCmd each game frame for local players, otherwise when
 	// we are running < 60fps things like footstep sounds may get started right on top
@@ -2720,7 +2720,7 @@ bool idGameLocal::Draw( int clientNum ) {
 	// chose the optimized or legacy device context code
 	uiManager->SetDrawingDC();
 
-	idPlayer *player = static_cast<idPlayer *>(entities[ clientNum ]);
+	idPlayer *player = static_cast<idPlayer *>(m_entities[ clientNum ]);
 
 	if ( ( player == NULL ) || ( player->GetRenderView() == NULL ) ) {
 		return false;
@@ -3168,7 +3168,7 @@ void idGameLocal::RegisterEntity( idEntity *ent, int forceSpawnId, const idDict 
 		const int maxEntityNum = ( common->IsMultiplayer() && !ent->GetSkipReplication() ) ? ENTITYNUM_FIRST_NON_REPLICATED : ENTITYNUM_MAX_NORMAL;
 		int freeIndex = firstFreeEntityIndex[ freeListType ];
 
-		while( entities[ freeIndex ] != NULL && freeIndex < maxEntityNum ) {
+		while( m_entities[ freeIndex ] != NULL && freeIndex < maxEntityNum ) {
 			freeIndex++;
 		}
 		if ( freeIndex >= maxEntityNum ) {
@@ -3179,7 +3179,7 @@ void idGameLocal::RegisterEntity( idEntity *ent, int forceSpawnId, const idDict 
 		firstFreeEntityIndex[ freeListType ] = freeIndex;
 	}
 	
-	entities[ spawn_entnum ] = ent;
+	m_entities[ spawn_entnum ] = ent;
 	spawnIds[ spawn_entnum ] = ( forceSpawnId >= 0 ) ? forceSpawnId : spawnCount++;
 	ent->entityNumber = spawn_entnum;
 	ent->spawnNode.AddToEnd( spawnedEntities );
@@ -3210,9 +3210,9 @@ void idGameLocal::UnregisterEntity( idEntity *ent ) {
 		return;
 	}
 
-	if ( ( ent->entityNumber != ENTITYNUM_NONE ) && ( entities[ ent->entityNumber ] == ent ) ) {
+	if ( ( ent->entityNumber != ENTITYNUM_NONE ) && ( m_entities[ ent->entityNumber ] == ent ) ) {
 		ent->spawnNode.Remove();
-		entities[ ent->entityNumber ] = NULL;
+		m_entities[ ent->entityNumber ] = NULL;
 		spawnIds[ ent->entityNumber ] = -1;
 
 		int freeListType = ( common->IsMultiplayer() && ent->entityNumber >= ENTITYNUM_FIRST_NON_REPLICATED ) ? 1 : 0;
@@ -3465,7 +3465,7 @@ void idGameLocal::SpawnMapEntities() {
 	mapEnt = mapFile->GetEntity( 0 );
 	args = mapEnt->epairs;
 	args.SetInt( "spawn_entnum", ENTITYNUM_WORLD );
-	if ( !SpawnEntityDef( args ) || !entities[ ENTITYNUM_WORLD ] || !entities[ ENTITYNUM_WORLD ]->IsType( idWorldspawn::Type ) ) {
+	if ( !SpawnEntityDef( args ) || !m_entities[ ENTITYNUM_WORLD ] || !m_entities[ ENTITYNUM_WORLD ]->IsType( idWorldspawn::Type ) ) {
 		Error( "Problem spawning world entity" );
 	}
 
@@ -3515,7 +3515,7 @@ bool idGameLocal::RemoveEntityFromHash( const char *name, idEntity *ent ) {
 
 	hash = entityHash.GenerateKey( name, true );
 	for ( i = entityHash.First( hash ); i != -1; i = entityHash.Next( i ) ) {
-		if ( entities[i] && entities[i] == ent && entities[i]->name.Icmp( name ) == 0 ) {
+		if ( m_entities[i] && m_entities[i] == ent && m_entities[i]->name.Icmp( name ) == 0 ) {
 			entityHash.Remove( hash, i );
 			return true;
 		}
@@ -3563,14 +3563,14 @@ returns the master entity of a trace.  for example, if the trace entity is the p
 idEntity *idGameLocal::GetTraceEntity( const trace_t &trace ) const {
 	idEntity *master;
 
-	if ( !entities[ trace.c.entityNum ] ) {
+	if ( !m_entities[ trace.c.entityNum ] ) {
 		return NULL;
 	}
-	master = entities[ trace.c.entityNum ]->GetBindMaster();
+	master = m_entities[ trace.c.entityNum ]->GetBindMaster();
 	if ( master ) {
 		return master;
 	}
-	return entities[ trace.c.entityNum ];
+	return m_entities[ trace.c.entityNum ];
 }
 
 /*
@@ -3584,8 +3584,8 @@ void idGameLocal::ArgCompletion_EntityName( const idCmdArgs &args, void(*callbac
 	int i;
 
 	for( i = 0; i < gameLocal.num_entities; i++ ) {
-		if ( gameLocal.entities[ i ] ) {
-			callback( va( "%s %s", args.Argv( 0 ), gameLocal.entities[ i ]->name.c_str() ) );
+		if ( gameLocal.m_entities[ i ] ) {
+			callback( va( "%s %s", args.Argv( 0 ), gameLocal.m_entities[ i ]->name.c_str() ) );
 		}
 	}
 }
@@ -3602,8 +3602,8 @@ idEntity *idGameLocal::FindEntity( const char *name ) const {
 
 	hash = entityHash.GenerateKey( name, true );
 	for ( i = entityHash.First( hash ); i != -1; i = entityHash.Next( i ) ) {
-		if ( entities[i] && entities[i]->name.Icmp( name ) == 0 ) {
-			return entities[i];
+		if ( m_entities[i] && m_entities[i]->name.Icmp( name ) == 0 ) {
+			return m_entities[i];
 		}
 	}
 
@@ -4173,8 +4173,8 @@ void idGameLocal::SetCamera( idCamera *cam ) {
 		
 		// hide all the player models
 		for( i = 0; i < numClients; i++ ) {
-			if ( entities[ i ] ) {
-				client = static_cast< idPlayer* >( entities[ i ] );
+			if ( m_entities[ i ] ) {
+				client = static_cast< idPlayer* >( m_entities[ i ] );
 				client->EnterCinematic();
 			}
 		}
@@ -4216,8 +4216,8 @@ void idGameLocal::SetCamera( idCamera *cam ) {
 
 		// show all the player models
 		for( i = 0; i < numClients; i++ ) {
-			if ( entities[ i ] ) {
-				idPlayer *client = static_cast< idPlayer* >( entities[ i ] );
+			if ( m_entities[ i ] ) {
+				idPlayer *client = static_cast< idPlayer* >( m_entities[ i ] );
 				client->ExitCinematic();
 			}
 		}
@@ -4496,7 +4496,7 @@ idEntity *idGameLocal::SelectInitialSpawnPoint( idPlayer *player ) {
 		// check if we are alone in map
 		alone = true;
 		for ( j = 0; j < MAX_CLIENTS; j++ ) {
-			if ( entities[ j ] && entities[ j ] != player ) {
+			if ( m_entities[ j ] && m_entities[ j ] != player ) {
 				alone = false;
 				break;
 			}
@@ -4528,13 +4528,13 @@ idEntity *idGameLocal::SelectInitialSpawnPoint( idPlayer *player ) {
 				teamSpawnSpots[ team ][ i ].dist = 0x7fffffff;
 
 				for( j = 0; j < MAX_CLIENTS; j++ ) {
-					if ( !entities[ j ] || !entities[ j ]->IsType( idPlayer::Type )
-						|| entities[ j ] == player
-						|| static_cast< idPlayer * >( entities[ j ] )->spectating ) {
+					if ( !m_entities[ j ] || !m_entities[ j ]->IsType( idPlayer::Type )
+						|| m_entities[ j ] == player
+						|| static_cast< idPlayer * >( m_entities[ j ] )->spectating ) {
 						continue;
 					}
 					
-					dist = ( pos - entities[ j ]->GetPhysics()->GetOrigin() ).LengthSqr();
+					dist = ( pos - m_entities[ j ]->GetPhysics()->GetOrigin() ).LengthSqr();
 					if ( dist < teamSpawnSpots[ team ][ i ].dist ) {
 						teamSpawnSpots[ team ][ i ].dist = dist;
 					}
@@ -4557,13 +4557,13 @@ idEntity *idGameLocal::SelectInitialSpawnPoint( idPlayer *player ) {
 			pos = spawnSpots[ i ].ent->GetPhysics()->GetOrigin();
 			spawnSpots[ i ].dist = 0x7fffffff;
 			for( j = 0; j < MAX_CLIENTS; j++ ) {
-				if ( !entities[ j ] || !entities[ j ]->IsType( idPlayer::Type )
-					|| entities[ j ] == player
-					|| static_cast< idPlayer * >( entities[ j ] )->spectating ) {
+				if ( !m_entities[ j ] || !m_entities[ j ]->IsType( idPlayer::Type )
+					|| m_entities[ j ] == player
+					|| static_cast< idPlayer * >( m_entities[ j ] )->spectating ) {
 					continue;
 				}
 				
-				dist = ( pos - entities[ j ]->GetPhysics()->GetOrigin() ).LengthSqr();
+				dist = ( pos - m_entities[ j ]->GetPhysics()->GetOrigin() ).LengthSqr();
 				if ( dist < spawnSpots[ i ].dist ) {
 					spawnSpots[ i ].dist = dist;
 				}

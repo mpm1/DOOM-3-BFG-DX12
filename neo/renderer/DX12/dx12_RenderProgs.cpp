@@ -1,6 +1,7 @@
 #pragma hdrstop
 #include "../../idlib/precompiled.h"
 
+#include "./dx12_shader.h"
 #include "../tr_local.h"
 
 #include <unordered_map>
@@ -196,10 +197,10 @@ void LoadStagePipelineState(int parentState, glstate_t state) {
 		const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
 			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 			{ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT , 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "NORMAL", 0, DXGI_FORMAT_B8G8R8A8_UNORM , 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "TANGENT", 0, DXGI_FORMAT_B8G8R8A8_UNORM , 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "COLOR", 0, DXGI_FORMAT_B8G8R8A8_UNORM , 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-			{ "COLOR", 1, DXGI_FORMAT_B8G8R8A8_UNORM , 0, 28, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "NORMAL", 0, DXGI_FORMAT_R8G8B8A8_UNORM , 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "TANGENT", 0, DXGI_FORMAT_R8G8B8A8_UNORM , 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM , 0, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "COLOR", 1, DXGI_FORMAT_R8G8B8A8_UNORM , 0, 28, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		};
 
 		D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc = pipelineDescriptors[parentState];
@@ -240,29 +241,6 @@ bool DX12_ActivatePipelineState() {
 	return true;
 }
 
-void LoadHLSLShader(DX12CompiledShader* shader, const char* name, eShader shaderType) {
-	idStr inFile;
-	inFile.Format("renderprogs\\hlsl\\%s", name);
-	inFile.StripFileExtension();
-
-	switch (shaderType) {
-	case VERTEX:
-		inFile += ".vcso";
-		break;
-
-	case PIXEL:
-		inFile += ".pcso";
-		break;
-
-	default:
-		inFile += ".cso";
-	}
-
-	void* data = NULL;
-	shader->size = fileSystem->ReadFile(inFile.c_str(), &data);
-	shader->data = static_cast<byte*>(data);
-}
-
 void idRenderProgManager::SetUniformValue(const renderParm_t rp, const float* value) {
 	dxRenderer.Uniform4f(rp, value);
 }
@@ -296,8 +274,8 @@ void idRenderProgManager::LoadProgram(const int programIndex, const int vertexSh
 		return; // Already loaded.
 	}
 
-	DX12CompiledShader* vertexShader = (vertexShaderIndex != -1) ? static_cast<DX12CompiledShader*>(vertexShaders[vertexShaderIndex].apiObject) : NULL;
-	DX12CompiledShader* fragmentShader = (fragmentShaderIndex != -1) ? static_cast<DX12CompiledShader*>(fragmentShaders[fragmentShaderIndex].apiObject) : NULL;
+	DX12Rendering::CompiledShader* vertexShader = (vertexShaderIndex != -1) ? static_cast<DX12Rendering::CompiledShader*>(vertexShaders[vertexShaderIndex].apiObject) : NULL;
+	DX12Rendering::CompiledShader* fragmentShader = (fragmentShaderIndex != -1) ? static_cast<DX12Rendering::CompiledShader*>(fragmentShaders[fragmentShaderIndex].apiObject) : NULL;
 
 	if (vertexShader == NULL || fragmentShader == NULL || vertexShader->data == NULL || fragmentShader->data == NULL) {
 		common->Warning("Could not build shader %s.", vertexShaders[vertexShaderIndex].name.c_str());
@@ -335,9 +313,9 @@ void idRenderProgManager::LoadVertexShader(int index) {
 		return; // Already loaded
 	}
 
-	DX12CompiledShader* shader = (DX12CompiledShader*)malloc(sizeof(DX12CompiledShader));
+	DX12Rendering::CompiledShader* shader = (DX12Rendering::CompiledShader*)malloc(sizeof(DX12Rendering::CompiledShader));
 
-	LoadHLSLShader(shader, vertexShaders[index].name, VERTEX);
+	DX12Rendering::LoadHLSLShader(shader, vertexShaders[index].name, DX12Rendering::VERTEX);
 
 	vertexShaders[index].apiObject = shader;
 	//vertexShaders[index].progId = ( GLuint ) LoadGLSLShader( GL_VERTEX_SHADER, vertexShaders[index].name, vertexShaders[index].uniforms );*/
@@ -353,9 +331,9 @@ void idRenderProgManager::LoadFragmentShader(int index) {
 		return; // Already loaded
 	}
 
-	DX12CompiledShader* shader = (DX12CompiledShader*)malloc(sizeof(DX12CompiledShader));
+	DX12Rendering::CompiledShader* shader = (DX12Rendering::CompiledShader*)malloc(sizeof(DX12Rendering::CompiledShader));
 
-	LoadHLSLShader(shader, fragmentShaders[index].name, PIXEL);
+	DX12Rendering::LoadHLSLShader(shader, fragmentShaders[index].name, DX12Rendering::PIXEL);
 
 	fragmentShaders[index].apiObject = shader;
 

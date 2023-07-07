@@ -122,7 +122,7 @@ public:
 	virtual const char*	Activate(bool activate);
 	virtual idWinVar *	GetWinVarByName	(const char *_name, bool winLookup = false, drawWin_t** owner = NULL);
 
-	idList<BOEntity*>	entities;
+	idList<BOEntity*>	m_entities;
 
 private:
 	void				CommonInit();

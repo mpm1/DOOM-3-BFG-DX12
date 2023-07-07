@@ -294,7 +294,7 @@ bool idMoveable::Collide( const trace_t &collision, const idVec3 &velocity ) {
 		bool hasMonsterDamage = monsterDamage.Length() > 0;
 
 		if ( hasDamage || hasMonsterDamage ) {
-			ent = gameLocal.entities[ collision.c.entityNum ];
+			ent = gameLocal.m_entities[ collision.c.entityNum ];
 			if ( ent && v > minDamageVelocity ) {
 				f = v > maxDamageVelocity ? 1.0f : idMath::Sqrt( v - minDamageVelocity ) * ( 1.0f / idMath::Sqrt( maxDamageVelocity - minDamageVelocity ) );
 				dir = velocity;
@@ -1271,10 +1271,10 @@ void idExplodingBarrel::Event_Respawn() {
 	if ( minRespawnDist ) {
 		float minDist = -1;
 		for ( i = 0; i < gameLocal.numClients; i++ ) {
-			if ( !gameLocal.entities[ i ] || !gameLocal.entities[ i ]->IsType( idPlayer::Type ) ) {
+			if ( !gameLocal.m_entities[ i ] || !gameLocal.m_entities[ i ]->IsType( idPlayer::Type ) ) {
 				continue;
 			}
-			idVec3 v = gameLocal.entities[ i ]->GetPhysics()->GetOrigin() - GetPhysics()->GetOrigin();
+			idVec3 v = gameLocal.m_entities[ i ]->GetPhysics()->GetOrigin() - GetPhysics()->GetOrigin();
 			float dist = v.Length();
 			if ( minDist < 0 || dist < minDist ) {
 				minDist = dist;

@@ -294,7 +294,7 @@ bool idSecurityCamera::CanSeePlayer() {
 	handle = gameLocal.pvs.SetupCurrentPVS( pvsArea );
 
 	for ( i = 0; i < gameLocal.numClients; i++ ) {
-		ent = static_cast<idPlayer*>(gameLocal.entities[ i ]);
+		ent = static_cast<idPlayer*>(gameLocal.m_entities[ i ]);
 
 		if ( !ent || ( ent->fl.notarget ) ) {
 			continue;

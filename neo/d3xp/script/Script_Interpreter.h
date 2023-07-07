@@ -60,7 +60,7 @@ private:
 
 	void				PopParms( int numParms );
 	void				PushString( const char *string );
-	void				Push( uintptr_t value );
+	void				Push( intptr_t value );
 	const char			*FloatToString( float value );
 	void				AppendString( idVarDef *def, const char *from );
 	void				SetString( idVarDef *def, const char *from );
@@ -135,12 +135,15 @@ ID_INLINE void idInterpreter::PopParms( int numParms ) {
 idInterpreter::Push
 ====================
 */
-ID_INLINE void idInterpreter::Push( uintptr_t value ) {
-	if ( localstackUsed + sizeof( uintptr_t ) > LOCALSTACK_SIZE ) {
+ID_INLINE void idInterpreter::Push( intptr_t value ) {
+	assert(!(value != value));
+
+	if ( localstackUsed + sizeof( intptr_t ) > LOCALSTACK_SIZE ) {
 		Error( "Push: locals stack overflow\n" );
 	}
-	*( uintptr_t * )&localstack[ localstackUsed ]	= value;
-	localstackUsed += sizeof( uintptr_t );
+
+	*( intptr_t * )&localstack[ localstackUsed ]	= value;
+	localstackUsed += sizeof( intptr_t );
 }
 
 /*
@@ -234,7 +237,7 @@ idInterpreter::GetEntity
 ID_INLINE idEntity *idInterpreter::GetEntity( short entnum ) const{
 	assert( entnum <= MAX_GENTITIES );
 	if ( ( entnum > 0 ) && ( entnum <= MAX_GENTITIES ) ) {
-		return gameLocal.entities[ entnum - 1 ];
+		return gameLocal.m_entities[ entnum - 1 ];
 	}
 	return NULL;
 }
@@ -249,7 +252,7 @@ ID_INLINE idScriptObject *idInterpreter::GetScriptObject( short entnum ) const {
 
 	assert( entnum <= MAX_GENTITIES );
 	if ( ( entnum > 0 ) && ( entnum <= MAX_GENTITIES ) ) {
-		ent = gameLocal.entities[ entnum - 1 ];
+		ent = gameLocal.m_entities[ entnum - 1 ];
 		if ( ent && ent->scriptObject.data ) {
 			return &ent->scriptObject;
 		}

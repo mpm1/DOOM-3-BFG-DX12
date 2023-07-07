@@ -317,6 +317,7 @@ struct viewLight_t {
 
 	// R_AddSingleLight will build a chain of parameters here to setup shadow volumes
 	preLightShadowVolumeParms_t *	preLightShadowVolumes;
+	void*					shadowAccelerationStructure; // acceleration structure used for shadow ray casting.
 };
 
 // a viewEntity is created whenever a idRenderEntityLocal is considered for inclusion

@@ -764,7 +764,7 @@ R_ShowInteractionMemory_f
 ===================
 */
 void R_ShowInteractionMemory_f( const idCmdArgs &args ) {
-	int entities = 0;
+	int m_entities = 0;
 	int interactions = 0;
 	int deferredInteractions = 0;
 	int emptyInteractions = 0;
@@ -799,7 +799,7 @@ void R_ShowInteractionMemory_f( const idCmdArgs &args ) {
 		if ( def->firstInteraction == NULL ) {
 			continue;
 		}
-		entities++;
+		m_entities++;
 
 		int numInteractionsForEntity = 0;
 		for ( idInteraction *inter = def->firstInteraction; inter != NULL; inter = inter->entityNext ) {
@@ -837,7 +837,7 @@ void R_ShowInteractionMemory_f( const idCmdArgs &args ) {
 		}
 	}
 
-	common->Printf( "%i entities with %i total interactions\n", entities, interactions );
+	common->Printf( "%i entities with %i total interactions\n", m_entities, interactions );
 	common->Printf( "%i deferred interactions, %i empty interactions\n", deferredInteractions, emptyInteractions );
 	common->Printf( "%5i indexes in %5i light tris\n", lightTriIndexes, lightTris );
 	common->Printf( "%5i indexes in %5i shadow tris\n", shadowTriIndexes, shadowTris );

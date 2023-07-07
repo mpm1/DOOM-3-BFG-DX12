@@ -485,8 +485,8 @@ void idThread::DisplayInfo() {
 			"      Reason: ",  lastExecuteTime, gameLocal.time - lastExecuteTime );
 		if ( waitingForThread ) {
 			gameLocal.Printf( "Waiting for thread #%3i '%s'\n", waitingForThread->GetThreadNum(), waitingForThread->GetThreadName() );
-		} else if ( ( waitingFor != ENTITYNUM_NONE ) && ( waitingFor < MAX_GENTITIES ) && ( gameLocal.entities[ waitingFor ] ) ) {
-			gameLocal.Printf( "Waiting for entity #%3i '%s'\n", waitingFor, gameLocal.entities[ waitingFor ]->name.c_str() );
+		} else if ( ( waitingFor != ENTITYNUM_NONE ) && ( waitingFor < MAX_GENTITIES ) && ( gameLocal.m_entities[ waitingFor ] ) ) {
+			gameLocal.Printf( "Waiting for entity #%3i '%s'\n", waitingFor, gameLocal.m_entities[ waitingFor ]->name.c_str() );
 		} else if ( waitingUntil ) {
 			gameLocal.Printf( "Waiting until %d (%d ms total wait time)\n", waitingUntil, waitingUntil - lastExecuteTime );
 		} else {
@@ -1135,7 +1135,7 @@ void idThread::Event_GetEntity( const char *name ) {
 			Error( "Entity number in string out of range." );
 			return;
 		}
-		ReturnEntity( gameLocal.entities[ entnum ] );
+		ReturnEntity( gameLocal.m_entities[ entnum ] );
 	} else {
 		ent = gameLocal.FindEntity( name );
 		ReturnEntity( ent );
@@ -1554,7 +1554,7 @@ idThread::Event_GetTraceEntity
 */
 void idThread::Event_GetTraceEntity() {
 	if ( trace.fraction < 1.0f ) {
-		ReturnEntity( gameLocal.entities[ trace.c.entityNum ] );
+		ReturnEntity( gameLocal.m_entities[ trace.c.entityNum ] );
 	} else {
 		ReturnEntity( ( idEntity * )NULL );
 	}
@@ -1567,7 +1567,7 @@ idThread::Event_GetTraceJoint
 */
 void idThread::Event_GetTraceJoint() {
 	if ( trace.fraction < 1.0f && trace.c.id < 0 ) {
-		idAFEntity_Base *af = static_cast<idAFEntity_Base *>( gameLocal.entities[ trace.c.entityNum ] );
+		idAFEntity_Base *af = static_cast<idAFEntity_Base *>( gameLocal.m_entities[ trace.c.entityNum ] );
 		if ( af && af->IsType( idAFEntity_Base::Type ) && af->IsActiveAF() ) {
 			ReturnString( af->GetAnimator()->GetJointName( CLIPMODEL_ID_TO_JOINT_HANDLE( trace.c.id ) ) );
 			return;
@@ -1583,7 +1583,7 @@ idThread::Event_GetTraceBody
 */
 void idThread::Event_GetTraceBody() {
 	if ( trace.fraction < 1.0f && trace.c.id < 0 ) {
-		idAFEntity_Base *af = static_cast<idAFEntity_Base *>( gameLocal.entities[ trace.c.entityNum ] );
+		idAFEntity_Base *af = static_cast<idAFEntity_Base *>( gameLocal.m_entities[ trace.c.entityNum ] );
 		if ( af && af->IsType( idAFEntity_Base::Type ) && af->IsActiveAF() ) {
 			int bodyId = af->BodyForClipModelId( trace.c.id );
 			idAFBody *body = af->GetAFPhysics()->GetBody( bodyId );

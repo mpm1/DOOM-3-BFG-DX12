@@ -28,11 +28,11 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "global.inc"
 
-uniform samplerCUBE	samp0 : register(s0); // texture 0 is the cube map
-uniform sampler2D	samp1 : register(s1); // normal map
+uniform TextureCube<float4>	samp0 : register(t0); // texture 0 is the cube map
+uniform Texture2D<float4>	samp1 : register(t1); // normal map
 
 struct PS_IN {
-	float4 position		: VPOS;
+	float4 position		: SV_POSITION;
 	float2 texcoord0	: TEXCOORD0_centroid;
 	float3 texcoord1	: TEXCOORD1_centroid;
 	float3 texcoord2	: TEXCOORD2_centroid;
@@ -42,12 +42,12 @@ struct PS_IN {
 };
 
 struct PS_OUT {
-	float4 color : COLOR;
+	float4 color : SV_TARGET;
 };
 
 void main( PS_IN fragment, out PS_OUT result ) {
 
-	float4 bump = tex2D( samp1, fragment.texcoord0 ) * 2.0f - 1.0f;
+	float4 bump = samp1.Sample(baseSampler, fragment.texcoord0 ) * 2.0f - 1.0f;
 	float3 localNormal = float3( bump.wy, 0.0f );
 	localNormal.z = sqrt( 1.0f - dot3( localNormal, localNormal ) );
 
@@ -61,7 +61,7 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	float3 reflectionVector = globalNormal * dot3( globalEye, globalNormal );
 	reflectionVector = ( reflectionVector * 2.0f ) - globalEye;
 
-	float4 envMap = texCUBE( samp0, reflectionVector );
+	float4 envMap = samp0.Sample( baseSampler, reflectionVector );
 
 	result.color = float4( envMap.xyz, 1.0f ) * fragment.color;
 }

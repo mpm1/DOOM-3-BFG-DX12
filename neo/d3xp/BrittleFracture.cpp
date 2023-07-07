@@ -508,7 +508,7 @@ idBrittleFracture::ModelCallback
 bool idBrittleFracture::ModelCallback( renderEntity_s *renderEntity, const renderView_t *renderView ) {
 	const idBrittleFracture *ent;
 
-	ent = static_cast<idBrittleFracture *>(gameLocal.entities[ renderEntity->entityNum ]);
+	ent = static_cast<idBrittleFracture *>(gameLocal.m_entities[ renderEntity->entityNum ]);
 	if ( ent == NULL ) {
 		gameLocal.Error( "idBrittleFracture::ModelCallback: callback with NULL game entity" );
 		return false;

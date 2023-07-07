@@ -184,7 +184,7 @@ protected:
 class idMapFile {
 public:
 							idMapFile();
-							~idMapFile() { entities.DeleteContents( true ); }
+							~idMapFile() { m_entities.DeleteContents( true ); }
 
 							// filename does not require an extension
 							// normally this will use a .reg file instead of a .map file if it exists,
@@ -193,9 +193,9 @@ public:
 	bool					Parse( const char *filename, bool ignoreRegion = false, bool osPath = false );
 	bool					Write( const char *fileName, const char *ext, bool fromBasePath = true );
 							// get the number of entities in the map
-	int						GetNumEntities() const { return entities.Num(); }
+	int						GetNumEntities() const { return m_entities.Num(); }
 							// get the specified entity
-	idMapEntity *			GetEntity( int i ) const { return entities[i]; }
+	idMapEntity *			GetEntity( int i ) const { return m_entities[i]; }
 							// get the name without file extension
 	const char *			GetName() const { return name; }
 							// get the file time
@@ -218,7 +218,7 @@ protected:
 	float					version;
 	ID_TIME_T					fileTime;
 	unsigned int			geometryCRC;
-	idList<idMapEntity *, TAG_IDLIB_LIST_MAP>	entities;
+	idList<idMapEntity *, TAG_IDLIB_LIST_MAP>	m_entities;
 	idStr					name;
 	bool					hasPrimitiveData;
 
@@ -230,7 +230,7 @@ ID_INLINE idMapFile::idMapFile() {
 	version = CURRENT_MAP_VERSION;
 	fileTime = 0;
 	geometryCRC = 0;
-	entities.Resize( 1024, 256 );
+	m_entities.Resize( 1024, 256 );
 	hasPrimitiveData = false;
 }
 

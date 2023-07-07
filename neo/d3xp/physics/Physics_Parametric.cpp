@@ -975,7 +975,7 @@ idPhysics_Parametric::GetBlockingEntity
 */
 idEntity *idPhysics_Parametric::GetBlockingEntity() const {
 	if ( isBlocked ) {
-		return gameLocal.entities[ pushResults.c.entityNum ];
+		return gameLocal.m_entities[ pushResults.c.entityNum ];
 	}
 	return NULL;
 }

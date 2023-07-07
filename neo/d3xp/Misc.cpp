@@ -122,7 +122,7 @@ bool idPlayerStart::ClientReceiveEvent( int event, int time, const idBitMsg &msg
 	switch( event ) {
 		case EVENT_TELEPORTPLAYER: {
 			entityNumber = msg.ReadBits( GENTITYNUM_BITS );
-			idPlayer *player = static_cast<idPlayer *>( gameLocal.entities[entityNumber] );
+			idPlayer *player = static_cast<idPlayer *>( gameLocal.m_entities[entityNumber] );
 			if ( player != NULL && player->IsType( idPlayer::Type ) ) {
 				Event_TeleportPlayer( player );
 			}
@@ -713,7 +713,7 @@ void idSpring::Event_LinkSpring() {
 		}
 	}
 	else {
-		ent1 = gameLocal.entities[ENTITYNUM_WORLD];
+		ent1 = gameLocal.m_entities[ENTITYNUM_WORLD];
 	}
 
 	if ( name2.Length() ) {
@@ -724,7 +724,7 @@ void idSpring::Event_LinkSpring() {
 		}
 	}
 	else {
-		ent2 = gameLocal.entities[ENTITYNUM_WORLD];
+		ent2 = gameLocal.m_entities[ENTITYNUM_WORLD];
 	}
 
 	spring.SetPosition( ent1->GetPhysics(), id1, p1, ent2->GetPhysics(), id2, p2 );

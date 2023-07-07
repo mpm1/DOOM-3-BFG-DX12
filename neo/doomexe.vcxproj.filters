@@ -67,6 +67,12 @@
     <Filter Include="Shaders">
       <UniqueIdentifier>{4691cec9-dae7-45dc-a842-8d1cba4550d9}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Renderer\DX12\imgui">
+      <UniqueIdentifier>{5104f725-89bf-49db-b885-15fa5a6a3c3f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Renderer\DX12\debug">
+      <UniqueIdentifier>{b6fb3a0f-fd7c-4266-9f13-8acd2651c239}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cm\CollisionModel.h">
@@ -551,6 +557,81 @@
     </ClInclude>
     <ClInclude Include="renderer\GLFunction.h">
       <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_RootSignature.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_global.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_raytracing.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_TextureManager.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\RaytracingRootSignature.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_shader.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_RaytracingPipeline.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_ShaderBindingTable.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_AccelerationStructure.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_imgui.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imconfig.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui_impl_dx12.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui_impl_win32.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imgui_internal.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imstb_rectpack.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imstb_textedit.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\imgui\imstb_truetype.h">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_buffermap.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_resource.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_CommandList.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\debug\dx12_debug.h">
+      <Filter>Renderer\DX12\debug</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_DeviceManager.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_Geometry.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_RenderTarget.h">
+      <Filter>Renderer\DX12</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -1175,6 +1256,72 @@
     <ClCompile Include="renderer\DX12\dx12_RenderTools.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_RootSignature.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_raytracing.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_TextureManager.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_global.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\RaytracingRootSignature.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_shader.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_RaytracingPipeline.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_ShaderBindingTable.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_AccelerationStructure.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_draw.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_impl_dx12.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_impl_win32.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_tables.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\imgui\imgui_widgets.cpp">
+      <Filter>Renderer\DX12\imgui</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_imgui.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_buffermap.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_resource.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_CommandList.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_DeviceManager.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_Geometry.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_RenderTarget.cpp">
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="sys\win32\rc\res\doom.ico">
@@ -1213,18 +1360,6 @@
     <None Include="..\base\renderprogs\bloodorb3_capture.vertex">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="..\base\renderprogs\bumpyenvironment.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\bumpyenvironment.vertex">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\bumpyenvironment_skinned.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\bumpyenvironment_skinned.vertex">
-      <Filter>Shaders</Filter>
-    </None>
     <None Include="..\base\renderprogs\color.pixel">
       <Filter>Shaders</Filter>
     </None>
@@ -1235,12 +1370,6 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\base\renderprogs\colorProcess.vertex">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\depth_skinned.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\depth_skinned.vertex">
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\base\renderprogs\environment.pixel">
@@ -1261,25 +1390,10 @@
     <None Include="..\base\renderprogs\enviroSuit.vertex">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="..\base\renderprogs\fog.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\fog.vertex">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\fog_skinned.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\fog_skinned.vertex">
-      <Filter>Shaders</Filter>
-    </None>
     <None Include="..\base\renderprogs\fxaa.pixel">
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\base\renderprogs\fxaa.vertex">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\global.inc">
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\base\renderprogs\heathaze.pixel">
@@ -1348,12 +1462,6 @@
     <None Include="..\base\renderprogs\skinning.inc">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="..\base\renderprogs\skybox.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\skybox.vertex">
-      <Filter>Shaders</Filter>
-    </None>
     <None Include="..\base\renderprogs\stereoDeGhost.pixel">
       <Filter>Shaders</Filter>
     </None>
@@ -1372,12 +1480,6 @@
     <None Include="..\base\renderprogs\stereoWarp.vertex">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="..\base\renderprogs\texture_color_skinned.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\texture_color_skinned.vertex">
-      <Filter>Shaders</Filter>
-    </None>
     <None Include="..\base\renderprogs\texture_color_texgen.pixel">
       <Filter>Shaders</Filter>
     </None>
@@ -1390,7 +1492,19 @@
     <None Include="..\base\renderprogs\wobblesky.vertex">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\base\renderprogs\raytracing_global.inc">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\base\renderprogs\global.inc">
+      <Filter>Shaders</Filter>
+    </None>
     <None Include="packages.config" />
+    <None Include="..\base\renderprogs\gbuffer.pixel">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\base\renderprogs\gbuffer.vertex">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sys\win32\rc\doom.rc">
@@ -1461,5 +1575,61 @@
     <FxCompile Include="..\base\renderprogs\depth.pixel">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="..\base\renderprogs\depth_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\depth_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\fog_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\texture_color_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\texture_color_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\skybox.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\skybox.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\shadow_generator.ray">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\general_hit.ray">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\general_miss.ray">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\bumpyenvironment_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\bumpyenvironment_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\bumpyenvironment.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\bumpyenvironment.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <Natvis Include="renderer\DX12\debug\ImageViewer.natvis">
+      <Filter>Renderer\DX12\debug</Filter>
+    </Natvis>
   </ItemGroup>
 </Project>

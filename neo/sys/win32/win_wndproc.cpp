@@ -291,7 +291,9 @@ LONG WINAPI MainWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 			if ( key == K_PRINTSCREEN ) {
 				// don't queue printscreen keys.  Since windows doesn't send us key
 				// down events for this, we handle queueing them with DirectInput
+#ifndef DEBUG_PIX
 				break;
+#endif
 			} else if ( key == K_LCTRL || key == K_LALT || key == K_RCTRL || key == K_RALT ) {
 				// let direct-input handle this because windows sends Alt-Gr
 				// as two events (ctrl then alt)

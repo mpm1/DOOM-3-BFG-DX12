@@ -138,7 +138,7 @@ void idGameLocal::SyncPlayersWithLobbyUsers( bool initial ) {
 		bool found = false;
 
 		for ( int j = 0; j < MAX_PLAYERS; j++ ) {
-			idPlayer * player = static_cast<idPlayer *>( entities[ j ] );
+			idPlayer * player = static_cast<idPlayer *>( m_entities[ j ] );
 			if ( player == NULL ) {
 				continue;
 			}
@@ -159,7 +159,7 @@ void idGameLocal::SyncPlayersWithLobbyUsers( bool initial ) {
 
 	// Validate connected players
 	for ( int i = 0; i < MAX_PLAYERS; i++ ) {
-		idPlayer * player = static_cast<idPlayer *>( entities[ i ] );
+		idPlayer * player = static_cast<idPlayer *>( m_entities[ i ] );
 		if ( player == NULL ) {
 			continue;
 		}
@@ -167,7 +167,7 @@ void idGameLocal::SyncPlayersWithLobbyUsers( bool initial ) {
 		lobbyUserID_t lobbyUserID = lobbyUserIDs[i];
 		
 		if ( !lobby.IsLobbyUserValid( lobbyUserID ) ) {
-			delete entities[ i ];
+			delete m_entities[ i ];
 			mpGame.DisconnectClient( i );
 			lobbyUserIDs[i] = lobbyUserID_t();
 			continue;
@@ -181,7 +181,7 @@ void idGameLocal::SyncPlayersWithLobbyUsers( bool initial ) {
 		int freePlayerDataIndex = -1;
 
 		for ( int i = 0; i < MAX_PLAYERS; ++i ) {
-			idPlayer * player = static_cast<idPlayer *>( entities[ i ] );
+			idPlayer * player = static_cast<idPlayer *>( m_entities[ i ] );
 			if ( player == NULL ) {
 				freePlayerDataIndex = i;
 				break;
@@ -350,14 +350,14 @@ void idGameLocal::ServerWriteSnapshot( idSnapShot & ss ) {
 	// Build PVS data for each player and write their player state to the snapshot as well
 	pvsHandle_t pvsHandles[ MAX_PLAYERS ];
 	for ( int i = 0; i < MAX_PLAYERS; i++ ) {
-		idPlayer * player = static_cast<idPlayer *>( entities[ i ] );
+		idPlayer * player = static_cast<idPlayer *>( m_entities[ i ] );
 		if ( player == NULL ) {
 			pvsHandles[i].i = -1;
 			continue;
 		}
 		idPlayer * spectated = player;
-		if ( player->spectating && player->spectator != i && entities[ player->spectator ] ) {
-			spectated = static_cast< idPlayer * >( entities[ player->spectator ] );
+		if ( player->spectating && player->spectator != i && m_entities[ player->spectator ] ) {
+			spectated = static_cast< idPlayer * >( m_entities[ player->spectator ] );
 		}
 
 		msg.InitWrite( buffer, sizeof( buffer ) );
@@ -567,16 +567,16 @@ void idGameLocal::ServerProcessReliableMessage( int clientNum, int type, const i
 			const float damageScale = msg.ReadFloat();
 			const int location = msg.ReadLong();
 
-			if ( gameLocal.entities[victimNum] == NULL ) {
+			if ( gameLocal.m_entities[victimNum] == NULL ) {
 				break;
 			}
 
-			if ( gameLocal.entities[attackerNum] == NULL ) {
+			if ( gameLocal.m_entities[attackerNum] == NULL ) {
 				break;
 			}
 
-			idPlayer & victim = static_cast< idPlayer & >( *gameLocal.entities[victimNum] );
-			idPlayer & attacker = static_cast< idPlayer & >( *gameLocal.entities[attackerNum] );
+			idPlayer & victim = static_cast< idPlayer & >( *gameLocal.m_entities[victimNum] );
+			idPlayer & attacker = static_cast< idPlayer & >( *gameLocal.m_entities[attackerNum] );
 			
 			if ( victim.GetPhysics() == NULL ) {
 				break;
@@ -603,14 +603,14 @@ void idGameLocal::ServerProcessReliableMessage( int clientNum, int type, const i
 			trace_t tr;
 			gameLocal.clip.Translation( tr, muzzleOrigin, targetLocation, NULL, mat3_identity, MASK_SHOT_RENDERMODEL, &attacker );
 			
-			idEntity * hitEnt = gameLocal.entities[ tr.c.entityNum ];
+			idEntity * hitEnt = gameLocal.m_entities[ tr.c.entityNum ];
 			if ( hitEnt != &victim ) {
 				break;
 			}
 			const idDeclEntityDef *damageDef = static_cast<const idDeclEntityDef *>( declManager->DeclByIndex( DECL_ENTITYDEF, damageDefIndex, false ) );
 			
 			if ( damageDef != NULL ) {
-				victim.Damage( NULL, gameLocal.entities[attackerNum], dir, damageDef->GetName(), damageScale, location );
+				victim.Damage( NULL, gameLocal.m_entities[attackerNum], dir, damageDef->GetName(), damageScale, location );
 			}
 			break;
 		}
@@ -677,7 +677,7 @@ void idGameLocal::ClientReadSnapshot( const idSnapShot & ss ) {
 		}
 		if ( snapObjectNum >= SNAP_PLAYERSTATE && snapObjectNum < SNAP_PLAYERSTATE_END ) {
 			int playerNumber = snapObjectNum - SNAP_PLAYERSTATE;
-			idPlayer * otherPlayer = static_cast< idPlayer * >( entities[ playerNumber ] );
+			idPlayer * otherPlayer = static_cast< idPlayer * >( m_entities[ playerNumber ] );
 
 			// Don't process Player Snapshots that are disconnected.
 			const int lobbyIndex = session->GetActingGameStateLobbyBase().GetLobbyUserIndexFromLobbyUserID( lobbyUserIDs[ playerNumber ] );
@@ -687,7 +687,7 @@ void idGameLocal::ClientReadSnapshot( const idSnapShot & ss ) {
 
 			if ( otherPlayer != NULL ) {
 				otherPlayer->ReadPlayerStateFromSnapshot( msg );
-				if ( otherPlayer != entities[ GetLocalClientNum() ] ) { // This happens when we spectate another player
+				if ( otherPlayer != m_entities[ GetLocalClientNum() ] ) { // This happens when we spectate another player
 					idWeapon * weap = otherPlayer->weapon.GetEntity();
 					if ( weap && ( weap->GetRenderEntity()->bounds[0] == weap->GetRenderEntity()->bounds[1] ) ) {
 						// update the weapon's viewmodel bounds so that the model doesn't flicker in the spectator's view
@@ -717,7 +717,7 @@ void idGameLocal::ClientReadSnapshot( const idSnapShot & ss ) {
 		int entityNumber = snapObjectNum - SNAP_ENTITIES;
 
 		if ( msg.GetSize() == 0 ) {
-			delete entities[entityNumber];
+			delete m_entities[entityNumber];
 			continue;
 		}
 
@@ -735,7 +735,7 @@ void idGameLocal::ClientReadSnapshot( const idSnapShot & ss ) {
 
 		// If there is no entity on this client, but the server's entity matches a predictionKey, move the client's
 		// predicted entity to the normal, replicated area in the entity list.
-		if ( entities[entityNumber] == NULL ) {
+		if ( m_entities[entityNumber] == NULL ) {
 			if ( predictedKey != idEntity::INVALID_PREDICTION_KEY ) {
 				idLib::PrintfIf( debug, "Looking for predicted key %d.\n", predictedKey );
 				idEntity * predictedEntity = FindPredictedEntity( predictedKey, typeInfo );
@@ -782,7 +782,7 @@ void idGameLocal::ClientReadSnapshot( const idSnapShot & ss ) {
 			}
 		}
 
-		idEntity * ent = entities[entityNumber];
+		idEntity * ent = m_entities[entityNumber];
 
 		// if there is no entity or an entity of the wrong type
 		if ( !ent || ent->GetType()->typeNum != typeNum || ent->entityDefNumber != entityDefNumber || spawnId != spawnIds[ entityNumber ] ) {
@@ -793,7 +793,7 @@ void idGameLocal::ClientReadSnapshot( const idSnapShot & ss ) {
 			if ( entityNumber < MAX_CLIENTS ) {
 				commonLocal.GetUCmdMgr().ResetPlayer( entityNumber );
 				SpawnPlayer( entityNumber );
-				ent = entities[ entityNumber ];
+				ent = m_entities[ entityNumber ];
 				ent->FreeModelDef();
 			} else {
 				idDict args;
@@ -806,12 +806,12 @@ void idGameLocal::ClientReadSnapshot( const idSnapShot & ss ) {
 					}
 					const char * classname = declManager->DeclByIndex( DECL_ENTITYDEF, entityDefNumber, false )->GetName();
 					args.Set( "classname", classname );
-					if ( !SpawnEntityDef( args, &ent ) || !entities[entityNumber] || entities[entityNumber]->GetType()->typeNum != typeNum ) {
+					if ( !SpawnEntityDef( args, &ent ) || !m_entities[entityNumber] || m_entities[entityNumber]->GetType()->typeNum != typeNum ) {
 						Error( "Failed to spawn entity with classname '%s' of type '%s'", classname, typeInfo->classname );
 					}
 				} else {
 					ent = SpawnEntityType( *typeInfo, &args, true );
-					if ( !entities[entityNumber] || entities[entityNumber]->GetType()->typeNum != typeNum ) {
+					if ( !m_entities[entityNumber] || m_entities[entityNumber]->GetType()->typeNum != typeNum ) {
 						Error( "Failed to spawn entity of type '%s'", typeInfo->classname );
 					}
 				}
@@ -885,7 +885,7 @@ void idGameLocal::ClientProcessEntityNetworkEventQueue() {
 		idEntityPtr< idEntity > entPtr;
 			
 		if( !entPtr.SetSpawnId( event->spawnId ) ) {
-			if( !gameLocal.entities[ event->spawnId & ( ( 1 << GENTITYNUM_BITS ) - 1 ) ] ) {
+			if( !gameLocal.m_entities[ event->spawnId & ( ( 1 << GENTITYNUM_BITS ) - 1 ) ] ) {
 				// if new entity exists in this position, silently ignore
 				NetworkEventWarning( event, "Entity does not exist any longer, or has not been spawned yet." );
 			}
@@ -981,7 +981,7 @@ void idGameLocal::ClientProcessReliableMessage( int type, const idBitMsg &msg ) 
 		}
 		case GAME_RELIABLE_MESSAGE_TOURNEYLINE: {
 			int line = msg.ReadByte( );
-			idPlayer * p = static_cast< idPlayer * >( entities[ GetLocalClientNum() ] );
+			idPlayer * p = static_cast< idPlayer * >( m_entities[ GetLocalClientNum() ] );
 			if ( !p ) {
 				break;
 			}
@@ -1002,7 +1002,7 @@ void idGameLocal::ClientProcessReliableMessage( int type, const idBitMsg &msg ) 
 			break;
 		}
 		case GAME_RELIABLE_MESSAGE_RESPAWN_AVAILABLE: {
-			idPlayer * p = static_cast< idPlayer * >( entities[ GetLocalClientNum() ] );
+			idPlayer * p = static_cast< idPlayer * >( m_entities[ GetLocalClientNum() ] );
 			if ( p ) {
 				p->ShowRespawnHudMessage();
 			}
@@ -1036,7 +1036,7 @@ void idGameLocal::ClientRunFrame( idUserCmdMgr & cmdMgr, bool lastPredictFrame, 
 	framenum++;
 	time = FRAME_TO_MSEC( framenum );
 
-	idPlayer * player = static_cast<idPlayer *>( entities[GetLocalClientNum()] );
+	idPlayer * player = static_cast<idPlayer *>( m_entities[GetLocalClientNum()] );
 	if ( !player ) {
 
 		// service any pending events

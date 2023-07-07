@@ -40,6 +40,11 @@ SamplerState GuiTextureSampler
     AddressV = Wrap;
 };
 
+struct JointConstants {
+	float4 matrices[404];
+};
+ConstantBuffer<JointConstants> matrices_ubo : register(b0, space1);
+
 struct SceneConstants {
 	float4 rpScreenCorrectionFactor;
 	float4 rpWindowCoord;
@@ -114,6 +119,7 @@ struct SceneConstants {
 ConstantBuffer<SceneConstants> sceneConstants : register(b0, space0);
 
 SamplerState baseSampler : register(s0, space0); 
+SamplerState lightSampler : register(s1, space0); 
 
 static float dot2( float2 a, float2 b ) { return dot( a, b ); }
 static float dot3( float3 a, float3 b ) { return dot( a, b ); }
@@ -186,7 +192,7 @@ float rand( float2 co ) {
 #define _float4( x )	float4( x )
 
 #define VPOS WPOS
-static float4 idtex2Dproj( Texture2D<float4> samp, half4 texCoords ) { return samp.Sample( baseSampler, texCoords.xy / texCoords.w ); } //TODO: old data = texCoords.xyw ); }
+static float4 idtex2Dproj( Texture2D<float4> samp, SamplerState samplerState, half4 texCoords ) { return samp.Sample( samplerState, texCoords.xy / texCoords.w); } //TODO: old data = texCoords.xyw ); }
 static float4 swizzleColor( float4 c ) { return c; }
 static float2 vposToScreenPosTexCoord( float2 vpos ) { return vpos.xy * sceneConstants.rpWindowCoord.xy; }
 

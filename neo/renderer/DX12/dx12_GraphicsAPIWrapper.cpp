@@ -4,6 +4,7 @@
 #include "../tr_local.h"
 
 extern DX12Renderer dxRenderer;
+extern idCommon* common;
 
 void GL_SelectTexture(int uint) {
 	dxRenderer.SetActiveTextureRegister(uint);
@@ -35,11 +36,9 @@ void GL_DepthBoundsTest(const float zmin, const float zmax) {
 }
 
 void GL_StartDepthPass(const idScreenRect& rect) {
-	// TODO
 }
 
 void GL_FinishDepthPass() {
-	// TODO
 }
 
 void GL_GetDepthPassRect(idScreenRect& rect) {
@@ -67,7 +66,9 @@ void GL_Color(float r, float g, float b, float a) {
 }
 
 void GL_Clear(bool color, bool depth, bool stencil, byte stencilValue, float r, float g, float b, float a) {
-	float colorRGBA[4] = { r, g, b, a };
+	//common->DPrintf("GL_Clear: %d, %d, %d, %d, %f, %f, %f, %f\n", color, depth, stencil, stencilValue, r, g, b, a);
+
+	const float colorRGBA[4] = { r, g, b, a };
 	dxRenderer.Clear(color, depth, stencil, stencilValue, colorRGBA);
 }
 

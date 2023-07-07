@@ -36,12 +36,12 @@ Contains the Image implementation for OpenGL.
 
 #include "../tr_local.h"
 
-void RGB565SwapBytes(const int width, const int height, const byte* input, byte* output) {
-	for (int i = 0; i < width * height; ++i) {
-		output[i * 2 + 0] = input[i * 2 + 1];
-		output[i * 2 + 1] = input[i * 2 + 0];
+void RGB565SwapBytes(const int imageSize, const byte* input, byte* output) {
+	for (int i = 0; i < imageSize; ++i) {
+		output[i] = input[i + 1];
+		++i;
 
-		// TODO: swap the red and blue channels.
+		output[i] = input[i - 1];
 	}
 }
 
@@ -103,16 +103,22 @@ void idImage::SubImageUpload(int mipLevel, int x, int y, int z, int width, int h
 
 	//TODO: Load by the x or y coordinate.
 	UINT bytePitch = ((pixelPitch == 0 ? width : pixelPitch) * BitsForFormat(opts.format)) / (IsCompressed() ? 2 : 8);
-	UINT imageSize = IsCompressed() ? compressedSize : bytePitch * height;
+	UINT imageSize = bytePitch * height;
 
 	if (opts.format == FMT_RGB565) {
-		byte* data = new byte[width * height * 2];
-		RGB565SwapBytes(width, height, reinterpret_cast<const byte*>(pic), data);
-		dxRenderer.SetTextureContent(static_cast<DX12TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, data);
-		delete data;
+
+		auto data = std::make_unique<byte[]>(imageSize);
+		RGB565SwapBytes(imageSize, static_cast<const byte*>(pic), data.get());
+
+#ifdef _DEBUG
+		RGB565Image debugImg = { data.get(), width, height };
+		RGB565Image debugImgFull = { data.get(), width << 1, height << 1 };
+#endif // _DEBUG
+
+		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, data.get());
 	}
 	else {
-		dxRenderer.SetTextureContent(static_cast<DX12TextureBuffer*>(textureResource), mipLevel, bytePitch, imageSize, pic);
+		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, pic);
 	}
 
 	//TODO: Implement
@@ -162,9 +168,11 @@ idImage::SetPixel
 */
 void idImage::SetPixel(int mipLevel, int x, int y, const void* data, int dataSize) {
 	// TODO: IS THIS EVEN USED ANYMORE? Current implementation will be very slow.
-	dxRenderer.StartTextureWrite(static_cast<DX12TextureBuffer*>(textureResource));
+	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+
+	textureManager->StartTextureWrite(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
 	SubImageUpload(mipLevel, x, y, 0, 1, 1, data);
-	dxRenderer.EndTextureWrite(static_cast<DX12TextureBuffer*>(textureResource));
+	textureManager->EndTextureWrite(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
 }
 
 /*
@@ -331,19 +339,20 @@ void idImage::AllocImage() {
 	// allocate all the mip levels with NULL data
 	//----------------------------------------------------
 
-	int numSides;
+	int numSides = 1;
 	uint width = opts.width;
 	uint height = opts.height;
+	uint alignment = 0;
 
 	//int target;
 	//int uploadTarget;
 	if (opts.textureType == TT_2D) {
-		//textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, opts.width, opts.height);
+		//textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN);
 		//target = uploadTarget = GL_TEXTURE_2D;
 		numSides = 1;
 	}
 	else if (opts.textureType == TT_CUBIC) {
-		//textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, opts.width, opts.height, 1U, 0U, 6U);
+		//textureDesc = CD3DX12_RESOURCE_DESC::(DXGI_FORMAT_UNKNOWN, opts.width, opts.height, 1U, 0U, 6U);
 		//target = GL_TEXTURE_CUBE_MAP_EXT;
 		//uploadTarget = GL_TEXTURE_CUBE_MAP_POSITIVE_X_EXT;
 		numSides = 6;
@@ -354,9 +363,24 @@ void idImage::AllocImage() {
 		numSides = 1;
 	}
 
-	if (IsCompressed()) {
+	
+	if (IsCompressed()) 
+	{
 		width = (width + 3) & ~0x03;
 		height = (height + 3) & ~0x03;
+	}
+	else
+	{
+		// make sure the pixel store alignment is correct so that lower mips get created
+		// properly for odd shaped textures - this fixes the mip mapping issues with
+		// fonts
+		int unpackAlignment = width * BitsForFormat((textureFormat_t)opts.format) / 8;
+		if ((unpackAlignment & 3) == 0) {
+			alignment = 4;
+		}
+		else {
+			alignment = 1;
+		}
 	}
 
 	//TODO: Check if this is needed.
@@ -399,7 +423,8 @@ void idImage::AllocImage() {
 		}
 	}*/
 
-	CD3DX12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, width, height, numSides, opts.numLevels);
+	D3D12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, width, height, numSides, opts.numLevels);
+	//textureDesc.Alignment = alignment;
 
 	// Set texture format/
 	switch (opts.format) {
@@ -510,8 +535,8 @@ void idImage::AllocImage() {
 	}
 
 	// Allocate the texture
-	textureResource = dxRenderer.AllocTextureBuffer(new DX12TextureBuffer(), &textureDesc, &imgName);
-	
+	textureResource = dxRenderer.GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc);
+
 	if (textureResource == nullptr) {
 		return;
 	}
@@ -531,7 +556,7 @@ idImage::PurgeImage
 */
 void idImage::PurgeImage() {
 	if (IsLoaded()) {
-		dxRenderer.FreeTextureBuffer(static_cast<DX12TextureBuffer*>(textureResource));
+		dxRenderer.GetTextureManager()->FreeTextureBuffer(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
 		textureResource = nullptr;
 	}
 
@@ -563,7 +588,8 @@ void idImage::Resize(int width, int height) {
 
 bool idImage::IsLoaded() const {
 	if (textureResource != nullptr) {
-		return static_cast<DX12TextureBuffer*>(textureResource)->textureBuffer.GetAddressOf() != NULL;
+		DX12Rendering::TextureBuffer* textureBuffer = static_cast<DX12Rendering::TextureBuffer*>(textureResource);
+		return textureBuffer != nullptr && textureBuffer->IsReady();
 	}
 
 	return false;

@@ -1361,8 +1361,8 @@ void idWeapon::UpdateGUI() {
 
 	if ( !owner->IsLocallyControlled() ) {
 		// if updating the hud for a followed client
-		if ( gameLocal.GetLocalClientNum() >= 0 && gameLocal.entities[ gameLocal.GetLocalClientNum() ] && gameLocal.entities[ gameLocal.GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
-			idPlayer *p = static_cast< idPlayer * >( gameLocal.entities[ gameLocal.GetLocalClientNum() ] );
+		if ( gameLocal.GetLocalClientNum() >= 0 && gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] && gameLocal.m_entities[ gameLocal.GetLocalClientNum() ]->IsType( idPlayer::Type ) ) {
+			idPlayer *p = static_cast< idPlayer * >( gameLocal.m_entities[ gameLocal.GetLocalClientNum() ] );
 			if ( !p->spectating || p->spectator != owner->entityNumber ) {
 				return;
 			}

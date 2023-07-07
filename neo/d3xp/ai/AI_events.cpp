@@ -346,7 +346,7 @@ void idAI::Event_FindEnemy( int useFOV ) {
 
 	if ( gameLocal.InPlayerPVS( this ) ) {
 		for ( i = 0; i < gameLocal.numClients ; i++ ) {
-			ent = gameLocal.entities[ i ];
+			ent = gameLocal.m_entities[ i ];
 
 			if ( !ent || !ent->IsType( idActor::Type ) ) {
 				continue;
@@ -430,7 +430,7 @@ void idAI::Event_FindEnemyInCombatNodes() {
 	}
 
 	for ( i = 0; i < gameLocal.numClients ; i++ ) {
-		ent = gameLocal.entities[ i ];
+		ent = gameLocal.m_entities[ i ];
 
 		if ( !ent || !ent->IsType( idActor::Type ) ) {
 			continue;
