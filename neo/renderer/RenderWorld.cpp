@@ -327,6 +327,8 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 	// based on the model bounds, add references in each area
 	// that may contain the updated surface
 	R_CreateEntityRefs( def );	
+
+	dxRenderer.DXR_AddEntityToTLAS(def->GetIndex(), re, DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC /*TODO: fix this*/);
 }
 
 /*

@@ -2905,7 +2905,6 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 		dxRenderer.DXR_GenerateResult();
 	}
 	dxRenderer.DXR_CopyResultToDisplay();
-	CYCLE_COMMAND_LIST();
 
 	//-------------------------------------------------
 	// fog and blend lights, drawn after emissive surfaces

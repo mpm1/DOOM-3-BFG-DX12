@@ -419,7 +419,8 @@ void DX12Renderer::EndDraw() {
 	//After frame events
 	if (IsRaytracingEnabled())
 	{
-		m_raytracing->GetTLASManager()->Reset();
+		// TODO: Evaluate cleanup
+		//m_raytracing->GetTLASManager()->Reset();
 	}
 
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
@@ -702,7 +703,7 @@ void DX12Renderer::DXR_ResetAccelerationStructure()
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 	
-	m_raytracing->GetTLASManager()->Reset();
+	m_raytracing->GetTLASManager()->Reset(DX12Rendering::INSTANCE_TYPE_STATIC | DX12Rendering::INSTANCE_TYPE_DYNAMIC);
 	m_raytracing->GetBLASManager()->Reset();
 
 	// TODO: what else do we need to reset.
@@ -846,13 +847,27 @@ void DX12Renderer::DXR_UpdateBLAS()
 	m_raytracing->CleanUpAccelerationStructure();
 }
 
-void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16])
+void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const renderEntity_t* entity, const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
+{
+	if (!entity)
+	{
+		return;
+	}
+
+	if (!entity->noShadow) {
+		float modelMatrix[16];
+		R_AxisToModelMatrix(entity->axis, entity->origin, modelMatrix);
+		DX12Renderer::DXR_AddEntityToTLAS(modelHandle, modelMatrix, typesMask);
+	}
+}
+
+void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
 {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
 
-	m_raytracing->GetTLASManager()->AddInstance(modelHandle, transform);
+	m_raytracing->GetTLASManager()->AddInstance(modelHandle, transform, typesMask);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)

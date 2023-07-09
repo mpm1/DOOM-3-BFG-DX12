@@ -50,10 +50,12 @@ namespace DX12Rendering {
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Create the buffer size.
-		constexpr UINT resourceAlignment = (1024 * 64) - 1; // Resource must be a multible of 64KB
-		const UINT entrySize = (constantBufferSize + 255) & ~255; // Size is required to be 256 byte aligned
-		const UINT heapSize = ((entrySize * MAX_OBJECT_COUNT) + resourceAlignment) & ~resourceAlignment;
+		constexpr UINT resourceAlignment = 1024 * 64; // Resource must be a multible of 64KB
+		const UINT entrySize = DX12_ALIGN(constantBufferSize, 256); // Size is required to be 256 byte aligned
+		const UINT heapSize = DX12_ALIGN(entrySize * MAX_OBJECT_COUNT, resourceAlignment);
 		WCHAR heapName[30];
+
+		assert(heapSize != 0);
 
 		// Create Descriptor Heaps
 		{
@@ -332,7 +334,10 @@ namespace DX12Rendering {
 		m_generalSBTDesc.AddRayHitGroupProgram(L"HitGroup", {});
 
 		// Create the SBT resource
-		UINT32 tableSize = m_generalSBTDesc.CalculateTableSize();
+		const UINT32 tableSize = m_generalSBTDesc.CalculateTableSize();
+
+		assert(tableSize != 0);
+
 		ThrowIfFailed(device->CreateCommittedResource(
 			&kUploadHeapProps,
 			D3D12_HEAP_FLAG_NONE,

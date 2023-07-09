@@ -102,7 +102,8 @@ public:
 	void DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRenderModel* model);
 	void DXR_UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
 
-	void DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16]);
+	void DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const renderEntity_t* entity, const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask);
+	void DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask);
 
 	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
 	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);

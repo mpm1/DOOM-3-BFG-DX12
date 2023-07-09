@@ -14,6 +14,7 @@ namespace DX12Rendering {
 		}
 
 		assert(state == Unallocated || state >= Removed);
+		assert(description.Width != 0 && description.Height != 0);
 
 		if (!DX12Rendering::WarnIfFailed(device->CreateCommittedResource(&heapProps, D3D12_HEAP_FLAG_NONE, &description, initState, clearValue, IID_PPV_ARGS(&resource))))
 		{
