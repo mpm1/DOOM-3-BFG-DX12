@@ -186,7 +186,7 @@ namespace DX12Rendering {
 	{
 		auto tlasManager = GetTLASManager();
 
-		if (!tlasManager->IsReady()) {
+		if (tlasManager && !tlasManager->IsReady()) {
 			// No objects to cast shadows.
 			return false;
 		}
@@ -198,8 +198,6 @@ namespace DX12Rendering {
 
 		DX12Rendering::Fence* fence = &outputSurface->fence;
 		//commandList->AddPreFenceWait(fence);
-
-		// TODO: Pass in the scissor rect into the ray generator. Outiside the rect will always return a ray miss.
 
 		// Copy the CBV data to the heap
 		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };

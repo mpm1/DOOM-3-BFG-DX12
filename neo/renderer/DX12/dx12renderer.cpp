@@ -719,7 +719,7 @@ void DX12Renderer::DXR_UpdateAccelerationStructure()
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	m_raytracing->GetTLASManager()->Generate();
+	m_raytracing->GenerateTLAS();
 
 	// TODO: what else do we need to reset.
 	//m_raytracing->ResetFrame();
@@ -742,7 +742,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 		return;
 	}
 
-	if (model->NumSurfaces() <= 0) {
+	if (model->NumSurfaces() <= 0 || !model->ModelHasDrawingSurfaces()) {
 		return;
 	}
 
@@ -750,8 +750,8 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 
 	const dxHandle_t index = GetHandle(&modelHandle);
 	std::string blasName = std::string(model->Name());
-	DX12Rendering::BottomLevelAccelerationStructure* blas = m_raytracing->GetBLASManager()->CreateBLAS(index, std::wstring(blasName.begin(), blasName.end()).c_str());
-
+	DX12Rendering::BottomLevelAccelerationStructure& blas = *m_raytracing->GetBLASManager()->CreateBLAS(index, std::wstring(blasName.begin(), blasName.end()).c_str());
+	
 	for (UINT surfaceIndex = 0; surfaceIndex < model->NumSurfaces(); ++surfaceIndex)
 	{
 		DX12Rendering::Geometry::VertexBuffer* vertexBuffer = nullptr;
@@ -783,37 +783,32 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 		else
 		{
 			continue;
-			/*if (!model->IsLoaded())
-			{
-				re->hModel->LoadModel();
-			}*/
+			//std::vector<triIndex_t> indecies;
+			//std::vector<triIndex_t>::iterator iIterator = indecies.begin();
+			//std::vector<idDrawVert> vertecies;
 
-			/*std::vector<triIndex_t> indecies;
-			std::vector<triIndex_t>::iterator iIterator = indecies.begin();
-			std::vector<idDrawVert> vertecies;
+			//for (int sIndex = 0; sIndex < model->NumSurfaces(); ++sIndex)
+			//{
+			//	// TODO: make separate for each material.
+			//	const modelSurface_t* surf = model->Surface(sIndex);
 
-			for (int sIndex = 0; sIndex < model->NumSurfaces(); ++sIndex)
-			{
-				// TODO: make separate for each material.
-				const modelSurface_t* surf = re->hModel->Surface(sIndex);
+			//	// Add all indecies
+			//	iIterator = indecies.insert(iIterator, surf->geometry->indexes, surf->geometry->indexes + surf->geometry->numIndexes);
 
-				// Add all indecies
-				iIterator = indecies.insert(iIterator, surf->geometry->indexes, surf->geometry->indexes + surf->geometry->numIndexes);
+			//	// Add all vertecies
+			//	vertecies.reserve(vertecies.size() + surf->geometry->numVerts);
+			//	for (int vIndex = 0; vIndex < surf->geometry->numVerts; ++vIndex)
+			//	{
+			//		idDrawVert* vert = &surf->geometry->verts[vIndex];
+			//		vertecies.push_back(*vert);
+			//	}
+			//}
 
-				// Add all vertecies
-				vertecies.reserve(vertecies.size() + surf->geometry->numVerts);
-				for (int vIndex = 0; vIndex < surf->geometry->numVerts; ++vIndex)
-				{
-					idDrawVert* vert = &surf->geometry->verts[vIndex];
-					vertecies.push_back(*vert);
-				}
-			}
-
-			m_raytracing->AddOrUpdateVertecies(device, modelHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
-			return;*/
+			//m_raytracing->AddOrUpdateVertecies(device, modelHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
+			//return;
 		};
 
-		blas->AddGeometry(
+		blas.AddGeometry(
 			vertexBuffer,
 			vertOffsetBytes,
 			surf.geometry->numVerts,
@@ -845,20 +840,6 @@ void DX12Renderer::DXR_UpdateBLAS()
 	}
 
 	m_raytracing->CleanUpAccelerationStructure();
-}
-
-void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const renderEntity_t* entity, const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
-{
-	if (!entity)
-	{
-		return;
-	}
-
-	if (!entity->noShadow) {
-		float modelMatrix[16];
-		R_AxisToModelMatrix(entity->axis, entity->origin, modelMatrix);
-		DX12Renderer::DXR_AddEntityToTLAS(modelHandle, modelMatrix, typesMask);
-	}
 }
 
 void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
