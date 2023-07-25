@@ -70,9 +70,10 @@ inline RayDesc GenerateCameraRay(uint2 index, in SceneConstants constants)
     // Unproject the pixel coordinate into a world positon.
     float4 world = GetInverseProjection(float4(screenPos, 0, 1), constants);
     world /= world.w;
+    world.xyz = world.xzy;
 
     RayDesc ray;
-    ray.Origin = GetInverseView(float4(0, 0, 0, 1), constants).xyz;
+    ray.Origin =constants.rpGlobalEyePos.xyz;
     ray.Direction = normalize(GetInverseView(world, constants).xyz - ray.Origin);
 
     return ray;

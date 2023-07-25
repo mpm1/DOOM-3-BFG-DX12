@@ -583,6 +583,8 @@ namespace DX12Rendering {
 			return;
 		}
 
+		MarkDirty();
+
 		DX12Rendering::Instance* instance;
 		if (TryGetWriteInstance(blas->id, typesMask, &instance))
 		{
@@ -599,8 +601,6 @@ namespace DX12Rendering {
 		{
 			m_dynamicInstances.emplace_back(transform, blas->id, hitShaderIndex);
 		}
-
-		MarkDirty();
 	}
 
 	const bool TLASManager::TryGetWriteInstance(const dxHandle_t& index, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance)

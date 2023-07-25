@@ -2568,6 +2568,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		}
 	}
 
+	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled();
+
 	//-------------------------------------------------
 	// RB_BeginDrawingView
 	//
@@ -2615,6 +2617,11 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		parm[3] = 1.0f;
 		SetVertexParm(RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
 
+		if (raytracedEnabled)
+		{
+			dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
+		}
+
 		// sets overbright to make world brighter
 		// This value is baked into the specularScale and diffuseScale values so
 		// the interaction programs don't need to perform the extra multiply,
@@ -2631,14 +2638,63 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		float projMatrixTranspose[16];
 		R_MatrixTranspose(backEnd.viewDef->projectionMatrix, projMatrixTranspose);
 		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
+
+		if (raytracedEnabled)
+		{
+			// Set the inverse prokection matrix
+			idRenderMatrix inverseProjection;
+			/*idRenderMatrix projectionMatrix(
+				backEnd.viewDef->projectionMatrix[0], backEnd.viewDef->projectionMatrix[1], backEnd.viewDef->projectionMatrix[2], backEnd.viewDef->projectionMatrix[3],
+				backEnd.viewDef->projectionMatrix[4], backEnd.viewDef->projectionMatrix[5], backEnd.viewDef->projectionMatrix[6], backEnd.viewDef->projectionMatrix[7],
+				backEnd.viewDef->projectionMatrix[8], backEnd.viewDef->projectionMatrix[9], backEnd.viewDef->projectionMatrix[10], backEnd.viewDef->projectionMatrix[11],
+				backEnd.viewDef->projectionMatrix[12], backEnd.viewDef->projectionMatrix[13], backEnd.viewDef->projectionMatrix[14], backEnd.viewDef->projectionMatrix[15]
+			);*/
+			idRenderMatrix projectionMatrix(
+				projMatrixTranspose[0], projMatrixTranspose[1], projMatrixTranspose[2], projMatrixTranspose[3],
+				projMatrixTranspose[4], projMatrixTranspose[5], projMatrixTranspose[6], projMatrixTranspose[7],
+				projMatrixTranspose[8], projMatrixTranspose[9], projMatrixTranspose[10], projMatrixTranspose[11],
+				projMatrixTranspose[12], projMatrixTranspose[13], projMatrixTranspose[14], projMatrixTranspose[15]
+			);
+			idRenderMatrix::Inverse(projectionMatrix, inverseProjection);
+			dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_PROJMATRIX_X, inverseProjection[0], 4);
+
+
+			// Set the Inverse View Matrix
+			idRenderMatrix viewRenderMatrix;
+			idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrix);
+			float viewMatrixTranspose[16];
+			R_MatrixTranspose(viewRenderMatrix[0], viewMatrixTranspose);
+			dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, viewRenderMatrix[0], 4);
+		}
 	}
 
 	// if we are just doing 2D rendering, no need to fill the depth buffer
+	bool raytraceUpdated = false;
 	if (backEnd.viewDef->viewEntitys != NULL) {
+		if (raytracedEnabled)
+		{
+			raytraceUpdated = true;
+			dxRenderer.DXR_UpdateAccelerationStructure();
+		}
+
 		//-------------------------------------------------
 		// fill the depth buffer and clear color buffer to black except on subviews
 		//-------------------------------------------------
 		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
+	}
+
+	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays();
+	if (raytraceUpdated)
+	{
+		//-------------------------------------------------
+		// Cast rays into the scene
+		//-------------------------------------------------
+
+		//-------------------------------------------------
+		// Copy the raytraced buffer to view
+		//-------------------------------------------------
+		dxRenderer.DXR_DenoiseResult();
+		dxRenderer.DXR_GenerateResult();
 	}
 
 	//-------------------------------------------------
@@ -2724,6 +2780,11 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		//RB_DrawShaderPasses(drawSurfs + processed, numDrawSurfs - processed, 0.0f /* definitely not a gui */, stereoEye);
 		renderLog.CloseMainBlock();
 	}	
+
+	if (raytraceUpdated)
+	{
+		dxRenderer.DXR_CopyResultToDisplay();
+	}
 
 	renderLog.CloseBlock();
 }
@@ -2877,7 +2938,7 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 		idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrix);
 		float viewMatrixTranspose[16];
 		R_MatrixTranspose(viewRenderMatrix[0], viewMatrixTranspose);
-		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, viewRenderMatrix[0], 4);
+		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, &viewMatrixTranspose[0], 4);
 	}
 
 	//-------------------------------------------------
@@ -3019,11 +3080,11 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 			break;
 
 		case RC_DRAW_VIEW_3D:
-			if (dxRenderer.IsRaytracingEnabled())
+			/*if (dxRenderer.IsRaytracingEnabled())
 			{
 				RB_PathTraceView(cmds);
 			}
-			else
+			else*/
 			{
 				RB_DrawView(cmds, 0);
 			}

@@ -36,15 +36,15 @@ void RayGen() {
 	{
 		// Define a ray, consisting of origin, direction, and the min-max distance values
 		RayDesc ray = GenerateCameraRay(DispatchRaysIndex().xy, sceneConstants);
-		ray.TMin = 0;
+		ray.TMin = 0.01;
 		ray.TMax = 100000;
 
 		TraceRay(
 			SceneBVH,
-			RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+			RAY_FLAG_NONE, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
 			0xFF,
-			0.0,
-			0, // Hit Shader
+			0,
+			0, // First Hit Shader
 			0, // Miss Shader
 			ray,
 			payload

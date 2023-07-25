@@ -848,7 +848,10 @@ void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float
 		return;
 	}
 
-	m_raytracing->GetTLASManager()->AddInstance(modelHandle, transform, typesMask);
+	float transformTranspose[16];
+	R_MatrixTranspose(transform, transformTranspose);
+
+	m_raytracing->GetTLASManager()->AddInstance(modelHandle, transformTranspose, typesMask);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)
@@ -892,7 +895,7 @@ void DX12Renderer::DXR_GenerateResult()
 void DX12Renderer::DXR_CopyResultToDisplay()
 {
 	//renderTarget->fence.Wait();
-	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceDiffuseMap, 0, 0, 0, 0, m_width, m_height);
+	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceDiffuseMap, 0, 0, 0, 0, m_width / 3, m_height / 3);
 }
 
 void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)

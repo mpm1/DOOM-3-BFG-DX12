@@ -56,7 +56,7 @@ namespace DX12Rendering
 		Instance(const float srcTransformation[16], const dxHandle_t& id, UINT hitGroupIndex) :
 			instanceId(id),
 			hitGroupIndex(hitGroupIndex),
-			transformation()
+			transformation{}
 		{
 			std::memcpy(transformation, srcTransformation, sizeof(float[16]));
 		}
