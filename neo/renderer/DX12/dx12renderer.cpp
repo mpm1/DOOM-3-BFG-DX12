@@ -7,7 +7,7 @@
 #include <comdef.h>
 #include <type_traits>
 
-idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_useRayTraycing("r_useRayTraycing", "0", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
@@ -389,14 +389,20 @@ void DX12Renderer::EndDraw() {
 		return;
 	}
 
-	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-
 #ifdef DEBUG_IMGUI
+	D3D12_CPU_DESCRIPTOR_HANDLE renderTargets[1] =
+	{
+		GetCurrentRenderTarget()->GetRtv()
+	};
+
 	DX12Rendering::ImGui_StartFrame();
 	ImGuiDebugWindows();
-	DX12Rendering::ImGui_EndFrame(m_imguiSrvDescHeap.Get());
+	DX12Rendering::ImGui_EndFrame(m_imguiSrvDescHeap.Get(), renderTargets);
 #endif
 
+
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	
 	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 	{
 		// present the backbuffer
@@ -953,7 +959,7 @@ void DX12Renderer::InitializeImGui(HWND hWnd)
 {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-	m_debugMode = DEBUG_RAYTRACING;
+	m_debugMode = DEBUG_LIGHTS;
 
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
@@ -993,7 +999,7 @@ void DX12Renderer::ImGuiDebugWindows()
 
 		ImGui::SetNextWindowSize({ static_cast<float>(m_viewport.Width) * scaleX, (static_cast<float>(m_viewport.Height) * scaleY) + headerOffset });
 
-		if (ImGui::Begin("Lighting Debug", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+		if (ImGui::Begin("Lighting Debug", NULL, ImGuiWindowFlags_NoResize)) {
 			std::for_each(m_debugLights.cbegin(), m_debugLights.cend(), [&scaleX, &scaleY, &headerOffset](const viewLight_t& light)
 			{
 				ImDrawList* drawList = ImGui::GetWindowDrawList();

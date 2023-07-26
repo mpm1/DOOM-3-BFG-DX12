@@ -2783,7 +2783,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 	if (raytraceUpdated)
 	{
-		dxRenderer.DXR_CopyResultToDisplay();
+		// TODO: Use this for debugging raytracing overlay.
+		//dxRenderer.DXR_CopyResultToDisplay();
 	}
 
 	renderLog.CloseBlock();
