@@ -52,10 +52,12 @@ void DX12RootSignature::CreateRootSignature()
 
 void DX12RootSignature::CreateCBVHeap(const size_t constantBufferSize) {
 	// Create the buffer size.
-	constexpr UINT resourceAlignment = (1024 * 64) - 1; // Resource must be a multible of 64KB
+	constexpr UINT resourceAlignment = 1024 * 64; // Resource must be a multible of 64KB
 	const UINT entrySize = (constantBufferSize + 255) & ~255; // Size is required to be 256 byte aligned
-	const UINT heapSize = ((entrySize * MAX_OBJECT_COUNT) + resourceAlignment) & ~resourceAlignment;
+	const UINT heapSize = DX12_ALIGN(entrySize * MAX_OBJECT_COUNT, resourceAlignment);
 	WCHAR heapName[30];
+
+	assert(heapSize != 0);
 
 	// Create Descriptor Heaps
 	{

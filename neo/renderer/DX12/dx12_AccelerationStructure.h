@@ -28,6 +28,16 @@ namespace DX12Rendering
 	/// </summary>
 	class TLASManager;
 
+	typedef
+		enum ACCELERATION_INSTANCE_TYPE
+	{
+		INSTANCE_TYPE_NONE = 0,
+		INSTANCE_TYPE_STATIC = 1 << 0,
+		INSTANCE_TYPE_DYNAMIC = 1 << 1
+	} 	ACCELERATION_INSTANCE_TYPE;
+
+	DEFINE_ENUM_FLAG_OPERATORS(ACCELERATION_INSTANCE_TYPE);
+
 	struct DX12AccelerationObject {
 		D3D12_RAYTRACING_GEOMETRY_DESC vertex_buffer;
 		UINT index;
@@ -46,7 +56,7 @@ namespace DX12Rendering
 		Instance(const float srcTransformation[16], const dxHandle_t& id, UINT hitGroupIndex) :
 			instanceId(id),
 			hitGroupIndex(hitGroupIndex),
-			transformation()
+			transformation{}
 		{
 			std::memcpy(transformation, srcTransformation, sizeof(float[16]));
 		}
@@ -57,7 +67,7 @@ namespace DX12Rendering
 		InstanceDescriptor(const LPCWSTR name) : Resource(name)
 		{}
 
-		void Fill(BLASManager& blasManager, UINT64 instanceDescsSize, const DX12Rendering::Instance* instances, const UINT instanceCount);
+		UINT Fill(BLASManager& blasManager, UINT64 instanceDescsSize, const std::vector<DX12Rendering::Instance>& staticInstances, const std::vector<DX12Rendering::Instance>& dynamicInstances);
 
 #ifdef DEBUG_IMGUI
 		const void ImGuiDebug();
@@ -116,7 +126,7 @@ namespace DX12Rendering
 		/// <param name="instanceCount">The total instances in the TLAS.</param>
 		/// <param name="scratchBuffer">The scratch buffer used to create the TLAS.</param>
 		/// <returns>True if the resource buffer was updated. False otherwise.</returns>
-		bool UpdateResources(BLASManager& blasManager, const DX12Rendering::Instance* instances, const UINT instanceCount, ScratchBuffer* scratchBuffer);
+		bool UpdateResources(BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& staticInstances, const std::vector<DX12Rendering::Instance>& dynamicInstances, ScratchBuffer* scratchBuffer);
 
 		ID3D12Resource* GetResult() { return resource.Get(); }
 
@@ -127,7 +137,7 @@ namespace DX12Rendering
 		InstanceDescriptor m_instanceDescriptor; // Used to store the information of all instnaces on the GPU
 		UINT64 m_resultSize = 0;
 
-		void CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize, const UINT instanceCount);
+		void CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize, const UINT instanceCount, const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS* description);
 	};
 }
 
@@ -141,6 +151,8 @@ public:
 	BottomLevelAccelerationStructure* CreateBLAS(const dxHandle_t& key, const LPCWSTR name);
 	BottomLevelAccelerationStructure* GetBLAS(const dxHandle_t& key);
 	void RemoveBLAS(const dxHandle_t& key);
+
+	BottomLevelAccelerationStructure* ReserveBLASPlaceholder(const dxHandle_t& key);
 
 	void Reset();
 
@@ -169,24 +181,29 @@ public:
 
 	bool Generate();
 
-	void Reset();
-	bool IsReady() { return m_instances.size() > 0; }
+	void Reset(const ACCELERATION_INSTANCE_TYPE typesMask);
+	const bool IsReady() noexcept { return m_staticInstances.size() > 0 || m_dynamicInstances.size() > 0; }
 
-	TopLevelAccelerationStructure& GetCurrent() { return m_tlas[GetCurrentFrameIndex()]; }
+	TopLevelAccelerationStructure& GetCurrent() { return m_tlas; }
 
-	void AddInstance(const dxHandle_t& id, const float transform[16]);
+	void AddInstance(const dxHandle_t& id, const float transform[16], const ACCELERATION_INSTANCE_TYPE typesMask);
 
-	void AddGPUWait(DX12Rendering::Commands::CommandList* commandList) { m_tlas[GetCurrentFrameIndex()].fence.GPUWait(commandList->GetCommandQueue()); }
+	void AddGPUWait(DX12Rendering::Commands::CommandList* commandList) { m_tlas.fence.GPUWait(commandList->GetCommandQueue()); }
+
+	const bool IsDirty(){ return m_isDirty; }
+	void MarkDirty() { m_isDirty = true; }
 
 #ifdef DEBUG_IMGUI
 	const void ImGuiDebug();
 #endif
 private:
 	BLASManager* m_blasManager;
-	std::vector<DX12Rendering::Instance> m_instances;
-	TopLevelAccelerationStructure m_tlas[DX12_FRAME_COUNT];
+	std::vector<DX12Rendering::Instance> m_staticInstances;
+	std::vector<DX12Rendering::Instance> m_dynamicInstances;
+	TopLevelAccelerationStructure m_tlas;
 	ScratchBuffer m_scratch;
+	bool m_isDirty;
 
-	const bool TryGetWriteInstance(const dxHandle_t& instanceId, DX12Rendering::Instance** outInstance);
+	const bool TryGetWriteInstance(const dxHandle_t& instanceId, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance);
 };
 #endif

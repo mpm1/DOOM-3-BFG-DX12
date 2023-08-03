@@ -4,6 +4,42 @@
 #include "./dx12_DeviceManager.h"
 #include "./dx12_CommandList.h"
 
+#include <algorithm>
+
+namespace
+{
+	bool CopyInstanceToDescriptor(const DX12Rendering::Instance& instance, D3D12_RAYTRACING_INSTANCE_DESC& desc, DX12Rendering::BLASManager& blasManager)
+	{
+		bool result = true;
+
+		desc.InstanceID = instance.instanceId;
+		desc.InstanceContributionToHitGroupIndex = instance.hitGroupIndex;
+		desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE; // Should we implement back face culling?
+
+		// Model View Matrix matrix
+		memcpy(desc.Transform, &instance.transformation, sizeof(desc.Transform));
+
+		const auto blas = blasManager.GetBLAS(instance.instanceId);
+		if (blas == nullptr || blas->state != DX12Rendering::Resource::ResourceState::Ready)
+		{
+			result = false;
+			desc.AccelerationStructure = 0;
+
+			// Unreachable
+			desc.InstanceMask = 0x00;
+		}
+		else
+		{
+			desc.AccelerationStructure = blas->resource->GetGPUVirtualAddress();
+
+			// Always visible.
+			desc.InstanceMask = 0xFF; //TODO: setup so we track shadow casting instances. Eventually we can add surfaces with emmisive as well.
+		}
+
+		return result;
+	}
+}
+
 namespace DX12Rendering {
 #pragma region BottomLevelAccelerationStructure
 	void BottomLevelAccelerationStructure::CalculateBufferSize(
@@ -197,6 +233,13 @@ namespace DX12Rendering {
 		}
 	}
 
+	BottomLevelAccelerationStructure* BLASManager::ReserveBLASPlaceholder(const dxHandle_t& key)
+	{
+		BottomLevelAccelerationStructure* blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, true /* All blas are static for now */, L"RESERVED")).first->second;
+
+		return blas;
+	}
+
 	void BLASManager::Reset()
 	{
 		m_blasIndex = 0;
@@ -225,7 +268,7 @@ namespace DX12Rendering {
 					break;
 				}
 			}
-			else if (m_scratchBuffer.state == DX12Rendering::Resource::Dirty)
+			else if (!blasPair->second.Exists() && m_scratchBuffer.state == DX12Rendering::Resource::Dirty)
 			{
 				// Our scratch buffer is full, so we should wait.
 				break;
@@ -251,9 +294,11 @@ namespace DX12Rendering {
 #pragma endregion
 
 #pragma region InstanceDescriptor
-	void InstanceDescriptor::Fill(BLASManager& blasManager, UINT64 instanceDescsSize, const DX12Rendering::Instance* instances, const UINT instanceCount)
+	UINT InstanceDescriptor::Fill(BLASManager& blasManager, UINT64 instanceDescsSize, const std::vector<DX12Rendering::Instance>& staticInstances, const std::vector<DX12Rendering::Instance>& dynamicInstances)
 	{
-		bool shouldCleanMemory = m_lastInstanceCount > instanceCount;
+		const UINT instanceCount = staticInstances.size() + dynamicInstances.size();
+
+		bool shouldCleanMemory = true; // m_lastInstanceCount > instanceCount;
 
 		if (state != Ready || m_instanceDescsSize < instanceDescsSize) {
 			Release();
@@ -291,33 +336,28 @@ namespace DX12Rendering {
 		}
 
 		m_lastInstanceCount = static_cast<UINT>(instanceCount);
-		for (UINT32 index = 0; index < m_lastInstanceCount; ++index)
+		UINT descIndex = 0;
+		std::for_each(staticInstances.begin(), staticInstances.end(), [&blasManager, &descIndex, instanceDescs](const DX12Rendering::Instance& instance)
 		{
-			instanceDescs[index].InstanceID = instances[index].instanceId;
-			instanceDescs[index].InstanceContributionToHitGroupIndex = instances[index].hitGroupIndex;
-			instanceDescs[index].Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE; // Should we implement back face culling?
 
-			// Model View Matrix matrix
-			memcpy(instanceDescs[index].Transform, &instances[index].transformation, sizeof(instanceDescs[index].Transform));
-
-			auto blas = blasManager.GetBLAS(instances[index].instanceId);
-			if (blas == nullptr || blas->state != Ready)
+			if (CopyInstanceToDescriptor(instance, instanceDescs[descIndex], blasManager))
 			{
-				instanceDescs[index].AccelerationStructure = 0;
-
-				// Unreachable
-				instanceDescs[index].InstanceMask = 0x00;
+				++descIndex;
 			}
-			else
+		});
+
+		std::for_each(dynamicInstances.begin(), dynamicInstances.end(), [&blasManager, &descIndex, instanceDescs](const DX12Rendering::Instance& instance)
+		{
+
+			if (CopyInstanceToDescriptor(instance, instanceDescs[descIndex], blasManager))
 			{
-				instanceDescs[index].AccelerationStructure = blas->resource->GetGPUVirtualAddress();
-
-				// Always visible.
-				instanceDescs[index].InstanceMask = 0xFF;
+				++descIndex;
 			}
-		}
+		});
 
 		resource->Unmap(0, nullptr);
+
+		return descIndex;
 	}
 
 #ifdef DEBUG_IMGUI
@@ -343,13 +383,14 @@ namespace DX12Rendering {
 	{
 	}
 
-	bool TopLevelAccelerationStructure::UpdateResources(BLASManager& blasManager, const DX12Rendering::Instance* instances, const UINT instanceCount, ScratchBuffer* scratchBuffer) {
+	bool TopLevelAccelerationStructure::UpdateResources(BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& staticInstances, const std::vector<DX12Rendering::Instance>& dynamicInstances, ScratchBuffer* scratchBuffer) {
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
 			? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
 			: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
 		UINT64 scratchSizeInBytes;
 		UINT64 resultSizeInBytes;
 		UINT64 instanceDescsSize;
+		const UINT instanceCount = staticInstances.size() + dynamicInstances.size();
 
 		if (instanceCount == 0)
 		{
@@ -362,19 +403,18 @@ namespace DX12Rendering {
 			return false;
 		}
 
-		if (!fence.IsFenceCompleted())
-		{
-			return false;
-		}
+		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputDesc = {};
+		inputDesc.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
+		inputDesc.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
+		inputDesc.NumDescs = instanceCount;
+		inputDesc.Flags = flags;
+		inputDesc.InstanceDescs = NULL;
 
-		CacluateBufferSizes(device, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize, instanceCount);
+		CacluateBufferSizes(device, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize, instanceCount, &inputDesc);
 
 		if (instanceDescsSize == 0) {
 			return false;
 		}
-
-		// Create the descriptor information for the tlas data
-		m_instanceDescriptor.Fill(blasManager, instanceDescsSize, instances, instanceCount);
 
 		// Rebuild the resource each time, as this was reccomended by NVIDIA as the best TLAS practice
 		if(resultSizeInBytes != m_resultSize)
@@ -398,30 +438,27 @@ namespace DX12Rendering {
 			m_resultSize = resultSizeInBytes;
 		}
 
+		// Create the descriptor information for the tlas data
+		inputDesc.NumDescs = m_instanceDescriptor.Fill(blasManager, instanceDescsSize, staticInstances, dynamicInstances);
+		inputDesc.InstanceDescs = m_instanceDescriptor.resource->GetGPUVirtualAddress();
+
 		auto commandList = Commands::GetCommandList(Commands::COMPUTE);
+		
 		UINT64 scratchLocation;
 		scratchBuffer->RequestSpace(commandList, scratchSizeInBytes, scratchLocation, false);
-
-		D3D12_GPU_VIRTUAL_ADDRESS pSourceAS = 0;// updateOnly ? previousResult->GetGPUVirtualAddress() : 0;
-
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC descriptor = {};
-		descriptor.Inputs.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-		descriptor.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		descriptor.Inputs.InstanceDescs = m_instanceDescriptor.resource->GetGPUVirtualAddress();
-		descriptor.Inputs.NumDescs = instanceCount;
-		descriptor.Inputs.Flags = flags;
-
-		descriptor.DestAccelerationStructureData = {
-			resource->GetGPUVirtualAddress()
-		};
-		descriptor.ScratchAccelerationStructureData = {
-			scratchBuffer->resource->GetGPUVirtualAddress() + scratchLocation
-		};
-		descriptor.SourceAccelerationStructureData = pSourceAS;
 
 		// Build the top level AS
 		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{
+			D3D12_GPU_VIRTUAL_ADDRESS pSourceAS = NULL;// updateOnly ? previousResult->GetGPUVirtualAddress() : 0;
+
+			D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_DESC descriptor = {};
+			descriptor.Inputs = inputDesc;
+
+			descriptor.DestAccelerationStructureData = resource->GetGPUVirtualAddress();
+			descriptor.ScratchAccelerationStructureData = scratchBuffer->resource->GetGPUVirtualAddress() + scratchLocation;
+			descriptor.SourceAccelerationStructureData = pSourceAS;
+
 			commandList->BuildRaytracingAccelerationStructure(&descriptor, 0, nullptr);
 
 			// Wait for the buffer to complete setup.
@@ -435,20 +472,17 @@ namespace DX12Rendering {
 		return true;
 	}
 
-	void TopLevelAccelerationStructure::CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize, const UINT instanceCount) {
-		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
-			? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
-			: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
-
-		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS description = {};
-		description.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
-		description.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		description.NumDescs = instanceCount;
-		description.Flags = flags;
-
+	void TopLevelAccelerationStructure::CacluateBufferSizes(
+		ID3D12Device5* device, 
+		UINT64* scratchSizeInBytes, 
+		UINT64* resultSizeInBytes, 
+		UINT64* instanceDescsSize, 
+		const UINT instanceCount, 
+		const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS* description) 
+	{
 		// Calculate the space needed to generate the Acceleration Structure
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info = {};
-		device->GetRaytracingAccelerationStructurePrebuildInfo(&description, &info);
+		device->GetRaytracingAccelerationStructurePrebuildInfo(description, &info);
 
 		// 256 Align the storage size.
 		*scratchSizeInBytes = DX12_ALIGN(info.ScratchDataSizeInBytes, 256);
@@ -481,10 +515,11 @@ namespace DX12Rendering {
 #pragma region TLASManager
 	TLASManager::TLASManager(BLASManager* blasManager) :
 		m_blasManager(blasManager),
+		m_isDirty(false),
 		m_scratch(DEFAULT_TLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"TLAS Scratch Buffer"),
-		m_tlas{ TopLevelAccelerationStructure(L"TLAS 0"), TopLevelAccelerationStructure(L"TLAS 1") }
+		m_tlas{ TopLevelAccelerationStructure(L"TLAS") }
 	{
-		Reset();
+		Reset(INSTANCE_TYPE_STATIC | INSTANCE_TYPE_DYNAMIC);
 	}
 
 	TLASManager::~TLASManager()
@@ -492,28 +527,55 @@ namespace DX12Rendering {
 
 	}
 
-	void TLASManager::Reset()
+	void TLASManager::Reset(const ACCELERATION_INSTANCE_TYPE typesMask)
 	{
-		m_instances.clear();
-		m_instances.reserve(DEFAULT_TLAS_COUNT);
+		m_isDirty = false;
+
+		if ((typesMask & INSTANCE_TYPE_STATIC) != 0)
+		{
+			m_staticInstances.clear();
+			m_staticInstances.reserve(DEFAULT_TLAS_COUNT);
+		}
+
+		if ((typesMask & INSTANCE_TYPE_DYNAMIC) != 0)
+		{
+			m_dynamicInstances.clear();
+			m_dynamicInstances.reserve(DEFAULT_TLAS_COUNT);
+		}
 	}
 
 	bool TLASManager::Generate()
 	{
-		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
-		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "TLASManager::Generate");
-
-		if (m_scratch.state != Resource::Ready)
+		if (!IsDirty())
 		{
-			m_scratch.Build();
+			// The TLAS has not changed, so there's no need to rebuild.
+			return true;
 		}
 
-		bool result = m_tlas[GetCurrentFrameIndex()].UpdateResources(*m_blasManager, m_instances.data(), m_instances.size(), &m_scratch);
+		bool result = false;
+		CaptureGPUBegin();
+		{
+			auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
+			DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "TLASManager::Generate");
+
+			if (m_scratch.state != Resource::Ready)
+			{
+				m_scratch.Build();
+			}
+
+			result = GetCurrent().UpdateResources(*m_blasManager, m_staticInstances, m_dynamicInstances, &m_scratch);
+		}
+		CaptureGPUEnd(FALSE);
+
+		if (result)
+		{
+			m_isDirty = false;
+		}
 
 		return result;
 	}
 
-	void TLASManager::AddInstance(const dxHandle_t& id, const float transform[16])
+	void TLASManager::AddInstance(const dxHandle_t& id, const float transform[16], const ACCELERATION_INSTANCE_TYPE typesMask)
 	{
 		BottomLevelAccelerationStructure* blas = m_blasManager->GetBLAS(id);
 		if (blas == nullptr)
@@ -521,23 +583,47 @@ namespace DX12Rendering {
 			return;
 		}
 
+		MarkDirty();
+
 		DX12Rendering::Instance* instance;
-		if (TryGetWriteInstance(blas->id, &instance))
+		if (TryGetWriteInstance(blas->id, typesMask, &instance))
 		{
 			memcpy(instance->transformation, transform, sizeof(float[16]));
 			return;
 		}
 
-		m_instances.emplace_back(transform, blas->id, 0 /* TODO: Find the hit group index containing the normal map of the surface. */);
+		UINT hitShaderIndex = 0; /* TODO: Find the hit group index containing the normal map of the surface. */
+		if ((typesMask && INSTANCE_TYPE_STATIC) != 0)
+		{
+			m_staticInstances.emplace_back(transform, blas->id, hitShaderIndex);
+		}
+		else if ((typesMask && INSTANCE_TYPE_DYNAMIC) != 0)
+		{
+			m_dynamicInstances.emplace_back(transform, blas->id, hitShaderIndex);
+		}
 	}
 
-	const bool TLASManager::TryGetWriteInstance(const dxHandle_t& index, DX12Rendering::Instance** outInstance)
+	const bool TLASManager::TryGetWriteInstance(const dxHandle_t& index, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance)
 	{
-		for (auto instance : m_instances) {
-			if (instance.instanceId == index)
-			{
-				*outInstance = &instance;
-				return true;
+		if ((typesMask && INSTANCE_TYPE_STATIC) != 0)
+		{
+			for (auto instance : m_staticInstances) {
+				if (instance.instanceId == index)
+				{
+					*outInstance = &instance;
+					return true;
+				}
+			}
+		}
+
+		if ((typesMask && INSTANCE_TYPE_DYNAMIC) != 0)
+		{
+			for (auto instance : m_dynamicInstances) {
+				if (instance.instanceId == index)
+				{
+					*outInstance = &instance;
+					return true;
+				}
 			}
 		}
 
@@ -547,18 +633,18 @@ namespace DX12Rendering {
 #ifdef DEBUG_IMGUI
 	const void TLASManager::ImGuiDebug()
 	{
-		ImGui::Text("Instance Count: %d", m_instances.size());
+		ImGui::Text("Static Instance Count: %d", m_staticInstances.size());
+		ImGui::Text("Dynamic Instance Count: %d", m_dynamicInstances.size());
 
 		// Each TLAS
-		for (TopLevelAccelerationStructure& tlas : m_tlas)
-		{
-			char title[50];
-			std::sprintf(title, "%ls", tlas.GetName());
+		TopLevelAccelerationStructure& tlas = GetCurrent();
+		
+		char title[50];
+		std::sprintf(title, "%ls", tlas.GetName());
 
-			if (ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen))
-			{
-				tlas.ImGuiDebug();
-			}
+		if (ImGui::CollapsingHeader(title, ImGuiTreeNodeFlags_DefaultOpen))
+		{
+			tlas.ImGuiDebug();
 		}
 	}
 #endif

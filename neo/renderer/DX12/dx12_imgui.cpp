@@ -9,8 +9,11 @@ namespace DX12Rendering
 	{
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
+
 		ImGuiIO& io = ImGui::GetIO(); (void)io;
+
 		ImGui::StyleColorsDark();
+
 		ImGui_ImplWin32_Init(hwnd);
 		ImGui_ImplDX12_Init(device, num_frames_in_flight,
 			DXGI_FORMAT_R8G8B8A8_UNORM, cbv_srv_heap,
@@ -20,26 +23,26 @@ namespace DX12Rendering
 
 	void ImGui_StartFrame()
 	{
-		ImGui_ImplWin32_NewFrame();
 		ImGui_ImplDX12_NewFrame();
+		ImGui_ImplWin32_NewFrame();
 		ImGui::NewFrame();
 	}
 
-	void ImGui_EndFrame(ID3D12DescriptorHeap* cbv_srv_heap)
+	void ImGui_EndFrame(ID3D12DescriptorHeap* cbv_srv_heap, const D3D12_CPU_DESCRIPTOR_HANDLE* renderTargets)
 	{
 		ImGui::Render();
+		ImGui::EndFrame();
 
 		{
 			auto commandList = Commands::GetCommandList(Commands::DIRECT);
 			Commands::CommandListCycleBlock cycleBlock(commandList, "ImGui");
-
-			commandList->AddCommandAction([&cbv_srv_heap](ID3D12GraphicsCommandList4* commandList)
+			commandList->AddCommandAction([cbv_srv_heap, renderTargets](ID3D12GraphicsCommandList4* commandList)
 			{
 				commandList->SetDescriptorHeaps(1, &cbv_srv_heap);
+				commandList->OMSetRenderTargets(1, renderTargets, FALSE, nullptr);
+				
 				ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
 			});
 		}
-
-		ImGui::EndFrame();
 	}
 }

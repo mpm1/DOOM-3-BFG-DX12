@@ -3487,7 +3487,7 @@ void idGameLocal::SpawnMapEntities() {
 			num++;
 		} else {
 			inhibit++;
-		}
+		}		
 	}
 
 	Printf( "...%i entities spawned, %i inhibited\n\n", num, inhibit );

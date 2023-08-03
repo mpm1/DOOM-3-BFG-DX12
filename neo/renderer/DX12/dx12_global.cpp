@@ -35,14 +35,16 @@ void DX12Rendering::CaptureGPUBegin()
 {
 	PIXCaptureParameters captureParams = {};
 
-	captureParams.TimingCaptureParameters.CaptureGpuTiming = TRUE;
+	captureParams.GpuCaptureParameters.FileName = L"GPUCapture.wpix";
+
+	/*captureParams.TimingCaptureParameters.CaptureGpuTiming = TRUE;
 	captureParams.TimingCaptureParameters.CaptureCallstacks = TRUE;
-	captureParams.TimingCaptureParameters.CaptureCpuSamples = TRUE;
+	captureParams.TimingCaptureParameters.CaptureCpuSamples = FALSE;
 	captureParams.TimingCaptureParameters.CpuSamplesPerSecond = 4000;
 
 	captureParams.TimingCaptureParameters.CaptureStorage = PIXCaptureParameters::Memory;
 	captureParams.TimingCaptureParameters.FileName = L"GPUCapture.wpix";
-	captureParams.TimingCaptureParameters.MaximumToolingMemorySizeMb = 4096;
+	captureParams.TimingCaptureParameters.MaximumToolingMemorySizeMb = 4096;*/
 
 	PIXBeginCapture(PIX_CAPTURE_GPU, &captureParams);
 }
@@ -93,6 +95,8 @@ bool DX12Rendering::WarnIfFailed(HRESULT hr)
 }
 
 ID3D12Resource* DX12Rendering::CreateBuffer(ID3D12Device5* device, uint64_t size, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps) {
+	assert(size != 0);
+
 	D3D12_RESOURCE_DESC description = {};
 	description.Alignment = D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT;
 	description.DepthOrArraySize = 1;
