@@ -23,7 +23,8 @@ namespace DX12Rendering
 		m_clearValue(clearValue),
 		m_flags(flags),
 		m_dsv({MAXSIZE_T}),
-		m_rtv({MAXSIZE_T})
+		m_rtv({MAXSIZE_T}),
+		m_rtv_gpu({MAXSIZE_T})
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 		
@@ -37,6 +38,9 @@ namespace DX12Rendering
 
 				const CD3DX12_CPU_DESCRIPTOR_HANDLE handle(m_rtvHeap->GetCPUDescriptorHandleForHeapStart(), offset, descriptorSize);
 				m_rtv = handle;
+
+				const CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_rtvHeap->GetGPUDescriptorHandleForHeapStart(), offset, descriptorSize);
+				m_rtv_gpu = gpuHandle;
 			}
 		}
 

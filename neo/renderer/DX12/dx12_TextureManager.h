@@ -5,7 +5,7 @@
 
 namespace DX12Rendering
 {
-	struct TextureBuffer : Resource
+	struct TextureBuffer : public Resource
 	{
 	public:
 		friend class TextureManager;

@@ -7,7 +7,7 @@
 #include <comdef.h>
 #include <type_traits>
 
-idCVar r_useRayTraycing("r_useRayTraycing", "0", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
@@ -959,7 +959,7 @@ void DX12Renderer::InitializeImGui(HWND hWnd)
 {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-	m_debugMode = DEBUG_LIGHTS;
+	m_debugMode = DEBUG_RAYTRACING_SHADOWMAP;
 
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
@@ -1037,6 +1037,25 @@ void DX12Renderer::ImGuiDebugWindows()
 			{
 				m_raytracing->ImGuiDebug();
 			}
+		}
+
+		ImGui::End();
+	}
+	else if (m_debugMode == DEBUG_RAYTRACING_SHADOWMAP)
+	{
+		const float scaleX = 0.33f;
+		const float scaleY = 0.33f;
+		const float headerOffset = 25.0f;
+
+		ImVec2 imageSize(static_cast<float>(m_viewport.Width) * scaleX, static_cast<float>(m_viewport.Height) * scaleY);
+
+		ImGui::SetNextWindowSize({ static_cast<float>(m_viewport.Width) * scaleX, (static_cast<float>(m_viewport.Height) * scaleY) + headerOffset });
+
+		if (ImGui::Begin("Raytraced Shadowmap", NULL, ImGuiWindowFlags_NoResize)) {
+			DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1);
+
+			ImGui::Text("GPU handle = %p", surface->GetGPURtv().ptr);
+			ImGui::Image((ImTextureID)surface->GetGPURtv().ptr, imageSize);
 		}
 
 		ImGui::End();

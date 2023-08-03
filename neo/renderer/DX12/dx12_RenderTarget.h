@@ -71,6 +71,8 @@ namespace DX12Rendering {
 		const D3D12_CPU_DESCRIPTOR_HANDLE& GetRtv() const { return m_rtv; }
 		const D3D12_CPU_DESCRIPTOR_HANDLE& GetDsv() const { return m_dsv; }
 
+		const D3D12_GPU_DESCRIPTOR_HANDLE& GetGPURtv() const { return m_rtv_gpu; }
+
 		void RenderSurface::CreateUnorderedAccessView(D3D12_CPU_DESCRIPTOR_HANDLE& uavHeap);
 
 	private:
@@ -83,6 +85,8 @@ namespace DX12Rendering {
 
 		D3D12_CPU_DESCRIPTOR_HANDLE m_dsv;
 		D3D12_CPU_DESCRIPTOR_HANDLE m_rtv;
+
+		D3D12_GPU_DESCRIPTOR_HANDLE m_rtv_gpu;
 
 		void CreateDepthStencilView();
 		void CreateRenderTargetView();

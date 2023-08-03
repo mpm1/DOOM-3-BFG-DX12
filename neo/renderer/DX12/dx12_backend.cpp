@@ -2663,7 +2663,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			idRenderMatrix viewRenderMatrix;
 			idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrix);
 			float viewMatrixTranspose[16];
-			R_MatrixTranspose(viewRenderMatrix[0], viewMatrixTranspose);
+			R_MatrixTranspose(viewRenderMatrix[0], viewMatrixTranspose); //NOTE: I don't think we need the transpose... but not sure.
 			dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, viewRenderMatrix[0], 4);
 		}
 	}

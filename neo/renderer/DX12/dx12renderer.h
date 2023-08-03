@@ -205,7 +205,8 @@ private:
 	{
 		DEBUG_UNKNOWN = 0,
 		DEBUG_LIGHTS,
-		DEBUG_RAYTRACING
+		DEBUG_RAYTRACING,
+		DEBUG_RAYTRACING_SHADOWMAP,
 	};
 
 	ComPtr<ID3D12DescriptorHeap> m_imguiSrvDescHeap;
