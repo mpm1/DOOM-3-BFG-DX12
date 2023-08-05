@@ -37,11 +37,14 @@ Contains the Image implementation for OpenGL.
 #include "../tr_local.h"
 
 void RGB565SwapBytes(const int imageSize, const byte* input, byte* output) {
+	byte storage;
 	for (int i = 0; i < imageSize; ++i) {
+		storage = input[i];
+
 		output[i] = input[i + 1];
 		++i;
 
-		output[i] = input[i - 1];
+		output[i] = storage;
 	}
 }
 
@@ -425,6 +428,7 @@ void idImage::AllocImage() {
 
 	D3D12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, width, height, numSides, opts.numLevels);
 	//textureDesc.Alignment = alignment;
+	UINT shaderComponentAlignment = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 
 	// Set texture format/
 	switch (opts.format) {
@@ -442,6 +446,7 @@ void idImage::AllocImage() {
 		break;
 	case FMT_RGB565:
 		textureDesc.Format = DXGI_FORMAT_B5G6R5_UNORM;
+		shaderComponentAlignment = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(2, 1, 0, 3);  // Swapping R and B.
 		/*internalFormat = GL_RGB;
 		dataFormat = GL_RGB;
 		dataType = GL_UNSIGNED_SHORT_5_6_5;*/
@@ -535,7 +540,7 @@ void idImage::AllocImage() {
 	}
 
 	// Allocate the texture
-	textureResource = dxRenderer.GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc);
+	textureResource = dxRenderer.GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc, shaderComponentAlignment);
 
 	if (textureResource == nullptr) {
 		return;

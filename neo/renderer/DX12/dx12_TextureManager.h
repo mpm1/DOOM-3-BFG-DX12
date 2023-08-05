@@ -43,7 +43,7 @@ namespace DX12Rendering
 		void StartTextureWrite(TextureBuffer* buffer);
 		void EndTextureWrite(TextureBuffer* buffer);
 
-		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc);
+		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping);
 		TextureBuffer* GetTextureBuffer(uint64 textureHandle); //TODO: Move everything to a reference to create bindless textures.
 		void FreeTextureBuffer(TextureBuffer* buffer);
 		void SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);

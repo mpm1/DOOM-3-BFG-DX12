@@ -2,6 +2,7 @@
 
 #include "dx12_imgui.h"
 #include "./dx12_CommandList.h"
+#include "./dx12_RenderTarget.h"
 
 namespace DX12Rendering
 {
@@ -38,6 +39,16 @@ namespace DX12Rendering
 			Commands::CommandListCycleBlock cycleBlock(commandList, "ImGui");
 			commandList->AddCommandAction([cbv_srv_heap, renderTargets](ID3D12GraphicsCommandList4* commandList)
 			{
+				{
+					DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1);
+
+					D3D12_RESOURCE_BARRIER transition;
+					if (surface->TryTransition(D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, &transition))
+					{
+						commandList->ResourceBarrier(1, &transition);
+					}
+				}
+
 				commandList->SetDescriptorHeaps(1, &cbv_srv_heap);
 				commandList->OMSetRenderTargets(1, renderTargets, FALSE, nullptr);
 				
