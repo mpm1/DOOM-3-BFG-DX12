@@ -538,7 +538,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf) {
 RB_FillDepthBufferGeneric
 ==================
 */
-static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int numDrawSurfs) {
+static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int numDrawSurfs, DX12Rendering::Commands::CommandList* commandList) {
 	for (int i = 0; i < numDrawSurfs; i++) {
 		const drawSurf_t* drawSurf = drawSurfs[i];
 		const idMaterial* shader = drawSurf->material;
@@ -548,6 +548,8 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 		if (shader->Coverage() == MC_TRANSLUCENT) {
 			continue;
 		}
+
+		DX12Rendering::Commands::CommandListCycleBlock subCycleBlock(commandList, "Depth Buffer Surface");
 
 		// get the expressions for conditionals / color / texcoords
 		const float* regs = drawSurf->shaderRegisters;
@@ -658,7 +660,6 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 				else {
 					renderProgManager.BindShader_TextureVertexColor();
 				}
-
 				RB_SetVertexColorParms(SVC_IGNORE);
 
 				// bind the texture
@@ -769,7 +770,7 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		if (drawSurfs[surfNum]->material->GetSort() != SS_SUBVIEW) {
 			break;
 		}
-		RB_FillDepthBufferGeneric(&drawSurfs[surfNum], 1);
+		RB_FillDepthBufferGeneric(&drawSurfs[surfNum], 1, commandList);
 	}
 
 	const drawSurf_t** perforatedSurfaces = (const drawSurf_t**)_alloca(numDrawSurfs * sizeof(drawSurf_t*));
@@ -823,7 +824,9 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 
 	// draw all perforated surfaces with the general code path
 	if (numPerforatedSurfaces > 0) {
-		RB_FillDepthBufferGeneric(perforatedSurfaces, numPerforatedSurfaces);
+		DX12Rendering::Commands::CommandListCycleBlock subCycleBlock(commandList, "PerforatedSurfacs");
+
+		RB_FillDepthBufferGeneric(perforatedSurfaces, numPerforatedSurfaces, commandList);
 	}
 
 	// Allow platform specific data to be collected after the depth pass.

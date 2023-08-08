@@ -428,7 +428,45 @@ void idImage::AllocImage() {
 
 	D3D12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, width, height, numSides, opts.numLevels);
 	//textureDesc.Alignment = alignment;
+	
+	// Set all swizzle components.
 	UINT shaderComponentAlignment = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+	if (opts.colorFormat == CFM_GREEN_ALPHA) {
+		shaderComponentAlignment = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+			D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1,
+			D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1,
+			D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1,
+			1);  // RGB = 1, A = Green
+	}
+	else if (opts.format == FMT_LUM8) {
+		shaderComponentAlignment = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+			0,
+			0,
+			0,
+			D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1);  // RGB = Red, A = 1
+	}
+	else if (opts.format == FMT_L8A8) {
+		shaderComponentAlignment = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+			0,
+			0,
+			0,
+			1);  // RGB = Red, A = Green
+	}
+	else if (opts.format == FMT_ALPHA) {
+		shaderComponentAlignment = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+			D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1,
+			D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1,
+			D3D12_SHADER_COMPONENT_MAPPING_FORCE_VALUE_1,
+			0);  // RGB = 1, A = Red
+	}
+	else if (opts.format == FMT_INT8) {
+		shaderComponentAlignment = D3D12_ENCODE_SHADER_4_COMPONENT_MAPPING(
+			0,
+			0,
+			0,
+			0);  // RGBA = Red
+	}
+
 
 	// Set texture format/
 	switch (opts.format) {
