@@ -445,7 +445,7 @@ UINT DX12Renderer::StartSurfaceSettings() {
 	return m_objectIndex;
 }
 
-bool DX12Renderer::EndSurfaceSettings() {
+bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState) {
 	// TODO: Define separate CBV for location data and Textures
 	// TODO: add a check if we need to update tehCBV and Texture data.
 
@@ -453,7 +453,7 @@ bool DX12Renderer::EndSurfaceSettings() {
 
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
-	if (!DX12_ActivatePipelineState()) {
+	if (!DX12_ActivatePipelineState(variantState)) {
 		// We cant draw the object, so return.
 		return false;
 	}
@@ -483,21 +483,27 @@ void DX12Renderer::PresentBackbuffer() {
 	WaitForPreviousFrame();
 }
 
-void DX12Renderer::DrawModel(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount) {
+void DX12Renderer::DrawModel(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride) {
 	if (!IsScissorWindowValid()) {
 		return;
 	}
 
-	const D3D12_VERTEX_BUFFER_VIEW& vertecies = *vertexBuffer->GetView();
+	const D3D12_VERTEX_BUFFER_VIEW& vertecies = *vertexBuffer->GetMutableView();
 
 	const D3D12_INDEX_BUFFER_VIEW& indecies = *indexBuffer->GetView();
 
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
-	commandList->AddCommandAction([&indecies, &vertecies, &indexCount, &indexOffset, &vertexOffset](ID3D12GraphicsCommandList4* commandList)
+	commandList->AddCommandAction([&indecies, &vertecies, &indexCount, &indexOffset, &vertexOffset, vertexStrideOverride](ID3D12GraphicsCommandList4* commandList)
 	{
+		D3D12_VERTEX_BUFFER_VIEW vertCopy = vertecies;
+		if (vertexStrideOverride > 0)
+		{
+			vertCopy.StrideInBytes = vertexStrideOverride;
+		}
+
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-		commandList->IASetVertexBuffers(0, 1, &vertecies);
+		commandList->IASetVertexBuffers(0, 1, &vertCopy);
 		commandList->IASetIndexBuffer(&indecies);
 
 		// Draw the model
@@ -651,6 +657,24 @@ void DX12Renderer::UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, co
 	m_viewport.Height = height;
 	m_viewport.MinDepth = minDepth;
 	m_viewport.MaxDepth = maxDepth;
+}
+
+void DX12Renderer::UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth) {
+	if (minDepth > maxDepth)
+	{
+		return;
+	}
+
+	if (m_isDrawing) {
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
+		{
+			commandList->OMSetDepthBounds(
+				minDepth < 0.0f ? 0.0f : minDepth, 
+				maxDepth == 0.0f ? 1.0f : maxDepth // If the max depth is 0, essentailly disable the depth test by setting it to 1.
+			);
+		});
+	}
 }
 
 void DX12Renderer::UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h) {
@@ -959,7 +983,7 @@ void DX12Renderer::InitializeImGui(HWND hWnd)
 {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-	m_debugMode = DEBUG_LIGHTS;
+	m_debugMode = DEBUG_UNKNOWN;
 
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
@@ -1037,6 +1061,25 @@ void DX12Renderer::ImGuiDebugWindows()
 			{
 				m_raytracing->ImGuiDebug();
 			}
+		}
+
+		ImGui::End();
+	}
+	else if (m_debugMode == DEBUG_RAYTRACING_SHADOWMAP)
+	{
+		const float scaleX = 0.33f;
+		const float scaleY = 0.33f;
+		const float headerOffset = 25.0f;
+
+		ImVec2 imageSize(static_cast<float>(m_viewport.Width) * scaleX, static_cast<float>(m_viewport.Height) * scaleY);
+
+		ImGui::SetNextWindowSize({ static_cast<float>(m_viewport.Width) * scaleX, (static_cast<float>(m_viewport.Height) * scaleY) + headerOffset });
+
+		if (ImGui::Begin("Raytraced Shadowmap", NULL, ImGuiWindowFlags_NoResize)) {
+			DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1);
+
+			ImGui::Text("GPU handle = %p", surface->GetGPURtv().ptr);
+			ImGui::Image((ImTextureID)surface->GetGPURtv().ptr, imageSize);
 		}
 
 		ImGui::End();

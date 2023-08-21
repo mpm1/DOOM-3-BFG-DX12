@@ -28,11 +28,13 @@ void GL_Viewport(int x, int y, int w, int h) {
 }
 
 void GL_PolygonOffset(float scale, float bias) {
-	// TODO: Polygon offset.
+	// TODO: Implement a read of this.
+	backEnd.glState.polyOfsScale = scale;
+	backEnd.glState.polyOfsBias = bias;
 }
 
 void GL_DepthBoundsTest(const float zmin, const float zmax) {
-	// TODO: Set depth bounds.
+	dxRenderer.UpdateDepthBounds(zmin, zmax);
 }
 
 void GL_StartDepthPass(const idScreenRect& rect) {

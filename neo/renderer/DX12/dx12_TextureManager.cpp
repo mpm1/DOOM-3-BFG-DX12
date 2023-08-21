@@ -77,7 +77,7 @@ namespace DX12Rendering
 		DX12Rendering::CaptureEventEnd(copyCommands);
 	}
 
-	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc) {
+	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping) {
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Create the name
@@ -89,7 +89,7 @@ namespace DX12Rendering
 
 		// Create the Shader Resource View
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
-		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.Shader4ComponentMapping = shaderComponentMapping;
 		srvDesc.Format = textureDesc.Format;
 		srvDesc.ViewDimension = textureDesc.DepthOrArraySize == 6 ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MipLevels = textureDesc.MipLevels;

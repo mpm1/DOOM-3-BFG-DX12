@@ -34,9 +34,6 @@ StaticShadowVolumeJob
 ===================
 */
 void StaticShadowVolumeJob( const staticShadowVolumeParms_t * parms ) {
-	//TODO: Remove this completely and use the job for DXR shadow generation.
-	return; 
-
 	if ( parms->tempCullBits == NULL ) {
 		*const_cast< byte ** >( &parms->tempCullBits ) = (byte *)_alloca16( TEMP_CULLBITS( parms->numVerts ) );
 	}

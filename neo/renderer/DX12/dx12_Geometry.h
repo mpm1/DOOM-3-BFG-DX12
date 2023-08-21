@@ -23,6 +23,8 @@ namespace DX12Rendering
 			VertexBuffer(const UINT numBytes, const LPCWSTR name);
 
 			const D3D12_VERTEX_BUFFER_VIEW* GetView() { return &m_vertexBufferView; }
+
+			D3D12_VERTEX_BUFFER_VIEW* GetMutableView() { return &m_vertexBufferView; }
 		private:
 			D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
 		};

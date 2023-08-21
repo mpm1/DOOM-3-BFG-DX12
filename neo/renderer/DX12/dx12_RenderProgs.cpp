@@ -7,14 +7,20 @@
 #include <unordered_map>
 
 // Masking constants used to generate the hash code from the GLState object
-static const uint64 STATE_TO_HASH_MASK = ~(0ull | GLS_STENCIL_FUNC_REF_BITS);
-static const uint64 HASH_FACE_CULL_SHIFT = GLS_STENCIL_FUNC_REF_SHIFT;
-static const uint64 HASH_PARENT_INDEX_SHIFT = HASH_FACE_CULL_SHIFT + 2;
+static constexpr uint64 STATE_TO_HASH_MASK = ~(0ull | GLS_STENCIL_FUNC_REF_BITS);
+static constexpr uint64 HASH_FACE_CULL_SHIFT = GLS_STENCIL_FUNC_REF_SHIFT;
+
+static constexpr uint64 HASH_VARIANT_INDEX_SHIFT = 0;
+static constexpr uint64 HASH_PARENT_INDEX_SHIFT = HASH_VARIANT_INDEX_SHIFT + 32;
 
 static int activePipelineState = 0;
 
-D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDescriptors[53];
-std::unordered_map<int64, ID3D12PipelineState*> pipelineStateMap(128);
+D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDescriptors[128];
+
+typedef std::unordered_map<int64, ID3D12PipelineState*> PipelineStateMap;
+typedef std::unordered_map<int64, PipelineStateMap> ShaderMap;
+
+ShaderMap shaderMap(128);
 
 D3D12_CULL_MODE CalculateCullMode(const int cullType) {
 	switch (cullType) {
@@ -129,6 +135,8 @@ D3D12_DEPTH_STENCIL_DESC CalculateDepthStencilMode(const uint64 stateBits) {
 		dsDesc.FrontFace.StencilFailOp = dsDesc.BackFace.StencilFailOp = sFail;
 		dsDesc.FrontFace.StencilDepthFailOp = dsDesc.BackFace.StencilDepthFailOp = zFail;
 		dsDesc.FrontFace.StencilPassOp = dsDesc.BackFace.StencilPassOp = pass;
+
+		dsDesc.BackFace = dsDesc.FrontFace;
 	}
 
 	return dsDesc;
@@ -184,17 +192,119 @@ D3D12_BLEND_DESC CalculateBlendMode(const uint64 stateBits) {
 	return blendDesc;
 }
 
-void LoadStagePipelineState(int parentState, glstate_t state) {
+void DX12_ApplyPSOVariant(D3D12_GRAPHICS_PIPELINE_STATE_DESC& psoDesc, const DX12Rendering::eSurfaceVariant variant)
+{
+	// Modify vertex data
+	switch (variant)
+	{
+	case DX12Rendering::VARIANT_STENCIL_SHADOW_RENDER_ZPASS:
+	case DX12Rendering::VARIANT_STENCIL_SHADOW_STENCILSHADOWPRELOAD:
+	{
+		static const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		};
+
+		psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+	}
+		break;
+
+	case DX12Rendering::VARIANT_STENCIL_SHADOW_RENDER_ZPASS_SKINNED:
+	case DX12Rendering::VARIANT_STENCIL_SHADOW_STENCILSHADOWPRELOAD_SKINNED:
+	{
+		static const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
+			{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "COLOR", 0, DXGI_FORMAT_R8G8B8A8_UNORM , 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+			{ "COLOR", 1, DXGI_FORMAT_R8G8B8A8_UNORM , 0, 20, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		};
+
+		psoDesc.InputLayout = { inputElementDescs, _countof(inputElementDescs) };
+	}
+		break;
+
+	default:
+		break;
+	}
+
+	// Modify DepthStencil data
+	switch (variant) 
+	{
+	case DX12Rendering::VARIANT_STENCIL_TWOSIDED:
+		psoDesc.DepthStencilState.StencilEnable = true;
+
+		psoDesc.DepthStencilState.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		psoDesc.DepthStencilState.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_REPLACE;
+		psoDesc.DepthStencilState.FrontFace.StencilPassOp = D3D12_STENCIL_OP_ZERO;
+
+		psoDesc.DepthStencilState.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		psoDesc.DepthStencilState.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_ZERO;
+		psoDesc.DepthStencilState.BackFace.StencilPassOp = D3D12_STENCIL_OP_REPLACE;
+		break;
+
+	case DX12Rendering::VARIANT_STENCIL_SHADOW_RENDER_ZPASS:
+	case DX12Rendering::VARIANT_STENCIL_SHADOW_RENDER_ZPASS_SKINNED:
+		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+			 
+		psoDesc.DepthStencilState.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		psoDesc.DepthStencilState.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+		psoDesc.DepthStencilState.FrontFace.StencilPassOp = D3D12_STENCIL_OP_INCR_SAT;
+
+		psoDesc.DepthStencilState.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		psoDesc.DepthStencilState.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_KEEP;
+		psoDesc.DepthStencilState.BackFace.StencilPassOp = D3D12_STENCIL_OP_DECR_SAT;
+		break;
+
+	case DX12Rendering::VARIANT_STENCIL_SHADOW_STENCILSHADOWPRELOAD:
+	case DX12Rendering::VARIANT_STENCIL_SHADOW_STENCILSHADOWPRELOAD_SKINNED:
+		psoDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+
+		psoDesc.DepthStencilState.FrontFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		psoDesc.DepthStencilState.FrontFace.StencilDepthFailOp = D3D12_STENCIL_OP_DECR_SAT;
+		psoDesc.DepthStencilState.FrontFace.StencilPassOp = D3D12_STENCIL_OP_DECR_SAT;
+
+		psoDesc.DepthStencilState.BackFace.StencilFailOp = D3D12_STENCIL_OP_KEEP;
+		psoDesc.DepthStencilState.BackFace.StencilDepthFailOp = D3D12_STENCIL_OP_INCR_SAT;
+		psoDesc.DepthStencilState.BackFace.StencilPassOp = D3D12_STENCIL_OP_INCR_SAT;
+		break;
+
+	default:
+		break;
+	}
+}
+
+void FillPolygonOffset(D3D12_GRAPHICS_PIPELINE_STATE_DESC& psoDesc, uint64 stateBits)
+{
+	if (stateBits & GLS_POLYGON_OFFSET > 0)
+	{
+		psoDesc.RasterizerState.SlopeScaledDepthBias = backEnd.glState.polyOfsScale;
+		psoDesc.RasterizerState.DepthBias = backEnd.glState.polyOfsBias;
+	}
+}
+
+void LoadStagePipelineState(int parentState, const DX12Rendering::eSurfaceVariant variant, glstate_t state) {
 	// Combine the glStateBits with teh faceCulling and parentState index values.
 	// We do not need the stecil ref value as this will be set through the command list. This gives us 8 useable bits.
-	int64 stateIndex = (state.glStateBits & STATE_TO_HASH_MASK) | (state.faceCulling << HASH_FACE_CULL_SHIFT) | (parentState << HASH_PARENT_INDEX_SHIFT);
-	const auto result = pipelineStateMap.find(stateIndex);
+	int64 stateIndex = (state.glStateBits & STATE_TO_HASH_MASK) | (state.faceCulling << HASH_FACE_CULL_SHIFT);
+	int64 shaderIndex = (static_cast<uint64>(variant) << HASH_VARIANT_INDEX_SHIFT) | (static_cast<uint64>(parentState) << HASH_PARENT_INDEX_SHIFT);
 
-	if (result == pipelineStateMap.end()) {
+	const auto pipelineStateMapContainer = shaderMap.find(shaderIndex);
+	PipelineStateMap* pipelineStateMap;
+
+	if (pipelineStateMapContainer == shaderMap.end())
+	{
+		pipelineStateMap = &shaderMap.emplace(shaderIndex, 128).first->second;
+	}
+	else
+	{
+		pipelineStateMap = &pipelineStateMapContainer->second;
+	}
+
+	const auto result = pipelineStateMap->find(stateIndex);
+
+	if (result == pipelineStateMap->end()) {
 		// No PipelineState found. Create a new one.
 
 		// Define the vertex input layout
-		const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
+		static const D3D12_INPUT_ELEMENT_DESC inputElementDescs[] = {
 			{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 			{ "TEXCOORD", 0, DXGI_FORMAT_R16G16_FLOAT , 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 			{ "NORMAL", 0, DXGI_FORMAT_R8G8B8A8_UNORM , 0, 16, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -213,7 +323,9 @@ void LoadStagePipelineState(int parentState, glstate_t state) {
 		psoDesc.BlendState = CalculateBlendMode(state.glStateBits);
 		psoDesc.DepthStencilState = CalculateDepthStencilMode(state.glStateBits);
 		
-		// TODO: Setup Polygon offset (depth bias)
+		FillPolygonOffset(psoDesc, state.glStateBits);
+
+		DX12_ApplyPSOVariant(psoDesc, variant);
 
 		ID3D12PipelineState* renderState;
 		dxRenderer.LoadPipelineState(&psoDesc, &renderState);
@@ -222,7 +334,7 @@ void LoadStagePipelineState(int parentState, glstate_t state) {
 		wsprintfW(resourceName, L"Shader: 0x%x", stateIndex);
 		renderState->SetName(resourceName);
 
-		pipelineStateMap.insert({ stateIndex, renderState });
+		pipelineStateMap->insert({ stateIndex, renderState });
 
 		dxRenderer.SetActivePipelineState(renderState);
 	}
@@ -231,12 +343,12 @@ void LoadStagePipelineState(int parentState, glstate_t state) {
 	}
 }
 
-bool DX12_ActivatePipelineState() {
+bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant) {
 	if (activePipelineState < 0) {
 		return false;
 	}
 
-	LoadStagePipelineState(activePipelineState, backEnd.glState);
+	LoadStagePipelineState(activePipelineState, variant, backEnd.glState);
 
 	return true;
 }

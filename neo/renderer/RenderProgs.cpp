@@ -109,6 +109,9 @@ void idRenderProgManager::Init() {
 		{ BUILTIN_BINK_GUI, "bink_gui" },
 		{ BUILTIN_STEREO_INTERLACE, "stereoInterlace" },
 		{ BUILTIN_MOTION_BLUR, "motionBlur" },
+
+		{ BUILTIN_SHADOW, "shadow" },
+		{ BUILTIN_SHADOW_SKINNED, "shadow_skinned" },
 	};
 	int numBuiltins = sizeof( builtins ) / sizeof( builtins[0] );
 	vertexShaders.SetNum( numBuiltins );
@@ -125,11 +128,11 @@ void idRenderProgManager::Init() {
 	}
 
 	// Special case handling for fastZ shaders
-	builtinShaders[BUILTIN_SHADOW] = FindVertexShader( "shadow.vp" );
-	builtinShaders[BUILTIN_SHADOW_SKINNED] = FindVertexShader( "shadow_skinned.vp" );
+	/*builtinShaders[BUILTIN_SHADOW] = FindVertexShader( "shadow" );
+	builtinShaders[BUILTIN_SHADOW_SKINNED] = FindVertexShader( "shadow_skinned" );
 
-	FindProgram( "shadow.vp", builtinShaders[BUILTIN_SHADOW], -1 );
-	FindProgram( "shadow_skinned.vp", builtinShaders[BUILTIN_SHADOW_SKINNED], -1 );
+	FindProgram( "shadow", builtinShaders[BUILTIN_SHADOW], -1 );
+	FindProgram( "shadow_skinned", builtinShaders[BUILTIN_SHADOW_SKINNED], -1 );*/
 
 	shaderUniforms.SetNum( RENDERPARM_USER + MAX_SHADER_USER_PARMS, vec4_zero );
 
