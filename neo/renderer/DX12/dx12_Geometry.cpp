@@ -21,9 +21,9 @@ namespace DX12Rendering {
 		//TODO: Check mapped flag
 		resource->Unmap(0, pWrittenRange);
 
-		if (state == ResourceState::Ready)
+		if (state == eResourceState::Ready)
 		{
-			state = ResourceState::Dirty;
+			state = eResourceState::Dirty;
 		}
 
 		return true;

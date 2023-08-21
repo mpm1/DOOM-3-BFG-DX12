@@ -7,7 +7,7 @@
 namespace DX12Rendering {
 	struct Resource
 	{
-		enum ResourceState
+		enum eResourceState
 		{
 			Unallocated = 0,
 			Ready,
@@ -19,11 +19,11 @@ namespace DX12Rendering {
 
 		Fence fence;
 		ComPtr<ID3D12Resource> resource;
-		ResourceState state;
+		eResourceState state;
 
 		Resource(const LPCWSTR name = nullptr) :
 			m_name(name == nullptr ? L"" : name),
-			state(ResourceState::Unallocated) 
+			state(eResourceState::Unallocated) 
 		{
 			
 		}

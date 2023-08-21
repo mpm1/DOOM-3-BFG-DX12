@@ -30,6 +30,19 @@ struct viewLight_t;
 #endif
 
 namespace DX12Rendering {
+
+	enum eSurfaceVariant
+	{
+		VARIANT_DEFAULT = 0,
+		VARIANT_STENCIL_SHADOW_RENDER_ZPASS,
+		VARIANT_STENCIL_SHADOW_RENDER_ZPASS_SKINNED,
+		VARIANT_STENCIL_SHADOW_STENCILSHADOWPRELOAD,
+		VARIANT_STENCIL_SHADOW_STENCILSHADOWPRELOAD_SKINNED,
+		VARIANT_STENCIL_TWOSIDED,
+
+		VARIANT_COUNT
+	};
+
 	// TODO: Start setting frame data to it's own object to make it easier to manage.
 	struct DX12FrameDataBuffer
 	{
@@ -45,7 +58,7 @@ namespace DX12Rendering {
 }
 
 //TODO: move everything into the correct namespace
-bool DX12_ActivatePipelineState();
+bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant);
 
 class DX12Renderer {
 public:
@@ -58,6 +71,7 @@ public:
 
 	void UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, const FLOAT width, const FLOAT height, const FLOAT minDepth = 0.0f, const FLOAT maxDepth = 1.0f); // Used to put us into right hand depth space.
 	void UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h);
+	void UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth);
 	void UpdateStencilRef(UINT ref);
 
 	void ReadPixels(int x, int y, int width, int height, UINT readBuffer, byte* buffer);
@@ -92,8 +106,8 @@ public:
 	void SetCommandListDefaults(const bool resetPipelineState = true);
 	void CycleDirectCommandList();
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
-	bool EndSurfaceSettings(); // Records the the surface entry into the heap.
-	void DrawModel(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant); // Records the the surface entry into the heap.
+	void DrawModel(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride /* 0 means no override */);
 
 #pragma region RayTracing
 	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.

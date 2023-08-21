@@ -235,7 +235,7 @@ namespace DX12Rendering
 		{
 			D3D12_CLEAR_VALUE clearValue = {};
 			clearValue.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
-			clearValue.DepthStencil = { 1.0f, 128 };
+			clearValue.DepthStencil = { 1.0f, 0 };
 
 			m_surfaces.emplace_back(L"DepthStencil", DXGI_FORMAT_D24_UNORM_S8_UINT, eRenderSurface::DepthStencil, RENDER_SURFACE_FLAG_NONE, clearValue);
 		}

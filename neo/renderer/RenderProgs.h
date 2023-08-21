@@ -208,11 +208,6 @@ public:
 	int		FindProgram(const char* name, int vIndex, int fIndex); // TODO: Find the program in the list.
 
 protected:
-	void	LoadVertexShader( int index );
-	void	LoadFragmentShader( int index );
-
-	void	LoadProgram(const int programIndex, const int vertexShaderIndex, const int fragmentShaderIndex);
-
 	enum {
 		BUILTIN_GUI,
 		BUILTIN_COLOR,
@@ -253,6 +248,12 @@ protected:
 
 		MAX_BUILTINS
 	};
+
+	void	LoadVertexShader( int index );
+	void	LoadFragmentShader( int index );
+
+	void	LoadProgram(const int programIndex, const int vertexShaderIndex, const int fragmentShaderIndex);
+
 	int builtinShaders[MAX_BUILTINS];
 	void BindShader_Builtin( int i ) { BindShader( builtinShaders[i], builtinShaders[i] ); }
 

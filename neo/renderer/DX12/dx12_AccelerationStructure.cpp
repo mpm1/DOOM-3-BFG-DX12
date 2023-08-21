@@ -20,7 +20,7 @@ namespace
 		memcpy(desc.Transform, &instance.transformation, sizeof(desc.Transform));
 
 		const auto blas = blasManager.GetBLAS(instance.instanceId);
-		if (blas == nullptr || blas->state != DX12Rendering::Resource::ResourceState::Ready)
+		if (blas == nullptr || blas->state != DX12Rendering::Resource::eResourceState::Ready)
 		{
 			result = false;
 			desc.AccelerationStructure = 0;
@@ -394,7 +394,7 @@ namespace DX12Rendering {
 
 		if (instanceCount == 0)
 		{
-			return false;
+			return true;
 		}
 
 		auto device = DX12Rendering::Device::GetDevice();
@@ -554,7 +554,7 @@ namespace DX12Rendering {
 
 		bool result = false;
 		CaptureGPUBegin();
-		{
+		{//TODO: Figure out why we have so many calls here
 			auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
 			DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "TLASManager::Generate");
 
