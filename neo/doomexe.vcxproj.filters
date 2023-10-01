@@ -1490,10 +1490,7 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="packages.config" />
-    <None Include="..\base\renderprogs\gbuffer.pixel">
-      <Filter>Shaders</Filter>
-    </None>
-    <None Include="..\base\renderprogs\gbuffer.vertex">
+    <None Include="..\base\renderprogs\gbuffer.inc">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>
@@ -1624,6 +1621,18 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\shadow_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\gbuffer.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\gbuffer.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\gbuffer_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\gbuffer_skinned.pixel">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

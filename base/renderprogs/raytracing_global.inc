@@ -59,22 +59,16 @@ inline float4 GetInverseView(float4 location, in SceneConstants constants)
     );
 }
 
-inline RayDesc GenerateCameraRay(uint2 index, in SceneConstants constants)
+inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in SceneConstants constants)
 {
-    float2 xy = index + 0.5f; // Center of the pixel
-    float2 screenPos = (xy / DispatchRaysDimensions().xy) * 2.0 - 1.0;
+    float4 clipPosition = float4(screenPosition * 2.0 - 1.0, depth, 1.0);
+    float4 viewPosition = GetInverseProjection(clipPosition, constants);
+    
+    viewPosition /= viewPosition.w;
 
-    // Invert Y for DirectX-style coordinates.
-    screenPos.y = -screenPos.y;
+    float4 worldPosition = GetInverseView(viewPosition, constants);
 
-    // Unproject the pixel coordinate into a world positon.
-    float4 world = GetInverseProjection(float4(screenPos, 0, 1), constants);
-    world /= world.w;
-    world.xyz = world.xzy;
-
-    RayDesc ray;
-    ray.Origin =constants.rpGlobalEyePos.xyz;
-    ray.Direction = normalize(GetInverseView(world, constants).xyz - ray.Origin);
-
-    return ray;
+    return worldPosition;
 }
+
+SamplerState    pointSampler : register(s0, space0); // Sampler that will grab the exact point information from the shader.

@@ -51,12 +51,12 @@ public:
 	Raytracing(UINT screenWidth, UINT screenHeight);
 	~Raytracing();
 
-	void Resize(UINT width, UINT height);
+	void Resize(UINT width, UINT height, DX12Rendering::TextureManager &textureManager);
 
 	DX12Rendering::BLASManager* GetBLASManager() { return &m_blasManager; }
 	DX12Rendering::TLASManager* GetTLASManager() { return &m_tlasManager; }
 
-	void Uniform4f(dxr_renderParm_t param, const float* uniform);
+	void Uniform4f(UINT index, const float* uniform);
 
 	void GenerateTLAS();
 
@@ -122,7 +122,7 @@ private:
 	// Pipeline
 	void CreateShadowPipeline();
 	void CreateOutputBuffers();
-	void CreateShaderResourceHeap();
+	void CreateShaderResourceHeap(DX12Rendering::TextureManager& textureManager);
 
 	void CreateShaderBindingTables();
 	void CreateShadowBindingTable();

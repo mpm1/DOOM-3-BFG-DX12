@@ -161,7 +161,7 @@ private:
 	ComPtr<IDXGISwapChain3> m_swapChain;
 	DX12RootSignature* m_rootSignature;
 
-	XMFLOAT4 m_constantBuffer[53];
+	XMFLOAT4 m_constantBuffer[57/* RENDERPARM_TOTAL */];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;

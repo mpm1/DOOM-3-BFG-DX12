@@ -5,6 +5,14 @@
 
 namespace DX12Rendering
 {
+	enum eGlobalTexture
+	{
+		DEPTH_TEXTURE,
+		RAYTRACED_LIGHT_1,
+
+		TEXTURE_COUNT
+	};
+
 	struct TextureBuffer : public Resource
 	{
 	public:
@@ -23,8 +31,12 @@ namespace DX12Rendering
 
 		const bool IsReady() { return Exists(); }
 
+		const CD3DX12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptorHandle() const { return m_gpuHandle; }
+		void SetGPUDescriptorHandle(CD3DX12_GPU_DESCRIPTOR_HANDLE handle) { m_gpuHandle = handle; }
+
 	private:
 		D3D12_RESOURCE_DESC m_textureDesc;
+		CD3DX12_GPU_DESCRIPTOR_HANDLE m_gpuHandle;
 	};
 
 	class TextureManager {
@@ -32,12 +44,13 @@ namespace DX12Rendering
 		TextureManager();
 		~TextureManager();
 
+		void Initialize(uint screenWidth, uint screenHeight);
 		void Clear();
 
 		// State Control
-		bool SetTextureCopyState(TextureBuffer* buffer, const UINT mipLevel);
-		bool SetTexturePixelShaderState(TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
-		bool SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES);
+		bool SetTextureCopyState(TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
+		bool SetTexturePixelShaderState(TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
+		bool SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
 
 		// Data management
 		void StartTextureWrite(TextureBuffer* buffer);
@@ -48,10 +61,11 @@ namespace DX12Rendering
 		void FreeTextureBuffer(TextureBuffer* buffer);
 		void SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);
 
+		TextureBuffer* GetGlobalTexture(eGlobalTexture textureId);
 	private:
 		ScratchBuffer m_textureUploadHeap;
 		// TODO: Create bindless textures.
-		std::vector<DX12Rendering::TextureBuffer> m_textures; // Stores the active texture information in the scene.
+		std::vector<DX12Rendering::TextureBuffer*> m_textures; // Stores the active texture information in the scene.
 	};
 }
 #endif

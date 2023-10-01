@@ -553,7 +553,7 @@ namespace DX12Rendering {
 		}
 
 		bool result = false;
-		CaptureGPUBegin();
+		//CaptureGPUBegin();
 		{//TODO: Figure out why we have so many calls here
 			auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COMPUTE);
 			DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "TLASManager::Generate");
@@ -565,7 +565,7 @@ namespace DX12Rendering {
 
 			result = GetCurrent().UpdateResources(*m_blasManager, m_staticInstances, m_dynamicInstances, &m_scratch);
 		}
-		CaptureGPUEnd(FALSE);
+		//CaptureGPUEnd(FALSE);
 
 		if (result)
 		{

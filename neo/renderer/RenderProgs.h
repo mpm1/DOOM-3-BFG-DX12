@@ -82,6 +82,11 @@ enum renderParm_t {
 	RENDERPARM_MODELMATRIX_Z,
 	RENDERPARM_MODELMATRIX_W,
 
+	RENDERPARM_NORMALMATRIX_X,
+	RENDERPARM_NORMALMATRIX_Y,
+	RENDERPARM_NORMALMATRIX_Z,
+	RENDERPARM_NORMALMATRIX_W,
+
 	RENDERPARM_PROJMATRIX_X,
 	RENDERPARM_PROJMATRIX_Y,
 	RENDERPARM_PROJMATRIX_Z,
@@ -169,6 +174,9 @@ public:
 	void	BindShader_ShadowDebug() { BindShader_Builtin( BUILTIN_SHADOW_DEBUG ); }
 	void	BindShader_ShadowDebugSkinned() { BindShader_Builtin( BUILTIN_SHADOW_DEBUG_SKINNED ); }
 
+	void	BindShader_GBuffer() { BindShader_Builtin(BUILTIN_GBUFFER); }
+	void	BindShader_GBufferSkinned() { BindShader_Builtin(BUILTIN_GBUFFER_SKINNED); }
+
 	void	BindShader_BlendLight() { BindShader_Builtin( BUILTIN_BLENDLIGHT ); }
 	void	BindShader_Fog() { BindShader_Builtin( BUILTIN_FOG ); }
 	void	BindShader_FogSkinned() { BindShader_Builtin( BUILTIN_FOG_SKINNED ); }
@@ -231,6 +239,9 @@ protected:
 		BUILTIN_SHADOW_SKINNED,
 		BUILTIN_SHADOW_DEBUG,
 		BUILTIN_SHADOW_DEBUG_SKINNED,
+
+		BUILTIN_GBUFFER,
+		BUILTIN_GBUFFER_SKINNED,
 
 		BUILTIN_BLENDLIGHT,
 		BUILTIN_FOG,

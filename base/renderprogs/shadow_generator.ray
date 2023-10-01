@@ -6,6 +6,9 @@ RWTexture2D<float4> gOutput :register(u0);
 // Raytracing acceleration structure, accessed as a SRV
 RaytracingAccelerationStructure SceneBVH :register(t0);
 
+// Depth buffer used to access the initial location
+uniform Texture2D<float4>	depthBuffer : register(t1);
+
 // Constants used to define the camera state
 ConstantBuffer<SceneConstants> sceneConstants : register(b0, space0);
 
@@ -34,21 +37,39 @@ void RayGen() {
 
 	if (IsInsideViewport(screenLocation.xy, sceneConstants.rpScissor))
 	{
-		// Define a ray, consisting of origin, direction, and the min-max distance values
-		RayDesc ray = GenerateCameraRay(DispatchRaysIndex().xy, sceneConstants);
-		ray.TMin = 0.01;
-		ray.TMax = 100000;
+		// Get the depth buffer location
+		float depth = depthBuffer.Gather(pointSampler, lerpValues.xy).r;
 
-		TraceRay(
-			SceneBVH,
-			RAY_FLAG_NONE, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-			0xFF,
-			0,
-			0, // First Hit Shader
-			0, // Miss Shader
-			ray,
-			payload
-		);
+		if(depth <= 1.0f)
+		{
+			float4 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants);
+
+			// Define a ray, consisting of origin, direction, and the min-max distance values
+			RayDesc ray;
+			ray.TMin = 0.001;
+			ray.TMax = 10000;//TODO: set this distance to our distance near the light
+			ray.Origin = worldPosition.xyz;
+
+			// TEMP simple direction: We will make a vector to the light.
+			ray.Direction = normalize((sceneConstants.rpGlobalEyePos.xyz + float3(0.0f, 2.0f, 0.0f)) - worldPosition.xyz);
+
+			TraceRay(
+				SceneBVH,
+				RAY_FLAG_NONE, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+				0xFF,
+				0,
+				0, // First Hit Shader
+				0, // Miss Shader
+				ray,
+				payload
+			);
+
+			depth = clamp(distance(ray.Origin, sceneConstants.rpGlobalEyePos.xyz) / 800.0, 0, 1.0); //Mark start here. why is everything on it's side?
+		}
+
+		//TEMP: Testing that it's reading the depth buffer
+		payload.diffuse.b = pow(depth, 3.0f);
+		
 	}
 	
 	gOutput[DispatchRaysIndex().xy].rgb = payload.diffuse;

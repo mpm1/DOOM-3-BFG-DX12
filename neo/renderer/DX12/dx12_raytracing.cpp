@@ -91,7 +91,7 @@ namespace DX12Rendering {
 		m_cbvUploadHeap[frameIndex]->Unmap(0, &readRange);
 
 		// Create the constant buffer view for the object
-		CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart(), 2, m_cbvHeapIncrementor);
+		CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart(), 3, m_cbvHeapIncrementor);
 
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
@@ -105,7 +105,7 @@ namespace DX12Rendering {
 
 		/*commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
 		{
-			const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart(), 2, m_cbvHeapIncrementor);
+			const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart(), 3, m_cbvHeapIncrementor);
 			commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
 		});*/
 
@@ -117,7 +117,7 @@ namespace DX12Rendering {
 		//TODO: Make shadow atlas for lights. Right now were putting the depth into the diffuse buffer for testing
 	}
 
-	void Raytracing::Resize(UINT width, UINT height)
+	void Raytracing::Resize(UINT width, UINT height, DX12Rendering::TextureManager &textureManager)
 	{
 		m_width = width;
 		m_height = height;
@@ -126,23 +126,30 @@ namespace DX12Rendering {
 
 		// TODO: Check if the buffers already exists and clear them
 		CreateOutputBuffers();
-		CreateShaderResourceHeap();
+		CreateShaderResourceHeap(textureManager);
 		CreateShaderBindingTables();
 	}
 
-	void Raytracing::CreateShaderResourceHeap()
+	void Raytracing::CreateShaderResourceHeap(DX12Rendering::TextureManager& textureManager)
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Create a SRV/UAV/CBV descriptor heap. We need 3 entries - 
 		// 1 UAV for the raytracing output
 		// 1 SRV for the TLAS 
+		// 1 SRV for the Depth Texture
 		// 1 CBV for the Camera properties
-		m_generalUavHeaps = CreateDescriptorHeap(device, 3, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+		m_generalUavHeaps = CreateDescriptorHeap(device, 4, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 
+		// Add the output buffer
 		RenderSurface* duffuseSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap);
 		duffuseSurface->CreateUnorderedAccessView(shadowHandle);
+
+		// Copy the reference to the depth texture.
+		CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(shadowHandle, 2, m_cbvHeapIncrementor);
+		DX12Rendering::TextureBuffer* depthTexture = textureManager.GetGlobalTexture(DX12Rendering::eGlobalTexture::DEPTH_TEXTURE);
+		device->CreateShaderResourceView(depthTexture->resource.Get(), &depthTexture->textureView, textureHandle);
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
@@ -173,9 +180,9 @@ namespace DX12Rendering {
 		device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
 	}
 
-	void Raytracing::Uniform4f(dxr_renderParm_t param, const float* uniform)
+	void Raytracing::Uniform4f(UINT index, const float* uniform)
 	{
-		memcpy(&m_constantBuffer[param], uniform, sizeof(XMFLOAT4));
+		memcpy(&m_constantBuffer[index], uniform, sizeof(XMFLOAT4));
 	}
 
 	bool Raytracing::CastRays(
@@ -225,6 +232,7 @@ namespace DX12Rendering {
 			const UINT32 generatorSize = m_generalSBTDesc.GetGeneratorSectorSize();
 			const UINT32 missSize = m_generalSBTDesc.GetMissSectorSize();
 			const UINT32 hitSize = m_generalSBTDesc.GetHitGroupSectorSize();
+			const UINT32 callableShadersSize = m_generalSBTDesc.GetCallableShaderSectorSize();
 
 			D3D12_DISPATCH_RAYS_DESC desc = {};
 			desc.RayGenerationShaderRecord.StartAddress = gpuAddress;
@@ -238,13 +246,17 @@ namespace DX12Rendering {
 			desc.HitGroupTable.SizeInBytes = hitSize;
 			desc.HitGroupTable.StrideInBytes = m_generalSBTDesc.GetHitGroupEntrySize();
 
+			desc.CallableShaderTable.StartAddress = gpuAddress + generatorSize + missSize + hitSize;
+			desc.CallableShaderTable.SizeInBytes = callableShadersSize;
+			desc.CallableShaderTable.StrideInBytes = m_generalSBTDesc.GetCallableShaderSectorSize();
+
 			desc.Height = viewport.Height;
 			desc.Width = viewport.Width;
 			desc.Depth = 1;
 
 			// Generate the ray traced image.
 			commandList->SetPipelineState1(m_shadowStateObject.Get());
-			commandList->DispatchRays(&desc);
+			//commandList->DispatchRays(&desc);
 		});
 
 		commandList->AddPostFenceSignal(fence);
@@ -368,10 +380,19 @@ namespace DX12Rendering {
 
 			// Constant Information
 			ImGui::CollapsingHeader("Shader Constants", ImGuiTreeNodeFlags_DefaultOpen);
-			for (int i = 0; i < dxr_renderParm_t::COUNT; ++i)
-			{
-				ImGui::Text("%s: %f, %f, %f, %f", "TODO", m_constantBuffer[i].x, m_constantBuffer[i].y, m_constantBuffer[i].z, m_constantBuffer[i].w);
-			}
+			ImGui::Text("RENDERPARM_GLOBALEYEPOS: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[0].x, m_constantBuffer[0].y, m_constantBuffer[0].z, m_constantBuffer[0].w);
+			ImGui::Text("RENDERPARM_VIEWPORT: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[1].x, m_constantBuffer[1].y, m_constantBuffer[1].z, m_constantBuffer[1].w);
+			ImGui::Text("RENDERPARAM_SCISSOR: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[2].x, m_constantBuffer[2].y, m_constantBuffer[2].z, m_constantBuffer[2].w);
+
+			ImGui::Text("RENDERPARM_INVERSE_VIEWMATRIX_X: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[3].x, m_constantBuffer[3].y, m_constantBuffer[3].z, m_constantBuffer[3].w);
+			ImGui::Text("RENDERPARM_INVERSE_VIEWMATRIX_Y: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[4].x, m_constantBuffer[4].y, m_constantBuffer[4].z, m_constantBuffer[4].w);
+			ImGui::Text("RENDERPARM_INVERSE_VIEWMATRIX_Z: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[5].x, m_constantBuffer[5].y, m_constantBuffer[5].z, m_constantBuffer[5].w);
+			ImGui::Text("RENDERPARM_INVERSE_VIEWMATRIX_W: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[6].x, m_constantBuffer[6].y, m_constantBuffer[6].z, m_constantBuffer[6].w);
+
+			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_X: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[7].x, m_constantBuffer[7].y, m_constantBuffer[7].z, m_constantBuffer[7].w);
+			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_Y: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[8].x, m_constantBuffer[8].y, m_constantBuffer[8].z, m_constantBuffer[8].w);
+			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_Z: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[9].x, m_constantBuffer[9].y, m_constantBuffer[9].z, m_constantBuffer[9].w);
+			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_W: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[10].x, m_constantBuffer[10].y, m_constantBuffer[10].z, m_constantBuffer[10].w);
 		}
 	}
 #endif

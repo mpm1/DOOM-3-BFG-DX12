@@ -17,10 +17,12 @@ namespace DX12Rendering {
 		m_generatorPrograms.clear();
 		m_missPrograms.clear();
 		m_hitGroups.clear();
+		m_callableShaderTable.clear();
 
 		m_maxGeneratorSize = 0;
 		m_maxMissSize = 0;
 		m_maxHitSize = 0;
+		m_maxShaderSize = 0;
 		m_sbtSize = 0;
 	}
 
@@ -37,6 +39,11 @@ namespace DX12Rendering {
 	void ShaderBindingTable::AddRayHitGroupProgram(const std::wstring& entryPoint, const std::vector<void*>& inputData)
 	{
 		m_hitGroups.emplace_back(SBTEntry(entryPoint, inputData));
+	}
+
+	void ShaderBindingTable::AddCallableShaderProgram(const std::wstring& entryPoint, const std::vector<void*>& inputData)
+	{
+		m_callableShaderTable.emplace_back(SBTEntry(entryPoint, inputData));
 	}
 
 	UINT32 ShaderBindingTable::CalculateEntrySize(const std::vector<SBTEntry>& entries)
@@ -59,10 +66,13 @@ namespace DX12Rendering {
 		m_maxGeneratorSize = CalculateEntrySize(m_generatorPrograms);
 		m_maxMissSize = CalculateEntrySize(m_missPrograms);
 		m_maxHitSize = CalculateEntrySize(m_hitGroups);
+		m_maxShaderSize = CalculateEntrySize(m_callableShaderTable);
 
-		UINT32 size = DX12_ALIGN(m_maxGeneratorSize * static_cast<UINT32>(m_generatorPrograms.size()) +
-			m_maxMissSize * static_cast<UINT32>(m_missPrograms.size()) +
-			m_maxHitSize * static_cast<UINT32>(m_hitGroups.size()), 256);
+		UINT32 size = DX12_ALIGN(
+			GetGeneratorSectorSize() +
+			GetMissSectorSize() +
+			GetHitGroupSectorSize() +
+			GetCallableShaderSectorSize(), 256);
 
 		return size;
 	}
@@ -83,6 +93,9 @@ namespace DX12Rendering {
 		pData += offset;
 
 		offset = CopyShaderData(raytracingPipeline, pData, m_hitGroups, m_maxHitSize);
+		pData += offset;
+
+		offset = CopyShaderData(raytracingPipeline, pData, m_callableShaderTable, m_maxShaderSize);
 
 		sbtBuffer->Unmap(0, nullptr);
 	}

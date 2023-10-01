@@ -1073,7 +1073,7 @@ void R_AddModels() {
 
 			if ( ds->linkChain == NULL ) {
 				R_LinkDrawSurfToView( ds, tr.viewDef );
-			} else {
+	 		} else {
 				ds->nextOnLight = *ds->linkChain;
 				*ds->linkChain = ds;
 			}

@@ -28,24 +28,84 @@ namespace DX12Rendering
 	}
 
 	TextureManager::~TextureManager() {
-
+		Clear();
 	}
+
+	void TextureManager::Initialize(uint screenWidth, uint screenHeight) {
+		// Create the basic entries for the global textures
+		for (int i = 0; i < eGlobalTexture::TEXTURE_COUNT; ++i)
+		{
+			//TODO: Remove old texture
+
+			D3D12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, screenWidth, screenHeight, 1, 1);
+			UINT shaderComponentAlignment = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			char* name;
+
+			switch (i)
+			{
+			case eGlobalTexture::DEPTH_TEXTURE:
+				name = "depth_texture";
+				textureDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+				break;
+
+			case eGlobalTexture::RAYTRACED_LIGHT_1:
+				name = "raytraced_light_1";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+
+			default:
+				name = "default_global_texture";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UINT;
+				break;
+			}
+
+			TextureBuffer* globalTexture = dxRenderer.GetTextureManager()->AllocTextureBuffer(&idStr(name), textureDesc, shaderComponentAlignment);
+			
+			if(m_textures.size() <= i)
+			{ 
+				m_textures.push_back(globalTexture);
+			}
+			else
+			{
+				// TODO: replace
+			}
+		}
+	}
+
+	TextureBuffer* GetGlobalTexture(eGlobalTexture textureId);
 
 	void TextureManager::Clear() {
+		for (TextureBuffer* texture : m_textures)
+		{
+			FreeTextureBuffer(texture);
+		}
 
+		m_textures.empty();
 	}
 
-	bool TextureManager::SetTextureCopyState(TextureBuffer* buffer, const UINT mipLevel) {
+	TextureBuffer* TextureManager::GetGlobalTexture(eGlobalTexture textureId)
+	{
+		size_t textureIndex = static_cast<size_t>(textureId);
+
+		if (textureIndex >= m_textures.size())
+		{
+			return nullptr;
+		}
+
+		return m_textures.at(textureIndex);
+	}
+
+	bool TextureManager::SetTextureCopyState(TextureBuffer* buffer, const UINT mipLevel) const{
 		auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
 		return SetTextureState(buffer, D3D12_RESOURCE_STATE_COPY_DEST, copyCommands, mipLevel);
 	}
 
-	bool TextureManager::SetTexturePixelShaderState(TextureBuffer* buffer, const UINT mipLevel) {
+	bool TextureManager::SetTexturePixelShaderState(TextureBuffer* buffer, const UINT mipLevel) const {
 		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 		return SetTextureState(buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, commandList);
 	}
 
-	bool TextureManager::SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel) {
+	bool TextureManager::SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel) const {
 		if (buffer == nullptr) {
 			return false;
 		}

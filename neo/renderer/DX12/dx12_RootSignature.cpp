@@ -3,7 +3,8 @@
 #include "./dx12_RootSignature.h"
 
 DX12RootSignature::DX12RootSignature(ID3D12Device5* device, const size_t constantBufferSize)
-	: m_device(device)
+	: m_device(device),
+	m_cbvHeapIndex(0)
 {
 	CreateRootSignature();
 	CreateCBVHeap(constantBufferSize);
@@ -59,36 +60,34 @@ void DX12RootSignature::CreateCBVHeap(const size_t constantBufferSize) {
 
 	assert(heapSize != 0);
 
-	// Create Descriptor Heaps
+	// Describe and create the constant buffer view (CBV) descriptor
 	{
-		// Describe and create the constant buffer view (CBV) descriptor for each frame
-		for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
-			// Create the CBV Heap
-			D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
-			cbvHeapDesc.NumDescriptors = MAX_HEAP_INDEX_COUNT;
-			cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-			cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
-			DX12Rendering::ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap[frameIndex])));
 
-			// Create the Constant buffer heap for each frame
-			DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
-				&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-				D3D12_HEAP_FLAG_NONE,
-				&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
-				D3D12_RESOURCE_STATE_GENERIC_READ,
-				nullptr, // Currently not clear value needed
-				IID_PPV_ARGS(&m_cbvUploadHeap[frameIndex])
-			));
+		// Create the CBV Heap
+		D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc = {};
+		cbvHeapDesc.NumDescriptors = MAX_HEAP_INDEX_COUNT;
+		cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+		cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+		DX12Rendering::ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap)));
 
-			wsprintfW(heapName, L"CBV Upload Heap %d", frameIndex);
-			m_cbvUploadHeap[frameIndex]->SetName(heapName);
+		// Create the Constant buffer heap
+		DX12Rendering::ThrowIfFailed(m_device->CreateCommittedResource(
+			&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
+			D3D12_HEAP_FLAG_NONE,
+			&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
+			D3D12_RESOURCE_STATE_GENERIC_READ,
+			nullptr, // Currently not clear value needed
+			IID_PPV_ARGS(&m_cbvUploadHeap)
+		));
 
-			wsprintfW(heapName, L"CBV Heap %d", frameIndex);
-			m_cbvHeap[frameIndex]->SetName(heapName);
-		}
+		wsprintfW(heapName, L"CBV Upload Heap %d", 1);
+		m_cbvUploadHeap->SetName(heapName);
 
-		m_cbvHeapIncrementor = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		wsprintfW(heapName, L"CBV Heap %d", 1);
+		m_cbvHeap->SetName(heapName);
 	}
+
+	m_cbvHeapIncrementor = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 }
 
 void DX12RootSignature::OnDestroy()
@@ -99,66 +98,66 @@ void DX12RootSignature::BeginFrame(UINT frameIndex)
 {
 	assert(frameIndex >= 0 && frameIndex < DX12_FRAME_COUNT, "A positive frame index less than the specified Frame Count must be defined.");
 
-	m_cbvHeapIndex = 0;
+	//m_cbvHeapIndex = 0;
 }
 
-D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
+D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList) {
 	assert(m_cbvHeapIndex < MAX_HEAP_INDEX_COUNT);
 
-	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvHeap[frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), GetHeapIndex(), m_cbvHeapIncrementor);
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
 	cbvDesc.BufferLocation = buffer->resource->GetGPUVirtualAddress() + jointOffset;
 	cbvDesc.SizeInBytes = *buffer->GetSize();
 	m_device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
 
-	UINT heapIndex = m_cbvHeapIndex;
+	UINT heapIndex = GetHeapIndex();
 	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 	{
-		const CD3DX12_GPU_DESCRIPTOR_HANDLE tableHandle(m_cbvHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart(), heapIndex, m_cbvHeapIncrementor);
+		const CD3DX12_GPU_DESCRIPTOR_HANDLE tableHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), heapIndex, m_cbvHeapIncrementor);
 		commandList->SetGraphicsRootDescriptorTable(1, tableHandle);
 	});
 
-	++m_cbvHeapIndex;
+	IncrementHeapIndex();
 	return cbvDesc;
 }
 
-D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* constantBuffer, UINT objectIndex, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
+D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* constantBuffer, UINT objectIndex, DX12Rendering::Commands::CommandList* commandList) {
 	// Copy the CBV value to the upload heap
 	UINT8* buffer;
 	const UINT bufferSize = ((constantBufferSize + 255) & ~255);
 	UINT offset = bufferSize * objectIndex; // Each entry is 256 byte aligned.
 	CD3DX12_RANGE readRange(offset, bufferSize);
 
-	DX12Rendering::ThrowIfFailed(m_cbvUploadHeap[frameIndex]->Map(0, &readRange, reinterpret_cast<void**>(&buffer)));
+	DX12Rendering::ThrowIfFailed(m_cbvUploadHeap->Map(0, &readRange, reinterpret_cast<void**>(&buffer)));
 	memcpy(&buffer[offset], constantBuffer, constantBufferSize);
-	m_cbvUploadHeap[frameIndex]->Unmap(0, &readRange);
+	m_cbvUploadHeap->Unmap(0, &readRange);
 
 	// Create the constant buffer view for the object
-	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvHeap[frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
+	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), GetHeapIndex(), m_cbvHeapIncrementor);
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-	cbvDesc.BufferLocation = m_cbvUploadHeap[frameIndex]->GetGPUVirtualAddress() + offset;
+	cbvDesc.BufferLocation = m_cbvUploadHeap->GetGPUVirtualAddress() + offset;
 	cbvDesc.SizeInBytes = bufferSize;
 	m_device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
 
 	// Define the Descriptor Table to use.
-	UINT heapIndex = m_cbvHeapIndex;
+	UINT heapIndex = GetHeapIndex();
 	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 	{
-		const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_cbvHeap[frameIndex]->GetGPUDescriptorHandleForHeapStart(), heapIndex, m_cbvHeapIncrementor);
+		const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), heapIndex, m_cbvHeapIncrementor);
 		commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
 	});
 
-	++m_cbvHeapIndex;
+	IncrementHeapIndex();
 	return cbvDesc;
 }
 
-DX12Rendering::TextureBuffer* DX12RootSignature::SetTextureRegisterIndex(UINT textureIndex, DX12Rendering::TextureBuffer* texture, UINT frameIndex, DX12Rendering::Commands::CommandList* commandList) {
-	CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_cbvHeap[frameIndex]->GetCPUDescriptorHandleForHeapStart(), m_cbvHeapIndex, m_cbvHeapIncrementor);
+DX12Rendering::TextureBuffer* DX12RootSignature::SetTextureRegisterIndex(UINT textureIndex, DX12Rendering::TextureBuffer* texture, DX12Rendering::Commands::CommandList* commandList) {
+	CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), GetHeapIndex(), m_cbvHeapIncrementor);
 	m_device->CreateShaderResourceView(texture->resource.Get(), &texture->textureView, textureHandle);
 
-	++m_cbvHeapIndex;
+	IncrementHeapIndex();
 	//m_copyCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentTexture->textureBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
 
 	return texture;

@@ -37,7 +37,10 @@ namespace
 	{
 		if (!entity->parms.noShadow)
 		{
-			dxRenderer.DXR_AddEntityToTLAS(modelHandle, entity->modelMatrix, entity->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
+			idRenderMatrix entityMatrix;
+			idRenderMatrix::CreateFromOriginAxis(entity->parms.origin, entity->parms.axis.Transpose(), entityMatrix);
+
+			dxRenderer.DXR_AddEntityToTLAS(modelHandle, entityMatrix[0], entity->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
 		}
 	}
 }
@@ -296,7 +299,7 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 					R_ClearEntityDefDynamicModel( def );
 					def->parms = *re;
 
-					AddEntityToRenderer(def->GetIndex(), def);
+					//AddEntityToRenderer(def->GetIndex(), def);
 
 					return;
 				}

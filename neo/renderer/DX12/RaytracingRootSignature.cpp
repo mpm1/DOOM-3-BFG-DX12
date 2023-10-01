@@ -21,12 +21,21 @@ namespace DX12Rendering {
 			));
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
+				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /*Top-level acceleration structure*/,
+				1,
+				1 /*t1*/,
+				0,
+				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+				2
+			));
+
+			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_CBV /*Camera constant buffer*/,
 				1,
 				0 /*b0*/,
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				2
+				3
 			));
 		}
 
@@ -59,9 +68,14 @@ namespace DX12Rendering {
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
+		// Set Samplers
+		const UINT samplerCount = 1;
+		CD3DX12_STATIC_SAMPLER_DESC staticSampler[samplerCount];
+		staticSampler[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // Point Sampler
+
 		// Describe the raytracing root signature.
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-		rootSignatureDesc.Init_1_1(parameterCount, parameters, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
+		rootSignatureDesc.Init_1_1(parameterCount, parameters, samplerCount, &staticSampler[0], D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE);
 
 		// Create the root signature
 		ComPtr<ID3DBlob> signatureBlob;

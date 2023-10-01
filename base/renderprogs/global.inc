@@ -85,6 +85,11 @@ struct SceneConstants {
 	float4 rpModelMatrixZ;
 	float4 rpModelMatrixW;
 
+	float4 rpNormalMatrixX;
+	float4 rpNormalMatrixY;
+	float4 rpNormalMatrixZ;
+	float4 rpNormalMatrixW;
+
 	float4 rpProjectionMatrixX;
 	float4 rpProjectionMatrixY;
 	float4 rpProjectionMatrixZ;

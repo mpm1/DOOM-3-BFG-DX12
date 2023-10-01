@@ -7,7 +7,7 @@
 #include <comdef.h>
 #include <type_traits>
 
-idCVar r_useRayTraycing("r_useRayTraycing", "0", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
@@ -262,7 +262,7 @@ void DX12Renderer::FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer)
 }
 
 void DX12Renderer::SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset) {
-	D3D12_CONSTANT_BUFFER_VIEW_DESC descriptor = m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, m_frameIndex, DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT));
+	D3D12_CONSTANT_BUFFER_VIEW_DESC descriptor = m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT));
 }
 
 void DX12Renderer::SignalNextFrame() {
@@ -311,7 +311,7 @@ void DX12Renderer::SetCommandListDefaults(const bool resetPipelineState) {
 
 		// Setup the initial heap location
 		ID3D12DescriptorHeap* descriptorHeaps[1] = {
-			m_rootSignature->GetCBVHeap(m_frameIndex),
+			m_rootSignature->GetCBVHeap(),
 		};
 		commandList->SetDescriptorHeaps(1, descriptorHeaps);
 	});
@@ -458,14 +458,14 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 		return false;
 	}
 	
-	const D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, m_frameIndex, commandList);
+	const D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, commandList);
 
 	// Copy the Textures
 	DX12Rendering::TextureBuffer* currentTexture;
 	UINT index;
 	for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
 		m_textureManager.SetTexturePixelShaderState(currentTexture);
-		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, m_frameIndex, commandList);
+		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, commandList);
 	}
 
 	return true;
@@ -627,8 +627,10 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			return false;
 		}*/
 
+		m_textureManager.Initialize(m_width, m_height);
+
 		if (m_raytracing != nullptr) {
-			m_raytracing->Resize(m_width, m_height);
+			m_raytracing->Resize(m_width, m_height, m_textureManager);
 		}
 
 		UpdateViewport(0.0f, 0.0f, width, height);
@@ -881,7 +883,7 @@ void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float
 	float transformTranspose[16];
 	R_MatrixTranspose(transform, transformTranspose);
 
-	m_raytracing->GetTLASManager()->AddInstance(modelHandle, transformTranspose, typesMask);
+	m_raytracing->GetTLASManager()->AddInstance(modelHandle, transform, typesMask);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)
@@ -903,7 +905,7 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 	for (UINT i = 0; i < count; ++i)
 	{
-		m_raytracing->Uniform4f(static_cast<DX12Rendering::dxr_renderParm_t>(param + i), uniform + (i * 4));
+		m_raytracing->Uniform4f(param + i, uniform + (i * 4));
 	}
 }
 
@@ -925,7 +927,7 @@ void DX12Renderer::DXR_GenerateResult()
 void DX12Renderer::DXR_CopyResultToDisplay()
 {
 	//renderTarget->fence.Wait();
-	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceDiffuseMap, 0, 0, 0, 0, m_width / 3, m_height / 3);
+	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceDiffuseMap, 0, 0, 0, 0, m_width / 2, m_height);
 }
 
 void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)
@@ -951,9 +953,9 @@ void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId,
 			commandList->ResourceBarrier(1, &transition);
 		}
 
-		CD3DX12_TEXTURE_COPY_LOCATION dst(renderTarget.resource.Get());
-		CD3DX12_TEXTURE_COPY_LOCATION src(surface.resource.Get());
-		CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
+		const CD3DX12_TEXTURE_COPY_LOCATION dst(renderTarget.resource.Get());
+		const CD3DX12_TEXTURE_COPY_LOCATION src(surface.resource.Get());
+		const CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
 		commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
 
 		if (renderTarget.TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transition))
@@ -983,7 +985,7 @@ void DX12Renderer::InitializeImGui(HWND hWnd)
 {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-	m_debugMode = DEBUG_UNKNOWN;
+	m_debugMode = DEBUG_RAYTRACING_SHADOWMAP;
 
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
@@ -1076,10 +1078,10 @@ void DX12Renderer::ImGuiDebugWindows()
 		ImGui::SetNextWindowSize({ static_cast<float>(m_viewport.Width) * scaleX, (static_cast<float>(m_viewport.Height) * scaleY) + headerOffset });
 
 		if (ImGui::Begin("Raytraced Shadowmap", NULL, ImGuiWindowFlags_NoResize)) {
-			DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1);
+			DX12Rendering::TextureBuffer* lightTexture = m_textureManager.GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_LIGHT_1);
 
-			ImGui::Text("GPU handle = %p", surface->GetGPURtv().ptr);
-			ImGui::Image((ImTextureID)surface->GetGPURtv().ptr, imageSize);
+			ImGui::Text("GPU handle = %p", lightTexture->GetGPUDescriptorHandle().ptr);
+			ImGui::Image((ImTextureID)lightTexture->GetGPUDescriptorHandle().ptr, imageSize);
 		}
 
 		ImGui::End();
