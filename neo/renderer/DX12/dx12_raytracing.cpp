@@ -42,7 +42,28 @@ namespace DX12Rendering {
 
 	void Raytracing::BeginFrame()
 	{
-		
+		// Update any BLAS Content
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+		if (device == nullptr)
+		{
+			return;
+		}
+
+		if (UINT count = GetBLASManager()->Generate() > 0)
+		{
+			//TODO: Move this to a more generalized execution tract.
+			//commandList->Cycle();
+		}
+
+		CleanUpAccelerationStructure();
+	}
+
+	void Raytracing::EndFrame()
+	{
+		if (!m_tlasManager.IsDirty())
+		{
+			m_tlasManager.Reset(ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC | ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC);
+		}
 	}
 
 	void Raytracing::CreateCBVHeap(const size_t constantBufferSize)
@@ -185,12 +206,15 @@ namespace DX12Rendering {
 		memcpy(&m_constantBuffer[index], uniform, sizeof(XMFLOAT4));
 	}
 
-	bool Raytracing::CastRays(
+	bool Raytracing::CastShadowRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
-		const CD3DX12_RECT& scissorRect
+		const CD3DX12_RECT& scissorRect,
+		DX12Rendering::TextureManager* textureManager
 	)
 	{
+		assert(textureManager);
+
 		auto tlasManager = GetTLASManager();
 
 		if (tlasManager && !tlasManager->IsReady()) {
@@ -199,9 +223,26 @@ namespace DX12Rendering {
 		}
 
 		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
-		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RayTracing::CastRays");
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RayTracing::CastShadowRays");
 
 		RenderSurface* outputSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap);
+
+		//Update the resources
+		TextureBuffer* buffer = textureManager->GetGlobalTexture(eGlobalTexture::DEPTH_TEXTURE);
+		//textureManager->SetTextureState(buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, commandList);
+
+		return CastRays(frameIndex, viewport, scissorRect, outputSurface);
+	}
+
+	bool Raytracing::CastRays(
+		const UINT frameIndex,
+		const CD3DX12_VIEWPORT& viewport,
+		const CD3DX12_RECT& scissorRect,
+		RenderSurface* outputSurface
+	)
+	{
+		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RayTracing::CastRays");
 
 		DX12Rendering::Fence* fence = &outputSurface->fence;
 		//commandList->AddPreFenceWait(fence);
@@ -256,7 +297,13 @@ namespace DX12Rendering {
 
 			// Generate the ray traced image.
 			commandList->SetPipelineState1(m_shadowStateObject.Get());
-			//commandList->DispatchRays(&desc);
+			commandList->DispatchRays(&desc);
+
+			// Transition the shadow rendering target to the unordered access state for rendering. We will then set it back to the copy state for copying.
+			if (outputSurface->TryTransition(D3D12_RESOURCE_STATE_COMMON, &transition))
+			{
+				commandList->ResourceBarrier(1, &transition);
+			}
 		});
 
 		commandList->AddPostFenceSignal(fence);

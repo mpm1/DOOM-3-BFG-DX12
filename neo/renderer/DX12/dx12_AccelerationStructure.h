@@ -48,17 +48,19 @@ namespace DX12Rendering
 	};
 
 	struct Instance {
-		float				transformation[16];
+		float				transformation[3][4];
 		const dxHandle_t	instanceId;
+		dxHandle_t			blasId;
 		UINT				hitGroupIndex; // TODO: We will change this to point to the hitGroup in the stack that contains the normal map for the surface.
 		//TODO: Add support for bone information.
 
-		Instance(const float srcTransformation[16], const dxHandle_t& id, UINT hitGroupIndex) :
+		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId, UINT hitGroupIndex) :
 			instanceId(id),
+			blasId(blasId),
 			hitGroupIndex(hitGroupIndex),
 			transformation{}
 		{
-			std::memcpy(transformation, srcTransformation, sizeof(float[16]));
+			std::memcpy(transformation, srcTransformation, sizeof(float[3][4]));
 		}
 	};
 
@@ -67,7 +69,7 @@ namespace DX12Rendering
 		InstanceDescriptor(const LPCWSTR name) : Resource(name)
 		{}
 
-		UINT Fill(BLASManager& blasManager, UINT64 instanceDescsSize, const std::vector<DX12Rendering::Instance>& staticInstances, const std::vector<DX12Rendering::Instance>& dynamicInstances);
+		UINT Fill(UINT64 instanceDescsSize, const std::vector<D3D12_RAYTRACING_INSTANCE_DESC>& instanceDescriptors);
 
 #ifdef DEBUG_IMGUI
 		const void ImGuiDebug();
@@ -186,7 +188,7 @@ public:
 
 	TopLevelAccelerationStructure& GetCurrent() { return m_tlas; }
 
-	void AddInstance(const dxHandle_t& id, const float transform[16], const ACCELERATION_INSTANCE_TYPE typesMask);
+	void AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE typesMask);
 
 	void AddGPUWait(DX12Rendering::Commands::CommandList* commandList) { m_tlas.fence.GPUWait(commandList->GetCommandQueue()); }
 
@@ -198,6 +200,7 @@ public:
 #endif
 private:
 	BLASManager* m_blasManager;
+	DX12Rendering::dx12_lock m_instanceLock;
 	std::vector<DX12Rendering::Instance> m_staticInstances;
 	std::vector<DX12Rendering::Instance> m_dynamicInstances;
 	TopLevelAccelerationStructure m_tlas;

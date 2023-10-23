@@ -98,7 +98,6 @@ void DX12RootSignature::BeginFrame(UINT frameIndex)
 {
 	assert(frameIndex >= 0 && frameIndex < DX12_FRAME_COUNT, "A positive frame index less than the specified Frame Count must be defined.");
 
-	//m_cbvHeapIndex = 0;
 }
 
 D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetJointDescriptorTable(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList) {
@@ -156,6 +155,9 @@ D3D12_CONSTANT_BUFFER_VIEW_DESC DX12RootSignature::SetCBVDescriptorTable(const s
 DX12Rendering::TextureBuffer* DX12RootSignature::SetTextureRegisterIndex(UINT textureIndex, DX12Rendering::TextureBuffer* texture, DX12Rendering::Commands::CommandList* commandList) {
 	CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart(), GetHeapIndex(), m_cbvHeapIncrementor);
 	m_device->CreateShaderResourceView(texture->resource.Get(), &texture->textureView, textureHandle);
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), GetHeapIndex(), m_cbvHeapIncrementor);
+	texture->SetGPUDescriptorHandle(gpuHandle);
 
 	IncrementHeapIndex();
 	//m_copyCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentTexture->textureBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));

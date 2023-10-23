@@ -50,7 +50,7 @@ namespace DX12Rendering
 
 			case eGlobalTexture::RAYTRACED_LIGHT_1:
 				name = "raytraced_light_1";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UINT;
 				break;
 
 			default:

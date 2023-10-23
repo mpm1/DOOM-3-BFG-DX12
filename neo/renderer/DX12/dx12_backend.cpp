@@ -822,8 +822,6 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		// draw it solid
 		RB_DrawElementsWithCounters(surf);
 
-		commandList->AddPostFenceSignal(&DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->fence);
-
 		renderLog.CloseBlock();
 	}
 
@@ -836,6 +834,8 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 
 	// Allow platform specific data to be collected after the depth pass.
 	GL_FinishDepthPass();
+
+	commandList->AddPostFenceSignal(&DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->fence);
 
 	renderLog.CloseBlock();
 	renderLog.CloseMainBlock();
@@ -2900,11 +2900,6 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays();
 	if (raytraceUpdated)
 	{
-		// Copy the raytraced shadow data
-		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
-		DX12Rendering::TextureBuffer* lightTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_LIGHT_1);
-		//DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceShadowMap)->CopySurfaceToTexture(lightTexture, textureManager); Mark figure out why this breaks everything
-
 		//-------------------------------------------------
 		// Cast rays into the scene
 		//-------------------------------------------------

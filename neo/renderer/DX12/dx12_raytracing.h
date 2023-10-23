@@ -63,6 +63,14 @@ public:
 	void CleanUpAccelerationStructure();
 
 	void BeginFrame();
+	void EndFrame();
+
+	bool CastShadowRays(
+		const UINT frameIndex,
+		const CD3DX12_VIEWPORT& viewport,
+		const CD3DX12_RECT& scissorRect,
+		TextureManager* textureManager
+	);
 
 	/// <summary>
 	/// Cast rays into the scene through the general TLAS.
@@ -74,7 +82,8 @@ public:
 	bool CastRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
-		const CD3DX12_RECT& scissorRect
+		const CD3DX12_RECT& scissorRect,
+		RenderSurface* outputSurface
 	);
 
 	/// <summary>

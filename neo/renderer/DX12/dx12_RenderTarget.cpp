@@ -186,11 +186,11 @@ namespace DX12Rendering
 		device->CreateUnorderedAccessView(resource.Get(), nullptr, &uavDesc, uavHeap);
 	}
 
-	bool RenderSurface::CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, const DX12Rendering::TextureManager* textureManager)
+	DX12Rendering::Fence* RenderSurface::CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager)
 	{
 		if (texture == nullptr)
 		{
-			return false;
+			return nullptr;
 		}
 
 		// TODO: Put these as inputs
@@ -201,10 +201,15 @@ namespace DX12Rendering
 		UINT width = this->m_width;
 		UINT height = this->m_height;
 
-		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+		textureManager->StartTextureWrite(texture);
+
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
 		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RenderSurface::CopySurfaceToTexture");
 
 		commandList->AddPreFenceWait(&this->fence); // Wait for all drawing to complete.
+		commandList->AddPostFenceSignal(&this->fence);
+
+		textureManager->SetTextureState(texture, D3D12_RESOURCE_STATE_COPY_DEST, commandList);
 
 		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{
@@ -217,8 +222,6 @@ namespace DX12Rendering
 				commandList->ResourceBarrier(1, &transition);
 			}
 
-			textureManager->SetTextureCopyState(texture);
-
 			const CD3DX12_TEXTURE_COPY_LOCATION dst(texture->resource.Get());
 			const CD3DX12_TEXTURE_COPY_LOCATION src(resource.Get());
 			const CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
@@ -230,9 +233,11 @@ namespace DX12Rendering
 			}
 		});
 
-		textureManager->SetTexturePixelShaderState(texture);
+		textureManager->SetTextureState(texture, D3D12_RESOURCE_STATE_COMMON, commandList);
 
-		return true;
+		textureManager->EndTextureWrite(texture);
+
+		return &this->fence;
 	}
 
 	bool RenderSurface::TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier)

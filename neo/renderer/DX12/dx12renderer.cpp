@@ -50,6 +50,14 @@ const dxHandle_t DX12Renderer::GetHandle<viewLight_t>(const viewLight_t* vLight)
 	return static_cast<dxHandle_t>(vLight->lightDef->index);
 }
 
+template<>
+const dxHandle_t DX12Renderer::GetHandle<idRenderModel>(const idRenderModel* renderModel)
+{
+	//TODO: Precache the hash or have a better generation method
+
+	return std::hash<std::string>{}(renderModel->Name());
+}
+
 void DX12Renderer::Init(HWND hWnd) {
 	if (m_initialized)
 	{
@@ -361,7 +369,8 @@ void DX12Renderer::BeginDraw() {
 
 	if (IsRaytracingEnabled())
 	{
-		DXR_UpdateBLAS();
+		DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
+
 		m_raytracing->BeginFrame();
 	}
 
@@ -425,8 +434,8 @@ void DX12Renderer::EndDraw() {
 	//After frame events
 	if (IsRaytracingEnabled())
 	{
-		// TODO: Evaluate cleanup
-		//m_raytracing->GetTLASManager()->Reset();
+		DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
+		m_raytracing->EndFrame();
 	}
 
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
@@ -522,7 +531,6 @@ void DX12Renderer::Clear(const bool color, const bool depth, const bool stencil,
 	}
 
 	if (stencil) {
-		// TODO: Implement stencil first.
 		clearFlags |= D3D12_CLEAR_FLAG_STENCIL;
 	}
 
@@ -757,7 +765,7 @@ void DX12Renderer::DXR_UpdateAccelerationStructure()
 	//m_raytracing->ResetFrame();
 }
 
-void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRenderModel* model)
+void DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
 {
 	if (!IsRaytracingEnabled() || model == nullptr) {
 		return;
@@ -780,7 +788,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	const dxHandle_t index = GetHandle(&modelHandle);
+	const dxHandle_t index = GetHandle(model);
 	std::string blasName = std::string(model->Name());
 	DX12Rendering::BottomLevelAccelerationStructure& blas = *m_raytracing->GetBLASManager()->CreateBLAS(index, std::wstring(blasName.begin(), blasName.end()).c_str());
 	
@@ -851,39 +859,16 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 	}
 }
 
-void DX12Renderer::DXR_UpdateBLAS()
+void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
 {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
 
-	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-	if (device == nullptr)
-	{
-		return;
-	}
+	dxHandle_t modelHandle = GetHandle(&model);
+	dxHandle_t instanceHandle = static_cast<dxHandle_t>(entityIndex);
 
-	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
-
-	if (UINT count = m_raytracing->GetBLASManager()->Generate() > 0)
-	{
-		//TODO: Move this to a more generalized execution tract.
-		//commandList->Cycle();
-	}
-
-	m_raytracing->CleanUpAccelerationStructure();
-}
-
-void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
-{
-	if (!IsRaytracingEnabled()) {
-		return;
-	}
-
-	float transformTranspose[16];
-	R_MatrixTranspose(transform, transformTranspose);
-
-	m_raytracing->GetTLASManager()->AddInstance(modelHandle, transform, typesMask);
+	m_raytracing->GetTLASManager()->AddInstance(instanceHandle, modelHandle, transform, typesMask);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)
@@ -911,7 +896,20 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
-	return m_raytracing->CastRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
+	bool result = m_raytracing->CastShadowRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect, &m_textureManager);
+
+	if (result)
+	{
+		// Copy the raytraced shadow data
+		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+		DX12Rendering::TextureBuffer* lightTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_LIGHT_1);
+
+		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceDiffuseMap);
+
+		surface->CopySurfaceToTexture(lightTexture, textureManager);
+	}
+
+	return result;
 }
 
 void DX12Renderer::DXR_DenoiseResult()
@@ -985,7 +983,7 @@ void DX12Renderer::InitializeImGui(HWND hWnd)
 {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-	m_debugMode = DEBUG_RAYTRACING_SHADOWMAP;
+	m_debugMode = DEBUG_UNKNOWN;
 
 	{
 		D3D12_DESCRIPTOR_HEAP_DESC desc = {};
@@ -1078,10 +1076,11 @@ void DX12Renderer::ImGuiDebugWindows()
 		ImGui::SetNextWindowSize({ static_cast<float>(m_viewport.Width) * scaleX, (static_cast<float>(m_viewport.Height) * scaleY) + headerOffset });
 
 		if (ImGui::Begin("Raytraced Shadowmap", NULL, ImGuiWindowFlags_NoResize)) {
-			DX12Rendering::TextureBuffer* lightTexture = m_textureManager.GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_LIGHT_1);
+			DX12Rendering::TextureBuffer* lightTexture = m_textureManager.GetGlobalTexture(DX12Rendering::eGlobalTexture::DEPTH_TEXTURE);
+			m_rootSignature->SetTextureRegisterIndex(0, lightTexture, nullptr); //TODO: Create a static location for these global textures. Maybe make a location so texures dont need to readd itself
 
 			ImGui::Text("GPU handle = %p", lightTexture->GetGPUDescriptorHandle().ptr);
-			ImGui::Image((ImTextureID)lightTexture->GetGPUDescriptorHandle().ptr, imageSize);
+			ImGui::Image((ImTextureID)lightTexture->GetGPUDescriptorHandle().ptr, imageSize, ImVec2(0, 0), ImVec2(1, 1), ImVec4(1, 1, 1, 1), ImVec4(0, 0, 0, 1));
 		}
 
 		ImGui::End();

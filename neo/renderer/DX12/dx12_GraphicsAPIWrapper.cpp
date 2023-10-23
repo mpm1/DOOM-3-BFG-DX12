@@ -38,9 +38,33 @@ void GL_DepthBoundsTest(const float zmin, const float zmax) {
 }
 
 void GL_StartDepthPass(const idScreenRect& rect) {
+	DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+	D3D12_RESOURCE_BARRIER transition = {};
+
+	if (surface->TryTransition(D3D12_RESOURCE_STATE_DEPTH_WRITE, &transition))
+	{
+		DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+
+		commandList->AddCommandAction([transition](ID3D12GraphicsCommandList4* commandList)
+		{
+			commandList->ResourceBarrier(1, &transition);
+		});
+	}
 }
 
 void GL_FinishDepthPass() {
+	DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+	D3D12_RESOURCE_BARRIER transition = {};
+
+	if (surface->TryTransition(D3D12_RESOURCE_STATE_COMMON, &transition))
+	{
+		DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+
+		commandList->AddCommandAction([transition](ID3D12GraphicsCommandList4* commandList)
+		{
+			commandList->ResourceBarrier(1, &transition);
+		});
+	}
 }
 
 void GL_GetDepthPassRect(idScreenRect& rect) {

@@ -31,20 +31,6 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "tr_local.h"
 
-namespace
-{
-	void AddEntityToRenderer(const qhandle_t& modelHandle, const idRenderEntityLocal* entity)
-	{
-		if (!entity->parms.noShadow)
-		{
-			idRenderMatrix entityMatrix;
-			idRenderMatrix::CreateFromOriginAxis(entity->parms.origin, entity->parms.axis.Transpose(), entityMatrix);
-
-			dxRenderer.DXR_AddEntityToTLAS(modelHandle, entityMatrix[0], entity->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
-		}
-	}
-}
-
 /*
 ===================
 R_ListRenderLightDefs_f
@@ -299,8 +285,6 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 					R_ClearEntityDefDynamicModel( def );
 					def->parms = *re;
 
-					//AddEntityToRenderer(def->GetIndex(), def);
-
 					return;
 				}
 			}
@@ -343,8 +327,6 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 	// based on the model bounds, add references in each area
 	// that may contain the updated surface
 	R_CreateEntityRefs( def );	
-
-	AddEntityToRenderer(def->GetIndex(), def);
 }
 
 /*
