@@ -46,7 +46,7 @@ static const float CHECK_BOUNDS_EPSILON = 1.0f;
 namespace
 {
 	void AddEntityToRenderer(const qhandle_t& entityHandle, const idRenderEntityLocal* entity)
-	{
+	{//TODO: do this on entity update as well.
 		if (true || !entity->parms.noShadow)
 		{
 			//idRenderMatrix entityMatrix;
@@ -57,11 +57,11 @@ namespace
 			memcpy(forward, &entity->parms.axis[0], sizeof(float) * 3);
 			memcpy(left, &entity->parms.axis[1], sizeof(float) * 3);
 			memcpy(up, &entity->parms.axis[2], sizeof(float) * 3);
-			//Mark start here. Is this juyst the blas and not the instance
+			
 			const float transformation[3][4] = {
-				{forward[0], left[0], up[0], origin[0] }, //origin[0] * forward[0] + origin[1] * forward[1] + origin[2] * forward[2] },
-				{forward[1], left[1], up[1], origin[1] }, //origin[0] * left[0] + origin[1] * left[1] + origin[2] * left[2] },
-				{forward[2], left[2], up[2], origin[2] }, //origin[0] * up[0] + origin[1] * up[1] + origin[2] * up[2] }
+				{forward[0], left[0], up[0], origin[0] },
+				{forward[1], left[1], up[1], origin[1] },
+				{forward[2], left[2], up[2], origin[2] }
 			};
 
 			//idRenderMatrix::CreateFromOriginAxis(entity->parms.origin, entity->parms.axis.Transpose(), entityMatrix);

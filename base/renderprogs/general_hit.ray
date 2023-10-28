@@ -4,9 +4,6 @@
 void ClosestHit(inout HitInfo payload, Attributes attrib) 
 {
 	// TODO: Handle lighting and normals. For now we are showing the distance.
-	float color = RayTCurrent() / 1000.0f;
-	payload.diffuse = float3(0.0f, 1.0f, 0.0f);
-
-	payload.indirect = float3(0.0f, 0.0f, 0.0f);
-    payload.specular = float3(0.0f, 0.0f, 0.0f);
+	float color = 1.0 - (RayTCurrent() / payload.maxDistance);
+	payload.diffuse = float3(0.0f, color, 0.0f);
 }

@@ -370,6 +370,7 @@ struct viewDef_t {
 
 	float				projectionMatrix[16];
 	idRenderMatrix		projectionRenderMatrix;	// tech5 version of projectionMatrix
+	idRenderMatrix		inverseProjectionMatrix;
 	viewEntity_t		worldSpace;
 
 	idRenderWorldLocal *renderWorld;

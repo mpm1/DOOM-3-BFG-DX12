@@ -2848,14 +2848,13 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		if (raytracedEnabled)
 		{
 			// Set the inverse projection matrix
-			idRenderMatrix inverseProjection;
-			/*idRenderMatrix projectionMatrix(
-				backEnd.viewDef->projectionMatrix[0], backEnd.viewDef->projectionMatrix[1], backEnd.viewDef->projectionMatrix[2], backEnd.viewDef->projectionMatrix[3],
-				backEnd.viewDef->projectionMatrix[4], backEnd.viewDef->projectionMatrix[5], backEnd.viewDef->projectionMatrix[6], backEnd.viewDef->projectionMatrix[7],
-				backEnd.viewDef->projectionMatrix[8], backEnd.viewDef->projectionMatrix[9], backEnd.viewDef->projectionMatrix[10], backEnd.viewDef->projectionMatrix[11],
-				backEnd.viewDef->projectionMatrix[12], backEnd.viewDef->projectionMatrix[13], backEnd.viewDef->projectionMatrix[14], backEnd.viewDef->projectionMatrix[15]
-			);*/
-			idRenderMatrix projectionMatrix(
+			idRenderMatrix inverseProjection, inverseProjectionTranspose;
+			/*idRenderMatrix::CreateInverseProjectionMatrix(
+				backEnd.viewDef->renderView.fov_y, backEnd.viewDef->viewport.zmin,
+				backEnd.viewDef->viewport.zmax, backEnd.viewDef->viewport.GetWidth() / backEnd.viewDef->viewport.GetHeight(),
+				inverseProjection);
+			idRenderMatrix::Transpose(inverseProjection, inverseProjectionTranspose);*/
+			const idRenderMatrix projectionMatrix(
 				projMatrixTranspose[0], projMatrixTranspose[1], projMatrixTranspose[2], projMatrixTranspose[3],
 				projMatrixTranspose[4], projMatrixTranspose[5], projMatrixTranspose[6], projMatrixTranspose[7],
 				projMatrixTranspose[8], projMatrixTranspose[9], projMatrixTranspose[10], projMatrixTranspose[11],
@@ -2866,11 +2865,12 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 
 			// Set the Inverse View Matrix
-			idRenderMatrix viewRenderMatrix;
-			idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrix);
-			float viewMatrixTranspose[16];
-			R_MatrixTranspose(viewRenderMatrix[0], viewMatrixTranspose); //NOTE: I don't think we need the transpose... but not sure.
-			dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, viewRenderMatrix[0], 4);
+			idRenderMatrix* viewRenderMatrix = (idRenderMatrix*)backEnd.viewDef->worldSpace.modelViewMatrix;
+			idRenderMatrix inverseViewRenderMatrix, transposeViewRenderMatrix;
+			//idRenderMatrix::CreateFromOriginAxis(-backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis, inverseViewRenderMatrix);
+			idRenderMatrix::Inverse(*viewRenderMatrix, inverseViewRenderMatrix);
+			idRenderMatrix::Transpose(inverseViewRenderMatrix, transposeViewRenderMatrix);
+			dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, transposeViewRenderMatrix[0], 4);
 		}
 	}
 

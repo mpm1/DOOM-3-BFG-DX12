@@ -24,9 +24,8 @@ bool IsInsideViewport(float2 p, float4 viewport)
 void RayGen() {
 	// Initialize the ray payload
 	HitInfo payload;
+	payload.maxDistance = 100.0f;
 	payload.diffuse = float3(0.0f, 0.0f, 0.0f);
-	payload.indirect = float3(0.0f, 0.0f, 0.0f);
-	payload.specular = float3(0.0f, 0.0f, 0.0f);
 
 	// Get the ray location on the screen
 	float2 lerpValues = (float2)DispatchRaysIndex() / (float2)DispatchRaysDimensions();
@@ -35,6 +34,8 @@ void RayGen() {
 		lerp(sceneConstants.rpViewport.y, sceneConstants.rpViewport.w, lerpValues.y),
 		0.0f);
 
+	float3 locationDif = float3(0.0f, 0.0f, 0.0f);
+
 	if (IsInsideViewport(screenLocation.xy, sceneConstants.rpScissor))
 	{
 		// Get the depth buffer location
@@ -42,20 +43,21 @@ void RayGen() {
 
 		if(depth <= 1.0f)
 		{
-			float4 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants);
+			float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz;
+			float3 eyePosition = sceneConstants.rpGlobalEyePos.xyz;
+			float3 lightPosition = eyePosition + float3(0.0f, 10.0f, 10.0f);
 
 			// Define a ray, consisting of origin, direction, and the min-max distance values
 			RayDesc ray;
-			ray.TMin = 0.001;
-			ray.TMax = 10000;//TODO: set this distance to our distance near the light
-			ray.Origin = worldPosition.xyz;
-
-			// TEMP simple direction: We will make a vector to the light.
-			ray.Direction = normalize((sceneConstants.rpGlobalEyePos.xyz + float3(0.0f, 2.0f, 0.0f)) - worldPosition.xyz);
+			ray.TMin = 6.0;
+			ray.TMax = payload.maxDistance; //max(distance(lightPosition, worldPosition) - ray.TMin, 0);
+			ray.Origin = worldPosition;
+			ray.Direction = normalize(float3(1.0, 1.0, 1.0)); //normalize(lightPosition - worldPosition);
+			//ray.Direction.z = -ray.Direction.z;
 
 			TraceRay(
 				SceneBVH,
-				RAY_FLAG_NONE, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+				RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
 				0xFF,
 				0,
 				0, // First Hit Shader
@@ -64,12 +66,15 @@ void RayGen() {
 				payload
 			);
 
-			depth = clamp(distance(ray.Origin, sceneConstants.rpGlobalEyePos.xyz) / 800.0, 0, 1.0); //Mark start here. why is everything on it's side?
+			//locationDif = (clamp(worldPosition / 600.0, -1.0, 1.0) + 1.0) * 0.5;
+			float dist = clamp(distance(worldPosition, eyePosition) / 10000.0, 0, 1.0);
+			payload.diffuse.b = dist * dist; //Mark start here. why is everything on it's side?
+			
+			//float3 lines = abs(worldPosition % 10.0);
+			//const float lineThickness = 0.5;
+			//float value = lines.x < lineThickness ? lines.x : lines.y < lineThickness ? lines.y : lines.z < lineThickness ? lines.z : 0;
+			//payload.diffuse.r = (1.0 - abs((value / lineThickness) * 2.0 - 1.0)) * dist;
 		}
-
-		//TEMP: Testing that it's reading the depth buffer
-		payload.diffuse.b = pow(depth, 3.0f);
-		
 	}
 	
 	gOutput[DispatchRaysIndex().xy].rgb = payload.diffuse;

@@ -101,6 +101,7 @@ public:
 	// Create a projection matrix.
 	static void				CreateProjectionMatrix( float xMin, float xMax, float yMin, float yMax, float zNear, float zFar, idRenderMatrix & out );
 	static void				CreateProjectionMatrixFov( float xFovDegrees, float yFovDegrees, float zNear, float zFar, float xOffset, float yOffset, idRenderMatrix & out );
+	static void				CreateInverseProjectionMatrix(float yFovDegrees, float aspectRatio, float zNear, float epsilonRange, idRenderMatrix& out);
 
 	// Apply depth hacks to a projection matrix.
 	static ID_INLINE void	ApplyDepthHack( idRenderMatrix & src );

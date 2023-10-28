@@ -4,9 +4,8 @@
 // Basic infor for a hit.
 struct HitInfo
 {
+    float maxDistance;
 	float3 diffuse;
-	float3 indirect;
-	float3 specular;
 };
 
 // Attributes output by the raytracing when hitting a surface:
@@ -61,6 +60,8 @@ inline float4 GetInverseView(float4 location, in SceneConstants constants)
 
 inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in SceneConstants constants)
 {
+    screenPosition.y = 1.0 - screenPosition.y; // Invert the y for directx style coordinates.
+
     float4 clipPosition = float4(screenPosition * 2.0 - 1.0, depth, 1.0);
     float4 viewPosition = GetInverseProjection(clipPosition, constants);
     

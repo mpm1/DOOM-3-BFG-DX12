@@ -431,10 +431,10 @@ namespace DX12Rendering {
 			ImGui::Text("RENDERPARM_VIEWPORT: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[1].x, m_constantBuffer[1].y, m_constantBuffer[1].z, m_constantBuffer[1].w);
 			ImGui::Text("RENDERPARAM_SCISSOR: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[2].x, m_constantBuffer[2].y, m_constantBuffer[2].z, m_constantBuffer[2].w);
 
-			ImGui::Text("RENDERPARM_INVERSE_VIEWMATRIX_X: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[3].x, m_constantBuffer[3].y, m_constantBuffer[3].z, m_constantBuffer[3].w);
-			ImGui::Text("RENDERPARM_INVERSE_VIEWMATRIX_Y: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[4].x, m_constantBuffer[4].y, m_constantBuffer[4].z, m_constantBuffer[4].w);
-			ImGui::Text("RENDERPARM_INVERSE_VIEWMATRIX_Z: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[5].x, m_constantBuffer[5].y, m_constantBuffer[5].z, m_constantBuffer[5].w);
-			ImGui::Text("RENDERPARM_INVERSE_VIEWMATRIX_W: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[6].x, m_constantBuffer[6].y, m_constantBuffer[6].z, m_constantBuffer[6].w);
+			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_X: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[3].x, m_constantBuffer[3].y, m_constantBuffer[3].z, m_constantBuffer[3].w);
+			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_Y: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[4].x, m_constantBuffer[4].y, m_constantBuffer[4].z, m_constantBuffer[4].w);
+			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_Z: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[5].x, m_constantBuffer[5].y, m_constantBuffer[5].z, m_constantBuffer[5].w);
+			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_W: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[6].x, m_constantBuffer[6].y, m_constantBuffer[6].z, m_constantBuffer[6].w);
 
 			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_X: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[7].x, m_constantBuffer[7].y, m_constantBuffer[7].z, m_constantBuffer[7].w);
 			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_Y: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[8].x, m_constantBuffer[8].y, m_constantBuffer[8].z, m_constantBuffer[8].w);
