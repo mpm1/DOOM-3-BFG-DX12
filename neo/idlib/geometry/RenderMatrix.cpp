@@ -728,6 +728,32 @@ void idRenderMatrix::CreateProjectionMatrixFov( float xFovDegrees, float yFovDeg
 	CreateProjectionMatrix( xMin, xMax, yMin, yMax, zNear, zFar, out );
 }
 
+void idRenderMatrix::CreateInverseProjectionMatrix(float yFovDegrees, float aspectRatio, float zNear, float epsilonRange, idRenderMatrix& out)
+{
+	float g = 1.0f / idMath::Tan(DEG2RAD(yFovDegrees) * 0.5f);
+
+	out[0][0] = g / aspectRatio;
+	out[0][1] = 0.0f;
+	out[0][2] = 0.0f;
+	out[0][3] = 0.0f;
+
+	out[1][0] = 0.0f;
+	out[1][1] = g;
+	out[1][2] = 0.0f;
+	out[1][3] = 0.0f;
+
+	out[2][0] = 0.0f;
+	out[2][1] = 0.0f;
+	out[2][2] = epsilonRange;
+	out[2][3] = zNear * (1.0f - epsilonRange);
+
+	out[3][0] = 0.0f;
+	out[3][1] = 0.0f;
+	out[3][2] = 1.0f;
+	out[3][3] = 0.0f;
+}
+
+
 /*
 ========================
 idRenderMatrix::OffsetScaleForBounds

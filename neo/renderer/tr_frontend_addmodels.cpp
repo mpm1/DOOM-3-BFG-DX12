@@ -427,6 +427,14 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 		}
 	}
 
+	// Add the model to the raytracing system
+	if (renderEntity->hModel != NULL &&
+		(renderEntity->hModel->ModelHasInteractingSurfaces() ||
+			renderEntity->hModel->ModelHasShadowCastingSurfaces())) 
+	{
+		dxRenderer.DXR_AddEntityToTLAS(entityIndex, *entityDef->parms.hModel, entityDef->modelRenderMatrix[0], entityDef->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
+	}
+
 	// if we aren't visible and none of the shadows stretch into the view,
 	// we don't need to do anything else
 	if ( !modelIsVisible && numContactedLights == 0 ) {
@@ -1073,7 +1081,7 @@ void R_AddModels() {
 
 			if ( ds->linkChain == NULL ) {
 				R_LinkDrawSurfToView( ds, tr.viewDef );
-			} else {
+	 		} else {
 				ds->nextOnLight = *ds->linkChain;
 				*ds->linkChain = ds;
 			}

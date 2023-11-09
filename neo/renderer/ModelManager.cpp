@@ -674,12 +674,9 @@ void idRenderModelManagerLocal::EndLevelLoad() {
 			}
 
 			// Add the data to the blas structure.
-			dxRenderer.DXR_UpdateModelInBLAS(i, model);
+			dxRenderer.DXR_UpdateModelInBLAS(model);
 		}
 	}
-
-	// Update the raytracing structure if needed.
-	dxRenderer.DXR_UpdateBLAS();
 
 	// _D3XP added this
 	int	end = Sys_Milliseconds();

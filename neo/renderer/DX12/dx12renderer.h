@@ -93,6 +93,11 @@ public:
 	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
 	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset);
 
+	// Lights
+	UINT SetLightData(const UINT sceneIndex, const UINT shadowMask);
+	void MoveLightsToHeap();
+	const DX12Rendering::ShaderLightData SetActiveLight(const UINT lightIndex);
+
 	// Textures
 	DX12Rendering::TextureManager* GetTextureManager() { return &m_textureManager; }
 	void SetActiveTextureRegister(UINT8 index);
@@ -113,15 +118,16 @@ public:
 	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.
 	void DXR_UpdateAccelerationStructure();
 
-	void DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRenderModel* model);
-	void DXR_UpdateBLAS(); // Builds or rebuilds the bottom level acceleration struction based on its internal state.
+	void DXR_UpdateModelInBLAS(const idRenderModel* model);
 
-	void DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask);
+	void DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask);
 
 	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
 	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);
 
 	bool DXR_CastRays(); // Sets the appropriate matricies and casts the rays to the scene.
+
+	void DXR_SetupLights(const viewLight_t* viewLights, const float* worldMatrix); // Adds all lights and orders them for rendering.
 
 	void DXR_DenoiseResult(); // Performs a Denoise pass on all rendering channels.
 	void DXR_GenerateResult(); // Collapses all channels into a single image.
@@ -161,7 +167,10 @@ private:
 	ComPtr<IDXGISwapChain3> m_swapChain;
 	DX12RootSignature* m_rootSignature;
 
-	XMFLOAT4 m_constantBuffer[53];
+	DX12Rendering::ShaderLightData m_lights[MAX_SCENE_LIGHTS]; // All lights being rendered into the scene.
+	UINT m_activeLight = 0;
+
+	XMFLOAT4 m_constantBuffer[57/* RENDERPARM_TOTAL */];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;

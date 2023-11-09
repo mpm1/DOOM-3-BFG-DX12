@@ -835,6 +835,8 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	// Allow platform specific data to be collected after the depth pass.
 	GL_FinishDepthPass();
 
+	commandList->AddPostFenceSignal(&DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->fence);
+
 	renderLog.CloseBlock();
 	renderLog.CloseMainBlock();
 }
@@ -852,6 +854,7 @@ const int INTERACTION_TEXUNIT_FALLOFF = 1;
 const int INTERACTION_TEXUNIT_PROJECTION = 2;
 const int INTERACTION_TEXUNIT_DIFFUSE = 3;
 const int INTERACTION_TEXUNIT_SPECULAR = 4;
+const int INTERACTION_TEXUINIT_SHADOW = 5;
 
 /*
 ==================
@@ -963,6 +966,10 @@ static void RB_DrawSingleInteraction(drawInteraction_t* din) {
 	// texture 4 is the per-surface specular map
 	GL_SelectTexture(INTERACTION_TEXUNIT_SPECULAR);
 	din->specularImage->Bind();
+
+	// texture 5 is the screenspace shadow texture.
+	GL_SelectTexture(INTERACTION_TEXUINIT_SHADOW);
+	dxRenderer.SetTexture(dxRenderer.GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
 
 	RB_DrawElementsWithCounters(din->surf);
 }
@@ -1704,6 +1711,10 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 				GL_SelectTexture(INTERACTION_TEXUNIT_SPECULAR);
 				surfaceShader->GetFastPathSpecularImage()->Bind();
 
+				// texture 5 is the screenspace shadow texture.
+				GL_SelectTexture(INTERACTION_TEXUINIT_SHADOW);
+				dxRenderer.SetTexture(dxRenderer.GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
+
 				RB_DrawElementsWithCounters(surf);
 
 				renderLog.CloseBlock();
@@ -1804,6 +1815,170 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 /*
 ==============================================================================================
 
+DRAW GBUFFER
+
+==============================================================================================
+*/
+/*
+==================
+RB_DrawGBuffer
+==================
+*/
+static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
+	// TODO: FIX THIS UP TO PROPERLY CREATE SOME USEFUL BUFFERS
+	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawGBuffer");
+	//Set this to write to the appropriate render surfaces
+	GL_SelectTexture(0);
+
+	//First fill in the sub view surfaces
+	int surfNum;
+	for (surfNum = 0; surfNum < numDrawSurfs; surfNum++)
+	{
+		if (drawSurfs[surfNum]->material->GetSort() != SS_SUBVIEW) {
+			break;
+		}
+		// TODO: Handle Sub Views
+	}
+
+	const drawSurf_t** perforatedSurfaces = (const drawSurf_t**)_alloca(numDrawSurfs * sizeof(drawSurf_t*));
+	int numPerforatedSurfaces = 0;
+
+	// draw all the opaque surfaces and build up a list of perforated surfaces that
+	// we will defer drawing until all opaque surfaces are done
+	GL_State(GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL | GLS_STENCIL_FUNC_ALWAYS);
+
+//TODO: Clear the buffers
+//TODO: Implement perforated serfaces
+//TODO: Move to it's own buffer to render and cast rays'
+
+
+	// continue checking past the subview surfaces
+	for (; surfNum < numDrawSurfs; surfNum++) {
+		const drawSurf_t* surf = drawSurfs[surfNum];
+		const idMaterial* shader = surf->material;
+
+		// translucent surfaces don't put anything in the depth buffer
+		if (shader->Coverage() == MC_TRANSLUCENT) {
+			continue;
+		}
+		if (shader->Coverage() == MC_PERFORATED) {
+			// save for later drawing
+			perforatedSurfaces[numPerforatedSurfaces] = surf;
+			numPerforatedSurfaces++;
+			continue;
+		}
+
+		// set mvp matrix
+		if (surf->space != backEnd.currentSpace) {
+			RB_SetMVP(surf->space->mvp);
+			backEnd.currentSpace = surf->space;
+
+			// set the Normal Matrix (technically it's the transpose of the model matrix)
+			const float* modelMatrix = surf->space->modelMatrix;
+			idMat4 normalMatrix(
+				modelMatrix[0], modelMatrix[1], modelMatrix[2], modelMatrix[3],
+				modelMatrix[4], modelMatrix[5], modelMatrix[6], modelMatrix[7],
+				modelMatrix[8], modelMatrix[9], modelMatrix[10], modelMatrix[11],
+				modelMatrix[12], modelMatrix[13], modelMatrix[14], modelMatrix[15]
+			); // TODO: Precalculate value
+			normalMatrix.Inverse();
+			float normalMatrixTranspose[16];
+			R_MatrixTranspose(normalMatrix.ToFloatPtr(), normalMatrixTranspose);
+			//TODO: Find the appropriate matrix
+			SetVertexParms(RENDERPARM_NORMALMATRIX_X, normalMatrix.ToFloatPtr(), 4);
+		}
+
+		const idMaterial* surfaceShader = surf->material;
+		if (surfaceShader->GetFastPathBumpImage() && !r_skipInteractionFastPath.GetBool()) {
+			// texture 0 will be the per-surface bump map
+			GL_SelectTexture(INTERACTION_TEXUNIT_BUMP);
+			surfaceShader->GetFastPathBumpImage()->Bind();
+
+			const idVec4 sMatrix(1, 0, 0, 0);
+			const idVec4 tMatrix(0, 1, 0, 0);
+
+			// bump matrix
+			SetVertexParm(RENDERPARM_BUMPMATRIX_S, sMatrix.ToFloatPtr());
+			SetVertexParm(RENDERPARM_BUMPMATRIX_T, tMatrix.ToFloatPtr());
+		}
+		else
+		{
+			const float* surfaceRegs = surf->shaderRegisters;
+			bool bumpMapFound = false;
+
+			for (int surfaceStageNum = 0; surfaceStageNum < surfaceShader->GetNumStages(); surfaceStageNum++) {
+				const shaderStage_t* surfaceStage = surfaceShader->GetStage(surfaceStageNum);
+
+				switch (surfaceStage->lighting) {
+				case SL_COVERAGE: {
+					// ignore any coverage stages since they should only be used for the depth fill pass
+					// for diffuse stages that use alpha test.
+					break;
+				}
+				case SL_AMBIENT: {
+					// ignore ambient stages while drawing interactions
+					break;
+				}
+				case SL_BUMP: {
+					// ignore stage that fails the condition
+					if (!surfaceRegs[surfaceStage->conditionRegister]) {
+						break;
+					}
+
+					bumpMapFound = true;
+
+					// texture 0 will be the per-surface bump map
+					GL_SelectTexture(INTERACTION_TEXUNIT_BUMP);
+					surfaceStage->texture.image->Bind();
+					
+					idVec4 bumpMatrix[2];
+					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
+						bumpMatrix, NULL);
+
+					// bump matrix
+					SetVertexParm(RENDERPARM_BUMPMATRIX_S, bumpMatrix[0].ToFloatPtr());
+					SetVertexParm(RENDERPARM_BUMPMATRIX_T, bumpMatrix[1].ToFloatPtr());
+
+					break;
+				}
+				case SL_DIFFUSE: {
+					// ignore
+				}
+				case SL_SPECULAR: {
+					// ignore
+				}
+				}
+
+				if (bumpMapFound)
+				{
+					//break;
+				}
+			}
+		}
+
+		if (surf->jointCache) {
+			renderProgManager.BindShader_GBufferSkinned();
+		}
+		else {
+			renderProgManager.BindShader_GBuffer();
+		}
+
+		// draw it solid
+		RB_DrawElementsWithCounters(surf);
+	}
+
+	// draw all perforated surfaces with the general code path
+	if (numPerforatedSurfaces > 0) {
+		DX12Rendering::Commands::CommandListCycleBlock subCycleBlock(commandList, "PerforatedSurfacs");
+
+		//TODO: Create the perferated codepath.
+	}
+}
+
+/*
+==============================================================================================
+
 DRAW INTERACTIONS
 
 ==============================================================================================
@@ -1824,6 +1999,8 @@ static void RB_DrawInteractions() {
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DrawInteractions");
 
+	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+
 	GL_SelectTexture(0);
 
 	const bool useLightDepthBounds = r_useLightDepthBounds.GetBool();
@@ -1831,7 +2008,11 @@ static void RB_DrawInteractions() {
 	//
 	// for each light, perform shadowing and adding
 	//
+	UINT totalLights = 0;
 	for (const viewLight_t* vLight = backEnd.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
+		const UINT sceneIndex = totalLights;
+		++totalLights;
+
 		// do fogging later
 		if (vLight->lightShader->IsFogLight()) {
 			continue;
@@ -1843,6 +2024,8 @@ static void RB_DrawInteractions() {
 		if (vLight->localInteractions == NULL && vLight->globalInteractions == NULL && vLight->translucentInteractions == NULL) {
 			continue;
 		}
+
+		bool useRaytracedShadows = dxRenderer.SetActiveLight(sceneIndex).shadowMask > 0;
 
 		// Set command list.
 		//dxRenderer.ExecuteCommandList();
@@ -1890,7 +2073,7 @@ static void RB_DrawInteractions() {
 			}
 		}
 
-		if (vLight->globalShadows != NULL) {
+		if (!useRaytracedShadows && vLight->globalShadows != NULL) {
 			DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Global Light Shadows");
 
 			renderLog.OpenBlock("Global Light Shadows");
@@ -1906,7 +2089,7 @@ static void RB_DrawInteractions() {
 			renderLog.CloseBlock();
 		}
 
-		if (vLight->localShadows != NULL) {
+		if (!useRaytracedShadows && vLight->localShadows != NULL) {
 			DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Local Light Shadow");
 
 			renderLog.OpenBlock("Local Light Shadows");
@@ -1954,7 +2137,7 @@ static void RB_DrawInteractions() {
 	GL_State(GLS_DEFAULT);
 
 	// unbind texture units
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < TEXTURE_REGISTER_COUNT; i++) {
 		GL_SelectTexture(i);
 		globalImages->BindNull();
 	}
@@ -1964,6 +2147,10 @@ static void RB_DrawInteractions() {
 	if (useLightDepthBounds) {
 		GL_DepthBoundsTest(0.0f, 0.0f);
 	}
+
+	// Reset the shadowmap for the next frame
+	auto screenShadows = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP);
+	textureManager->SetTextureState(screenShadows, D3D12_RESOURCE_STATE_COMMON, commandList);
 
 	renderLog.CloseBlock();
 	renderLog.CloseMainBlock();
@@ -2608,7 +2795,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		}
 	}
 
-	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled();
+	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
 
 	//-------------------------------------------------
 	// RB_BeginDrawingView
@@ -2679,17 +2866,40 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		R_MatrixTranspose(backEnd.viewDef->projectionMatrix, projMatrixTranspose);
 		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
 
+		{
+			// Setup viewport coordniates for screenspace shadows. 
+			int x = backEnd.viewDef->viewport.x1;
+			int y = backEnd.viewDef->viewport.y1;
+			int	w = backEnd.viewDef->viewport.x2 - backEnd.viewDef->viewport.x1 + 1;
+			int	h = backEnd.viewDef->viewport.y2 - backEnd.viewDef->viewport.y1 + 1;
+
+			// screen power of two correction factor (no longer relevant now)
+			float screenCorrectionParm[4];
+			screenCorrectionParm[0] = 1.0f;
+			screenCorrectionParm[1] = 1.0f;
+			screenCorrectionParm[2] = 0.0f;
+			screenCorrectionParm[3] = 1.0f;
+			SetFragmentParm(RENDERPARM_SCREENCORRECTIONFACTOR, screenCorrectionParm); // rpScreenCorrectionFactor
+
+			// window coord to 0.0 to 1.0 conversion
+			float windowCoordParm[4];
+			windowCoordParm[0] = 1.0f / w;
+			windowCoordParm[1] = 1.0f / h;
+			windowCoordParm[2] = 0.0f;
+			windowCoordParm[3] = 1.0f;
+			SetFragmentParm(RENDERPARM_WINDOWCOORD, windowCoordParm); // rpWindowCoord
+		}
+
 		if (raytracedEnabled)
 		{
-			// Set the inverse prokection matrix
-			idRenderMatrix inverseProjection;
-			/*idRenderMatrix projectionMatrix(
-				backEnd.viewDef->projectionMatrix[0], backEnd.viewDef->projectionMatrix[1], backEnd.viewDef->projectionMatrix[2], backEnd.viewDef->projectionMatrix[3],
-				backEnd.viewDef->projectionMatrix[4], backEnd.viewDef->projectionMatrix[5], backEnd.viewDef->projectionMatrix[6], backEnd.viewDef->projectionMatrix[7],
-				backEnd.viewDef->projectionMatrix[8], backEnd.viewDef->projectionMatrix[9], backEnd.viewDef->projectionMatrix[10], backEnd.viewDef->projectionMatrix[11],
-				backEnd.viewDef->projectionMatrix[12], backEnd.viewDef->projectionMatrix[13], backEnd.viewDef->projectionMatrix[14], backEnd.viewDef->projectionMatrix[15]
-			);*/
-			idRenderMatrix projectionMatrix(
+			// Set the inverse projection matrix
+			idRenderMatrix inverseProjection, inverseProjectionTranspose; //Mark start here. We may need to cut our clip off by a variable.
+			/*idRenderMatrix::CreateInverseProjectionMatrix(
+				backEnd.viewDef->renderView.fov_y, backEnd.viewDef->viewport.zmin,
+				backEnd.viewDef->viewport.zmax, backEnd.viewDef->viewport.GetWidth() / backEnd.viewDef->viewport.GetHeight(),
+				inverseProjection);
+			idRenderMatrix::Transpose(inverseProjection, inverseProjectionTranspose);*/
+			const idRenderMatrix projectionMatrix(
 				projMatrixTranspose[0], projMatrixTranspose[1], projMatrixTranspose[2], projMatrixTranspose[3],
 				projMatrixTranspose[4], projMatrixTranspose[5], projMatrixTranspose[6], projMatrixTranspose[7],
 				projMatrixTranspose[8], projMatrixTranspose[9], projMatrixTranspose[10], projMatrixTranspose[11],
@@ -2700,11 +2910,12 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 
 			// Set the Inverse View Matrix
-			idRenderMatrix viewRenderMatrix;
-			idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrix);
-			float viewMatrixTranspose[16];
-			R_MatrixTranspose(viewRenderMatrix[0], viewMatrixTranspose); //NOTE: I don't think we need the transpose... but not sure.
-			dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, viewRenderMatrix[0], 4);
+			idRenderMatrix* viewRenderMatrix = (idRenderMatrix*)backEnd.viewDef->worldSpace.modelViewMatrix;
+			idRenderMatrix inverseViewRenderMatrix, transposeViewRenderMatrix;
+			//idRenderMatrix::CreateFromOriginAxis(-backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis, inverseViewRenderMatrix);
+			idRenderMatrix::Inverse(*viewRenderMatrix, inverseViewRenderMatrix);
+			idRenderMatrix::Transpose(inverseViewRenderMatrix, transposeViewRenderMatrix);
+			dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, transposeViewRenderMatrix[0], 4);
 		}
 	}
 
@@ -2721,9 +2932,21 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		// fill the depth buffer and clear color buffer to black except on subviews
 		//-------------------------------------------------
 		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
+
+		// Fill the GBuffer
+		//RB_DrawGBuffer(drawSurfs, numDrawSurfs);
+
+		// Build our light list
+		dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix); //Mark, find out why lights keep changing location.
+
+		// Copy the depth buffer to a texture
+		auto depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::DEPTH_TEXTURE);
+		depthStencil->CopySurfaceToTexture(depthTexture, textureManager)->Wait();
 	}
 
-	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays();
+	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); 
 	if (raytraceUpdated)
 	{
 		//-------------------------------------------------
@@ -2957,29 +3180,19 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
 
 		// Set the inverse prokection matrix
-		idRenderMatrix inverseProjection;
-		/*idRenderMatrix projectionMatrix(
-			backEnd.viewDef->projectionMatrix[0], backEnd.viewDef->projectionMatrix[1], backEnd.viewDef->projectionMatrix[2], backEnd.viewDef->projectionMatrix[3],
-			backEnd.viewDef->projectionMatrix[4], backEnd.viewDef->projectionMatrix[5], backEnd.viewDef->projectionMatrix[6], backEnd.viewDef->projectionMatrix[7],
-			backEnd.viewDef->projectionMatrix[8], backEnd.viewDef->projectionMatrix[9], backEnd.viewDef->projectionMatrix[10], backEnd.viewDef->projectionMatrix[11],
-			backEnd.viewDef->projectionMatrix[12], backEnd.viewDef->projectionMatrix[13], backEnd.viewDef->projectionMatrix[14], backEnd.viewDef->projectionMatrix[15]
-		);*/
-		idRenderMatrix projectionMatrix(
-			projMatrixTranspose[0], projMatrixTranspose[1], projMatrixTranspose[2], projMatrixTranspose[3],
-			projMatrixTranspose[4], projMatrixTranspose[5], projMatrixTranspose[6], projMatrixTranspose[7],
-			projMatrixTranspose[8], projMatrixTranspose[9], projMatrixTranspose[10], projMatrixTranspose[11],
-			projMatrixTranspose[12], projMatrixTranspose[13], projMatrixTranspose[14], projMatrixTranspose[15]
-		);
-		idRenderMatrix::Inverse(projectionMatrix, inverseProjection);
-		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_PROJMATRIX_X, inverseProjection[0], 4);
+		idRenderMatrix inverseProjection, inverseProjectionTranspose;
+		idRenderMatrix::Inverse(backEnd.viewDef->projectionRenderMatrix, inverseProjection);
+		idRenderMatrix::Transpose(inverseProjection, inverseProjectionTranspose);
+		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_PROJMATRIX_X, inverseProjectionTranspose[0], 4);
 		
-
 		// Set the Inverse View Matrix
-		idRenderMatrix viewRenderMatrix;
-		idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrix);
-		float viewMatrixTranspose[16];
-		R_MatrixTranspose(viewRenderMatrix[0], viewMatrixTranspose);
-		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, &viewMatrixTranspose[0], 4);
+		idRenderMatrix viewRenderMatrix, viewRenderMatrixInverse, viewRenderMatrixTranspose;
+
+		idRenderMatrix::CreateFromOriginAxis(-backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrixInverse);
+		//idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis, viewRenderMatrix);
+		//idRenderMatrix::Inverse(viewRenderMatrix, viewRenderMatrixInverse);
+		idRenderMatrix::Transpose(viewRenderMatrixInverse, viewRenderMatrixTranspose);
+		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, viewRenderMatrixInverse[0], 4); //Mark, figure out why this is wrong. Or if this is properly updating
 	}
 
 	//-------------------------------------------------

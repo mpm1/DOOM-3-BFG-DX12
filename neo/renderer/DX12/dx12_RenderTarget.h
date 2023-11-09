@@ -2,6 +2,7 @@
 #define __DX12_RENDERTARGET_H__
 
 #include "./dx12_resource.h"
+#include "./dx12_TextureManager.h"
 
 namespace DX12Rendering {
 	typedef
@@ -22,9 +23,11 @@ namespace DX12Rendering {
 		Diffuse,
 		Specular,
 
+		// GBuffer
+		Normal, // Normals in the world space. This can be used for Raytracing.
+
 		// RayTracing
-		RaytraceShadowMap,
-		RaytraceDiffuseMap,
+		RaytraceShadowMask, // Each bit is a light mask
 
 		// Final Result
 		RenderTarget1,
@@ -42,7 +45,7 @@ namespace DX12Rendering {
 	{
 		eRenderSurface::Diffuse,
 		eRenderSurface::Specular,
-		eRenderSurface::RaytraceDiffuseMap,
+		eRenderSurface::RaytraceShadowMask,
 		eRenderSurface::RenderTarget1,
 		eRenderSurface::RenderTarget2,
 	};
@@ -74,6 +77,8 @@ namespace DX12Rendering {
 		const D3D12_GPU_DESCRIPTOR_HANDLE& GetGPURtv() const { return m_rtv_gpu; }
 
 		void RenderSurface::CreateUnorderedAccessView(D3D12_CPU_DESCRIPTOR_HANDLE& uavHeap);
+
+		DX12Rendering::Fence* CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager);
 
 	private:
 		const DXGI_FORMAT m_format;

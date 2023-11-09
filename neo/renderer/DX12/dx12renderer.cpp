@@ -7,7 +7,7 @@
 #include <comdef.h>
 #include <type_traits>
 
-idCVar r_useRayTraycing("r_useRayTraycing", "0", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
@@ -48,6 +48,14 @@ template<>
 const dxHandle_t DX12Renderer::GetHandle<viewLight_t>(const viewLight_t* vLight)
 {
 	return static_cast<dxHandle_t>(vLight->lightDef->index);
+}
+
+template<>
+const dxHandle_t DX12Renderer::GetHandle<idRenderModel>(const idRenderModel* renderModel)
+{
+	//TODO: Precache the hash or have a better generation method
+
+	return std::hash<std::string>{}(renderModel->Name());
 }
 
 void DX12Renderer::Init(HWND hWnd) {
@@ -171,7 +179,7 @@ void DX12Renderer::LoadPipelineState(D3D12_GRAPHICS_PIPELINE_STATE_DESC* psoDesc
 
 	psoDesc->pRootSignature = m_rootSignature->GetRootSignature();
 
-	DX12Rendering::ThrowIfFailed(device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));	
+	DX12Rendering::ThrowIfFailed(device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));
 }
 
 void DX12Renderer::SetActivePipelineState(ID3D12PipelineState* pPipelineState) {
@@ -219,7 +227,7 @@ void DX12Renderer::LoadAssets() {
 	}
 
 	// Create Empty Root Signature
-	m_rootSignature = new DX12RootSignature(device, sizeof(m_constantBuffer));
+	m_rootSignature = new DX12RootSignature(device, sizeof(m_constantBuffer), sizeof(m_lights) /* Light buffer only contains 1 entry */);
 
 	{
 		std::fill(m_activeTextures, m_activeTextures + TEXTURE_REGISTER_COUNT, static_cast<DX12Rendering::TextureBuffer*>(nullptr));
@@ -262,7 +270,7 @@ void DX12Renderer::FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer)
 }
 
 void DX12Renderer::SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset) {
-	D3D12_CONSTANT_BUFFER_VIEW_DESC descriptor = m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, m_frameIndex, DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT));
+	D3D12_CONSTANT_BUFFER_VIEW_DESC descriptor = m_rootSignature->SetJointDescriptorTable(buffer, jointOffset, DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT));
 }
 
 void DX12Renderer::SignalNextFrame() {
@@ -311,7 +319,7 @@ void DX12Renderer::SetCommandListDefaults(const bool resetPipelineState) {
 
 		// Setup the initial heap location
 		ID3D12DescriptorHeap* descriptorHeaps[1] = {
-			m_rootSignature->GetCBVHeap(m_frameIndex),
+			m_rootSignature->GetCBVHeap(),
 		};
 		commandList->SetDescriptorHeaps(1, descriptorHeaps);
 	});
@@ -361,7 +369,8 @@ void DX12Renderer::BeginDraw() {
 
 	if (IsRaytracingEnabled())
 	{
-		DXR_UpdateBLAS();
+		DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
+
 		m_raytracing->BeginFrame();
 	}
 
@@ -425,8 +434,8 @@ void DX12Renderer::EndDraw() {
 	//After frame events
 	if (IsRaytracingEnabled())
 	{
-		// TODO: Evaluate cleanup
-		//m_raytracing->GetTLASManager()->Reset();
+		DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
+		m_raytracing->EndFrame();
 	}
 
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
@@ -458,14 +467,15 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 		return false;
 	}
 	
-	const D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, m_frameIndex, commandList);
+	const D3D12_CONSTANT_BUFFER_VIEW_DESC lightView = m_rootSignature->SetActiveLightView(m_activeLight, commandList);
+	const D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, commandList);
 
 	// Copy the Textures
 	DX12Rendering::TextureBuffer* currentTexture;
 	UINT index;
 	for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
 		m_textureManager.SetTexturePixelShaderState(currentTexture);
-		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, m_frameIndex, commandList);
+		m_rootSignature->SetTextureRegisterIndex(index, currentTexture, commandList);
 	}
 
 	return true;
@@ -522,7 +532,6 @@ void DX12Renderer::Clear(const bool color, const bool depth, const bool stencil,
 	}
 
 	if (stencil) {
-		// TODO: Implement stencil first.
 		clearFlags |= D3D12_CLEAR_FLAG_STENCIL;
 	}
 
@@ -627,8 +636,10 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			return false;
 		}*/
 
+		m_textureManager.Initialize(m_width, m_height);
+
 		if (m_raytracing != nullptr) {
-			m_raytracing->Resize(m_width, m_height);
+			m_raytracing->Resize(m_width, m_height, m_textureManager);
 		}
 
 		UpdateViewport(0.0f, 0.0f, width, height);
@@ -713,9 +724,34 @@ void DX12Renderer::ReadPixels(int x, int y, int width, int height, UINT readBuff
 	common->Warning("Read Pixels not yet implemented.");
 }
 
+UINT DX12Renderer::SetLightData(const UINT sceneIndex, const UINT shadowMask)
+{
+	assert(sceneIndex <= MAX_SCENE_LIGHTS);
+
+	m_lights[sceneIndex].shadowMask = shadowMask;
+
+	return shadowMask;
+}
+
+void DX12Renderer::MoveLightsToHeap()
+{
+	//For now we have one entry for the lights. We may want to turn this into a struct for more extensive use.
+	m_rootSignature->SetLightDescriptorTable(sizeof(m_lights), m_lights);
+}
+
+const DX12Rendering::ShaderLightData DX12Renderer::SetActiveLight(const UINT lightIndex)
+{
+	assert(lightIndex < MAX_SCENE_LIGHTS);
+	const DX12Rendering::ShaderLightData& light = m_lights[lightIndex];
+
+	m_activeLight = lightIndex;
+
+	return light;
+}
+
 // Texture functions
 void DX12Renderer::SetActiveTextureRegister(UINT8 index) {
-	if (index < 5) {
+	if (index < TEXTURE_REGISTER_COUNT) {
 		m_activeTextureRegister = index;
 	}
 }
@@ -750,12 +786,9 @@ void DX12Renderer::DXR_UpdateAccelerationStructure()
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
 	m_raytracing->GenerateTLAS();
-
-	// TODO: what else do we need to reset.
-	//m_raytracing->ResetFrame();
 }
 
-void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRenderModel* model)
+void DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
 {
 	if (!IsRaytracingEnabled() || model == nullptr) {
 		return;
@@ -778,7 +811,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	const dxHandle_t index = GetHandle(&modelHandle);
+	const dxHandle_t index = GetHandle(model);
 	std::string blasName = std::string(model->Name());
 	DX12Rendering::BottomLevelAccelerationStructure& blas = *m_raytracing->GetBLASManager()->CreateBLAS(index, std::wstring(blasName.begin(), blasName.end()).c_str());
 	
@@ -849,39 +882,16 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const qhandle_t modelHandle, const idRe
 	}
 }
 
-void DX12Renderer::DXR_UpdateBLAS()
+void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
 {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
 
-	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-	if (device == nullptr)
-	{
-		return;
-	}
+	dxHandle_t modelHandle = GetHandle(&model);
+	dxHandle_t instanceHandle = static_cast<dxHandle_t>(entityIndex);
 
-	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
-
-	if (UINT count = m_raytracing->GetBLASManager()->Generate() > 0)
-	{
-		//TODO: Move this to a more generalized execution tract.
-		//commandList->Cycle();
-	}
-
-	m_raytracing->CleanUpAccelerationStructure();
-}
-
-void DX12Renderer::DXR_AddEntityToTLAS(const qhandle_t& modelHandle, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
-{
-	if (!IsRaytracingEnabled()) {
-		return;
-	}
-
-	float transformTranspose[16];
-	R_MatrixTranspose(transform, transformTranspose);
-
-	m_raytracing->GetTLASManager()->AddInstance(modelHandle, transformTranspose, typesMask);
+	m_raytracing->GetTLASManager()->AddInstance(instanceHandle, modelHandle, transform, typesMask);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)
@@ -903,13 +913,81 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 	for (UINT i = 0; i < count; ++i)
 	{
-		m_raytracing->Uniform4f(static_cast<DX12Rendering::dxr_renderParm_t>(param + i), uniform + (i * 4));
+		m_raytracing->Uniform4f(param + i, uniform + (i * 4));
 	}
 }
 
 bool DX12Renderer::DXR_CastRays()
 {
-	return m_raytracing->CastRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
+	bool result = m_raytracing->CastShadowRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect, &m_textureManager);
+
+	if (result)
+	{
+		// Copy the raytraced shadow data
+		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+		DX12Rendering::TextureBuffer* lightTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP);
+
+		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceShadowMask);
+
+		surface->CopySurfaceToTexture(lightTexture, textureManager)->Wait(); // Wait for the copy to complete.
+	}
+
+	return result;
+}
+
+void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* worldMatrix)
+{
+	if (!IsRaytracingEnabled()) {
+		return;
+	}
+	
+	m_raytracing->ResetLightList();
+
+	UINT lightIndex = 0;
+	for (const viewLight_t* vLight = viewLights; vLight != NULL; vLight = vLight->next) {
+		UINT shadowMask = vLight->shadowMask;
+
+		if (shadowMask > 0)
+		{
+			idVec4 localLight(0.0f);
+			R_GlobalPointToLocal(worldMatrix, vLight->globalLightOrigin, localLight.ToVec3());
+
+			const XMFLOAT3 location(localLight.ToFloatPtr());
+			XMFLOAT4 scissor(
+				vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
+				vLight->scissorRect.y1 + m_viewport.TopLeftY,
+				vLight->scissorRect.x2 + 1 - vLight->scissorRect.x1,
+				0);
+			scissor.z += scissor.x; // right
+			scissor.w += (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1);// m_viewport.Height - scissor.y; // bottom
+			//scissor.y = scissor.w - (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1); // top
+
+			//float* radBegin = vLight->lightDef->parms.lightRadius.ToFloatPtr();
+			float radius = std::numeric_limits<float>::max(); // TODO: fix for lights that 
+			/*for (uint rCheck = 0; rCheck < 3; ++rCheck)
+			{
+				const float value = std::abs(radBegin[rCheck]);
+
+				if (value > radius)
+				{
+					radius = value;
+				}
+			}*/
+
+			if (!m_raytracing->AddLight(lightIndex, vLight->shadowMask, location, radius, scissor))
+			{
+				// Could not add the raytraced light
+				shadowMask = 0;
+			}
+		}
+
+		SetLightData(lightIndex, shadowMask);
+
+		++lightIndex;
+	}
+
+	// Move the light data to the GPU
+	dxRenderer.MoveLightsToHeap();
 }
 
 void DX12Renderer::DXR_DenoiseResult()
@@ -925,7 +1003,7 @@ void DX12Renderer::DXR_GenerateResult()
 void DX12Renderer::DXR_CopyResultToDisplay()
 {
 	//renderTarget->fence.Wait();
-	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceDiffuseMap, 0, 0, 0, 0, m_width / 3, m_height / 3);
+	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceShadowMask, 0, 0, 0, 0, m_width / 2, m_height);
 }
 
 void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)
@@ -951,9 +1029,9 @@ void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId,
 			commandList->ResourceBarrier(1, &transition);
 		}
 
-		CD3DX12_TEXTURE_COPY_LOCATION dst(renderTarget.resource.Get());
-		CD3DX12_TEXTURE_COPY_LOCATION src(surface.resource.Get());
-		CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
+		const CD3DX12_TEXTURE_COPY_LOCATION dst(renderTarget.resource.Get());
+		const CD3DX12_TEXTURE_COPY_LOCATION src(surface.resource.Get());
+		const CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
 		commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
 
 		if (renderTarget.TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transition))
@@ -1076,10 +1154,11 @@ void DX12Renderer::ImGuiDebugWindows()
 		ImGui::SetNextWindowSize({ static_cast<float>(m_viewport.Width) * scaleX, (static_cast<float>(m_viewport.Height) * scaleY) + headerOffset });
 
 		if (ImGui::Begin("Raytraced Shadowmap", NULL, ImGuiWindowFlags_NoResize)) {
-			DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1);
+			DX12Rendering::TextureBuffer* lightTexture = m_textureManager.GetGlobalTexture(DX12Rendering::eGlobalTexture::DEPTH_TEXTURE);
+			m_rootSignature->SetTextureRegisterIndex(0, lightTexture, nullptr); //TODO: Create a static location for these global textures. Maybe make a location so texures dont need to readd itself
 
-			ImGui::Text("GPU handle = %p", surface->GetGPURtv().ptr);
-			ImGui::Image((ImTextureID)surface->GetGPURtv().ptr, imageSize);
+			ImGui::Text("GPU handle = %p", lightTexture->GetGPUDescriptorHandle().ptr);
+			ImGui::Image((ImTextureID)lightTexture->GetGPUDescriptorHandle().ptr, imageSize, ImVec2(0, 0), ImVec2(1, 1), ImVec4(1, 1, 1, 1), ImVec4(0, 0, 0, 1));
 		}
 
 		ImGui::End();

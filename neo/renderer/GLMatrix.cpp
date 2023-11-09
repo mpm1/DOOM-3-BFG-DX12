@@ -439,12 +439,14 @@ void R_SetupProjectionMatrix( viewDef_t *viewDef ) {
 	viewDef->projectionMatrix[2*4+1] = ( ymax + ymin ) / height;	// normally 0
 	viewDef->projectionMatrix[3*4+1] = 0.0f;
 
+	float epsilonRange = -0.999f;
+
 	// this is the far-plane-at-infinity formulation, and
 	// crunches the Z range slightly so w=0 vertexes do not
 	// rasterize right at the wraparound point
 	viewDef->projectionMatrix[0*4+2] = 0.0f;
 	viewDef->projectionMatrix[1*4+2] = 0.0f;
-	viewDef->projectionMatrix[2*4+2] = -0.999f; // adjust value to prevent imprecision issues
+	viewDef->projectionMatrix[2*4+2] = epsilonRange; // adjust value to prevent imprecision issues
 	viewDef->projectionMatrix[3*4+2] = -2.0f * zNear;
 
 	viewDef->projectionMatrix[0*4+3] = 0.0f;
@@ -456,4 +458,8 @@ void R_SetupProjectionMatrix( viewDef_t *viewDef ) {
 		viewDef->projectionMatrix[1*4+1] = -viewDef->projectionMatrix[1*4+1];
 		viewDef->projectionMatrix[1*4+3] = -viewDef->projectionMatrix[1*4+3];
 	}
+
+	// Setup the infinite reverse matrix
+	//NOTE: This does not work correctly.
+	//idRenderMatrix::CreateInverseProjectionMatrix(viewDef->renderView.fov_y, viewWidth / viewHeight, zNear, epsilonRange, viewDef->inverseProjectionMatrix);
 }

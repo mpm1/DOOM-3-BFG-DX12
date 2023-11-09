@@ -186,6 +186,60 @@ namespace DX12Rendering
 		device->CreateUnorderedAccessView(resource.Get(), nullptr, &uavDesc, uavHeap);
 	}
 
+	DX12Rendering::Fence* RenderSurface::CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager)
+	{
+		if (texture == nullptr)
+		{
+			return nullptr;
+		}
+
+		// TODO: Put these as inputs
+		UINT sx = 0;
+		UINT sy = 0;
+		UINT rx = 0;
+		UINT ry = 0;
+		UINT width = this->m_width;
+		UINT height = this->m_height;
+
+		textureManager->StartTextureWrite(texture);
+
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RenderSurface::CopySurfaceToTexture");
+
+		commandList->AddPreFenceWait(&this->fence); // Wait for all drawing to complete.
+		commandList->AddPostFenceSignal(&this->fence);
+
+		textureManager->SetTextureState(texture, D3D12_RESOURCE_STATE_COPY_DEST, commandList);
+
+		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
+		{
+			D3D12_RESOURCE_STATES previousState = D3D12_RESOURCE_STATE_RENDER_TARGET;
+
+			D3D12_RESOURCE_BARRIER transition = {};
+			if (this->TryTransition(D3D12_RESOURCE_STATE_COPY_SOURCE, &transition))
+			{
+				previousState = transition.Transition.StateBefore;
+				commandList->ResourceBarrier(1, &transition);
+			}
+
+			const CD3DX12_TEXTURE_COPY_LOCATION dst(texture->resource.Get());
+			const CD3DX12_TEXTURE_COPY_LOCATION src(resource.Get());
+			const CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
+			commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
+
+			if (TryTransition(previousState, &transition))
+			{
+				commandList->ResourceBarrier(1, &transition);
+			}
+		});
+
+		textureManager->SetTextureState(texture, D3D12_RESOURCE_STATE_COMMON, commandList);
+
+		textureManager->EndTextureWrite(texture);
+
+		return &this->fence;
+	}
+
 	bool RenderSurface::TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier)
 	{
 		if (m_lastTransitionState == toTransition)
@@ -246,8 +300,9 @@ namespace DX12Rendering
 			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_NONE, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
 			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_NONE, clearValue);
 			
-			m_surfaces.emplace_back(L"RaytraceShadowMap", DXGI_FORMAT_R8_UNORM, eRenderSurface::RaytraceShadowMap, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
-			m_surfaces.emplace_back(L"RayTraceDiffuseMap", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RaytraceDiffuseMap, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue); // Temp for now.
+			m_surfaces.emplace_back(L"Normal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Normal, RENDER_SURFACE_FLAG_NONE, clearValue);
+
+			m_surfaces.emplace_back(L"RaytraceShadowMask", DXGI_FORMAT_R8G8B8A8_UINT, eRenderSurface::RaytraceShadowMask, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 
 			m_surfaces.emplace_back(L"RenderTarget1", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget1, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);
 			m_surfaces.emplace_back(L"RenderTarget2", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget2, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);
