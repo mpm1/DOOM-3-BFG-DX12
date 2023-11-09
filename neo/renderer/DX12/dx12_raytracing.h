@@ -39,6 +39,28 @@ namespace DX12Rendering {
 		COUNT
 	};
 
+	struct dxr_lightData_t
+	{
+		UINT lightIndex;
+		UINT shadowMask;
+		UINT pad[2];
+
+		XMFLOAT3	location;
+		float		radius;
+
+		XMFLOAT4	scissor; // Light view scissor window {left, top, right, bottom}
+	};
+
+	struct dxr_sceneConstants_t
+	{
+		XMFLOAT4 renderParameters[DX12Rendering::dxr_renderParm_t::COUNT];
+
+		UINT lightCount;
+		UINT pad[3];
+
+		dxr_lightData_t lights[MAX_DXR_LIGHTS];
+	};
+
 	class TopLevelAccelerationStructure;
 
 	class Raytracing;
@@ -57,6 +79,10 @@ public:
 	DX12Rendering::TLASManager* GetTLASManager() { return &m_tlasManager; }
 
 	void Uniform4f(UINT index, const float* uniform);
+
+	void ResetLightList();
+	bool AddLight(const UINT index, const UINT shadowMask, const XMFLOAT3 location, const float radius, const XMFLOAT4 scissorWindow);
+	UINT GetLightMask(const UINT index);
 
 	void GenerateTLAS();
 
@@ -118,7 +144,7 @@ private:
 
 	ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
-	XMFLOAT4 m_constantBuffer[DX12Rendering::dxr_renderParm_t::COUNT];
+	dxr_sceneConstants_t m_constantBuffer;
 
 	TLASManager m_tlasManager;
 	BLASManager m_blasManager;
@@ -139,7 +165,7 @@ private:
 	void CreateCBVHeap(const size_t constantBufferSize);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(
 		const size_t constantBufferSize, 
-		const XMFLOAT4* constantBuffer, 
+		const void* constantBuffer,
 		const UINT frameIndex);
 
 	// Acceleration Structure

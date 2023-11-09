@@ -1,7 +1,7 @@
 #include "raytracing_global.inc"
 
 // Raytracing output to texture, accessed as UAV
-RWTexture2D<float4> gOutput :register(u0);
+RWTexture2D<uint4> gOutput :register(u0);
 
 // Raytracing acceleration structure, accessed as a SRV
 RaytracingAccelerationStructure SceneBVH :register(t0);
@@ -22,61 +22,73 @@ bool IsInsideViewport(float2 p, float4 viewport)
 
 [shader("raygeneration")]
 void RayGen() {
-	// Initialize the ray payload
-	HitInfo payload;
-	payload.maxDistance = 100.0f;
-	payload.diffuse = float3(0.0f, 0.0f, 0.0f);
+	uint resultMask = 0x00000000;
 
 	// Get the ray location on the screen
-	float2 lerpValues = (float2)DispatchRaysIndex() / (float2)DispatchRaysDimensions();
+	float2 lerpValues = ((float2)DispatchRaysIndex() + 0.5) / (float2)DispatchRaysDimensions();
 	float3 screenLocation = float3(
-		lerp(sceneConstants.rpViewport.x, sceneConstants.rpViewport.z, lerpValues.x),
-		lerp(sceneConstants.rpViewport.y, sceneConstants.rpViewport.w, lerpValues.y),
+		lerp(sceneConstants.rp.viewport.x, sceneConstants.rp.viewport.z, lerpValues.x),
+		lerp(sceneConstants.rp.viewport.y, sceneConstants.rp.viewport.w, lerpValues.y),
 		0.0f);
+	
+	uint lightCounts = min(sceneConstants.lightCount, MAX_SHADOW_LIGHTS);
 
-	float3 locationDif = float3(0.0f, 0.0f, 0.0f);
+	// Get the depth buffer location
+	float depth = depthBuffer.GatherRed(pointSampler, lerpValues.xy).r;
 
-	if (IsInsideViewport(screenLocation.xy, sceneConstants.rpScissor))
+	if(depth <= 1.0f)
 	{
-		// Get the depth buffer location
-		float depth = depthBuffer.Gather(pointSampler, lerpValues.xy).r;
+		float minLerpRange = clamp((depth - 0.96) / (1.0 - 0.96), 0, 1.0);
+		float minDist = lerp(0.1, 0.5, minLerpRange); // The further back we are, the more error we want to allow for.
+		
+		float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz;
+		float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
 
-		if(depth <= 1.0f)
+		float3 startingPoint = worldPosition + (pointToEye * minDist); // Start slightly out from the world position.
+
+		for(uint lightIndex = 0; lightIndex < sceneConstants.lightCount; ++lightIndex)
 		{
-			float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz;
-			float3 eyePosition = sceneConstants.rpGlobalEyePos.xyz;
-			float3 lightPosition = eyePosition + float3(0.0f, 10.0f, 10.0f);
+			SceneLight light = sceneConstants.lights[lightIndex];
+			uint shadowMask = light.shadowMask;
 
-			// Define a ray, consisting of origin, direction, and the min-max distance values
-			RayDesc ray;
-			ray.TMin = 6.0;
-			ray.TMax = payload.maxDistance; //max(distance(lightPosition, worldPosition) - ray.TMin, 0);
-			ray.Origin = worldPosition;
-			ray.Direction = normalize(float3(1.0, 1.0, 1.0)); //normalize(lightPosition - worldPosition);
-			//ray.Direction.z = -ray.Direction.z;
+			//TODO: fix the scissor window. //if (IsInsideViewport(screenLocation.xy, light.scissor))
+			{
+				float3 lightPosition = light.location;
 
-			TraceRay(
-				SceneBVH,
-				RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-				0xFF,
-				0,
-				0, // First Hit Shader
-				0, // Miss Shader
-				ray,
-				payload
-			);
+				// Initialize the ray payload
+				ShadowHitInfo payload;
+				payload.maxDistance = distance(lightPosition, startingPoint);
+				payload.intensity = 0.0;
 
-			//locationDif = (clamp(worldPosition / 600.0, -1.0, 1.0) + 1.0) * 0.5;
-			float dist = clamp(distance(worldPosition, eyePosition) / 10000.0, 0, 1.0);
-			payload.diffuse.b = dist * dist; //Mark start here. why is everything on it's side?
-			
-			//float3 lines = abs(worldPosition % 10.0);
-			//const float lineThickness = 0.5;
-			//float value = lines.x < lineThickness ? lines.x : lines.y < lineThickness ? lines.y : lines.z < lineThickness ? lines.z : 0;
-			//payload.diffuse.r = (1.0 - abs((value / lineThickness) * 2.0 - 1.0)) * dist;
+				//if(distance(lightPosition, worldPosition) <= payload.maxDistance)
+				{
+					// We are inside the light radius.
+					// Define a ray, consisting of origin, direction, and the min-max distance values
+					RayDesc ray;
+					ray.TMin = 0.0;
+					ray.TMax = payload.maxDistance;
+					ray.Origin = startingPoint;
+					ray.Direction = normalize(lightPosition - startingPoint);
+
+					TraceRay(
+						SceneBVH,
+						RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+						0xFF,
+						0,
+						0, // First Hit Shader
+						0, // Miss Shader
+						ray,
+						payload
+					);
+
+					if (payload.intensity > 0.5)
+					{
+						resultMask += shadowMask;
+					}
+				}
+			}
 		}
 	}
 	
-	gOutput[DispatchRaysIndex().xy].rgb = payload.diffuse;
-	gOutput[DispatchRaysIndex().xy].a = 1.0f;
+	gOutput[DispatchRaysIndex().xy] = ConvertShadowmapMaskToVector(resultMask);
 }

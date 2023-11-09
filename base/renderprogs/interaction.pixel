@@ -26,6 +26,8 @@ If you have questions concerning this license or the applicable additional terms
 ===========================================================================
 */
 
+#define USE_LIGHT
+
 #include "global.inc"
 
 uniform Texture2D<float4>	samp0 : register(t0); // texture 1 is the per-surface bump map
@@ -33,6 +35,7 @@ uniform Texture2D<float4>	samp1 : register(t1); // texture 2 is the light fallof
 uniform Texture2D<float4>	samp2 : register(t2); // texture 3 is the light projection texture
 uniform Texture2D<float4>	samp3 : register(t3); // texture 4 is the per-surface diffuse map
 uniform Texture2D<float4>	samp4 : register(t4); // texture 5 is the per-surface specular map
+uniform Texture2D<uint4>	samp5 : register(t5); // texture 6 is the screenspace shadow map
 
 struct PS_IN {
 	half4 position	: SV_POSITION;
@@ -57,6 +60,9 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	half4 YCoCG =			samp3.Sample(baseSampler, fragment.texcoord4.xy );
 	half4 specMap =			samp4.Sample(baseSampler, fragment.texcoord5.xy );
 
+	float2 screenTexCoord = vposToScreenPosTexCoord( fragment.position.xy );
+	float shadowIntensity = GetScreenspaceIntensity( samp5.Gather(pointSampler, screenTexCoord ));
+
 	half3 lightVector = normalize( fragment.texcoord0.xyz );
 	half3 diffuseMap = ConvertYCoCgToRGB( YCoCG );
 
@@ -73,6 +79,8 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	half3 specularColor = specMap.xyz * specularContribution * sceneConstants.rpSpecularModifier.xyz;
 	half3 lightColor = dot3( lightVector, localNormal ) * lightProj.xyz * lightFalloff.xyz;
 
-	result.color.xyz = ( diffuseColor + specularColor ) * lightColor * fragment.color.xyz;
+	result.color.xyz = ( diffuseColor + specularColor ) * lightColor * fragment.color.xyz * shadowIntensity;
 	result.color.w = 1.0;
+
+	//result.color.xy = screenTexCoord;
 }

@@ -605,4 +605,44 @@ void R_OptimizeViewLightsList() {
 		sortLights[i].vLight->next = tr.viewDef->viewLights;
 		tr.viewDef->viewLights = sortLights[i].vLight;
 	}
+
+	// Add all shadow masks to the generated lights
+	UINT shadowLightIndex = 0;
+	for (viewLight_t* vLight = tr.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
+		vLight->shadowMask = 0x00000000;
+
+		// do fogging later
+		if (vLight->lightShader->IsFogLight()) {
+			continue;
+		}
+		if (vLight->lightShader->IsBlendLight()) {
+			continue;
+		}
+
+		if (vLight->removeFromList)
+		{
+			continue;
+		}
+
+		if (vLight->shadowOnlyViewEntities == NULL && vLight->globalShadows == NULL && vLight->localShadows == NULL)
+		{
+			// Casts no shadows.
+			continue;
+		}
+
+		if (vLight->localInteractions == NULL && vLight->globalInteractions == NULL && vLight->translucentInteractions == NULL) {
+			continue;
+		}
+
+		if (shadowLightIndex < MAX_DXR_LIGHTS)
+		{
+			vLight->shadowMask = 0x00000001 << shadowLightIndex;
+		}
+		else
+		{
+			continue;
+		}
+
+		++shadowLightIndex;
+	}
 }

@@ -1,6 +1,8 @@
 #pragma hdrstop
 
 #include <stdexcept>
+#include <algorithm>
+
 #include "./dx12_raytracing.h"
 #include "./dx12_DeviceManager.h"
 
@@ -60,10 +62,7 @@ namespace DX12Rendering {
 
 	void Raytracing::EndFrame()
 	{
-		if (!m_tlasManager.IsDirty())
-		{
-			m_tlasManager.Reset(ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC | ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC);
-		}
+		
 	}
 
 	void Raytracing::CreateCBVHeap(const size_t constantBufferSize)
@@ -100,7 +99,7 @@ namespace DX12Rendering {
 		}
 	}
 
-	D3D12_CONSTANT_BUFFER_VIEW_DESC Raytracing::SetCBVDescriptorTable(const size_t constantBufferSize, const XMFLOAT4* constantBuffer, const UINT frameIndex) {
+	D3D12_CONSTANT_BUFFER_VIEW_DESC Raytracing::SetCBVDescriptorTable(const size_t constantBufferSize, const void* constantBuffer, const UINT frameIndex) {
 		// Copy the CBV value to the upload heap
 		UINT8* buffer;
 		const UINT bufferSize = ((constantBufferSize + 255) & ~255);
@@ -113,6 +112,7 @@ namespace DX12Rendering {
 
 		// Create the constant buffer view for the object
 		CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart(), 3, m_cbvHeapIncrementor);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle(m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart(), 3, m_cbvHeapIncrementor);
 
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
@@ -120,15 +120,6 @@ namespace DX12Rendering {
 		cbvDesc.BufferLocation = m_cbvUploadHeap[frameIndex]->GetGPUVirtualAddress() + offset;
 		cbvDesc.SizeInBytes = bufferSize;
 		device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
-
-		// Define the Descriptor Table to use.
-		auto commandList = Commands::GetCommandList(Commands::COMPUTE);
-
-		/*commandList->AddCommand([&](ID3D12GraphicsCommandList4* commandList, ID3D12CommandQueue* commandQueue)
-		{
-			const CD3DX12_GPU_DESCRIPTOR_HANDLE descriptorTableHandle(m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart(), 3, m_cbvHeapIncrementor);
-			commandList->SetGraphicsRootDescriptorTable(0, descriptorTableHandle);
-		});*/
 
 		return cbvDesc;
 	}
@@ -143,7 +134,7 @@ namespace DX12Rendering {
 		m_width = width;
 		m_height = height;
 
-		DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap)->Resize(width, height);
+		DX12Rendering::GetSurface(eRenderSurface::RaytraceShadowMask)->Resize(width, height);
 
 		// TODO: Check if the buffers already exists and clear them
 		CreateOutputBuffers();
@@ -164,7 +155,7 @@ namespace DX12Rendering {
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 
 		// Add the output buffer
-		RenderSurface* duffuseSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap);
+		RenderSurface* duffuseSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceShadowMask);
 		duffuseSurface->CreateUnorderedAccessView(shadowHandle);
 
 		// Copy the reference to the depth texture.
@@ -199,11 +190,54 @@ namespace DX12Rendering {
 		srvDesc.RaytracingAccelerationStructure.Location = m_tlasManager.GetCurrent().resource->GetGPUVirtualAddress(); // Write the acceleration structure view in the heap 
 
 		device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
+
+		if (!m_tlasManager.IsDirty())
+		{
+			m_tlasManager.Reset(ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC | ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC);
+		}
 	}
 
 	void Raytracing::Uniform4f(UINT index, const float* uniform)
 	{
-		memcpy(&m_constantBuffer[index], uniform, sizeof(XMFLOAT4));
+		memcpy(&m_constantBuffer.renderParameters[index], uniform, sizeof(XMFLOAT4));
+	}
+
+	void Raytracing::ResetLightList()
+	{
+		m_constantBuffer.lightCount = 0;
+	}
+
+	UINT Raytracing::GetLightMask(const UINT lightIndex)
+	{
+		for (int index = 0; index < m_constantBuffer.lightCount; ++index)
+		{
+			if (m_constantBuffer.lights[index].lightIndex == lightIndex)
+			{
+				return 0x00000001 << index;
+			}
+		}
+
+		return 0x00000000;
+	}
+
+	bool Raytracing::AddLight(const UINT lightIndex, const UINT shadowMask, const XMFLOAT3 location, const float radius, const XMFLOAT4 scissorWindow)
+	{
+		UINT index = m_constantBuffer.lightCount;
+		if(index >= MAX_DXR_LIGHTS)
+		{ 
+			//assert(false, "Raytracing::AddLight: Too many lights.");
+			return false;
+		}
+
+		m_constantBuffer.lights[index].lightIndex = lightIndex;
+		m_constantBuffer.lights[index].shadowMask = shadowMask;
+		m_constantBuffer.lights[index].location = location;
+		m_constantBuffer.lights[index].radius = radius;
+		m_constantBuffer.lights[index].scissor = scissorWindow;
+
+		++m_constantBuffer.lightCount;
+
+		return true;
 	}
 
 	bool Raytracing::CastShadowRays(
@@ -222,10 +256,12 @@ namespace DX12Rendering {
 			return false;
 		}
 
+		tlasManager->WaitForFence();
+
 		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
 		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RayTracing::CastShadowRays");
 
-		RenderSurface* outputSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceDiffuseMap);
+		RenderSurface* outputSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceShadowMask);
 
 		//Update the resources
 		TextureBuffer* buffer = textureManager->GetGlobalTexture(eGlobalTexture::DEPTH_TEXTURE);
@@ -254,7 +290,7 @@ namespace DX12Rendering {
 		float viewportVector[4] = { viewport.TopLeftX, viewport.TopLeftY, viewport.TopLeftX + viewport.Width, viewport.TopLeftY + viewport.Height };
 		Uniform4f(RENDERPARM_VIEWPORT, viewportVector);
 
-		SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, frameIndex);
+		SetCBVDescriptorTable(sizeof(m_constantBuffer), &m_constantBuffer, frameIndex);
 		
 		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{
@@ -427,19 +463,19 @@ namespace DX12Rendering {
 
 			// Constant Information
 			ImGui::CollapsingHeader("Shader Constants", ImGuiTreeNodeFlags_DefaultOpen);
-			ImGui::Text("RENDERPARM_GLOBALEYEPOS: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[0].x, m_constantBuffer[0].y, m_constantBuffer[0].z, m_constantBuffer[0].w);
-			ImGui::Text("RENDERPARM_VIEWPORT: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[1].x, m_constantBuffer[1].y, m_constantBuffer[1].z, m_constantBuffer[1].w);
-			ImGui::Text("RENDERPARAM_SCISSOR: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[2].x, m_constantBuffer[2].y, m_constantBuffer[2].z, m_constantBuffer[2].w);
+			ImGui::Text("RENDERPARM_GLOBALEYEPOS: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[0].x, m_constantBuffer.renderParameters[0].y, m_constantBuffer.renderParameters[0].z, m_constantBuffer.renderParameters[0].w);
+			ImGui::Text("RENDERPARM_VIEWPORT: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[1].x, m_constantBuffer.renderParameters[1].y, m_constantBuffer.renderParameters[1].z, m_constantBuffer.renderParameters[1].w);
+			ImGui::Text("RENDERPARAM_SCISSOR: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[2].x, m_constantBuffer.renderParameters[2].y, m_constantBuffer.renderParameters[2].z, m_constantBuffer.renderParameters[2].w);
 
-			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_X: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[3].x, m_constantBuffer[3].y, m_constantBuffer[3].z, m_constantBuffer[3].w);
-			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_Y: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[4].x, m_constantBuffer[4].y, m_constantBuffer[4].z, m_constantBuffer[4].w);
-			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_Z: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[5].x, m_constantBuffer[5].y, m_constantBuffer[5].z, m_constantBuffer[5].w);
-			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_W: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[6].x, m_constantBuffer[6].y, m_constantBuffer[6].z, m_constantBuffer[6].w);
+			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_X: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[3].x, m_constantBuffer.renderParameters[3].y, m_constantBuffer.renderParameters[3].z, m_constantBuffer.renderParameters[3].w);
+			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_Y: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[4].x, m_constantBuffer.renderParameters[4].y, m_constantBuffer.renderParameters[4].z, m_constantBuffer.renderParameters[4].w);
+			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_Z: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[5].x, m_constantBuffer.renderParameters[5].y, m_constantBuffer.renderParameters[5].z, m_constantBuffer.renderParameters[5].w);
+			ImGui::Text("RENDERPARM_INVERSE_WORLDSPACE_W: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[6].x, m_constantBuffer.renderParameters[6].y, m_constantBuffer.renderParameters[6].z, m_constantBuffer.renderParameters[6].w);
 
-			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_X: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[7].x, m_constantBuffer[7].y, m_constantBuffer[7].z, m_constantBuffer[7].w);
-			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_Y: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[8].x, m_constantBuffer[8].y, m_constantBuffer[8].z, m_constantBuffer[8].w);
-			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_Z: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[9].x, m_constantBuffer[9].y, m_constantBuffer[9].z, m_constantBuffer[9].w);
-			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_W: %.1f, %.1f, %.1f, %.1f", m_constantBuffer[10].x, m_constantBuffer[10].y, m_constantBuffer[10].z, m_constantBuffer[10].w);
+			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_X: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[7].x, m_constantBuffer.renderParameters[7].y, m_constantBuffer.renderParameters[7].z, m_constantBuffer.renderParameters[7].w);
+			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_Y: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[8].x, m_constantBuffer.renderParameters[8].y, m_constantBuffer.renderParameters[8].z, m_constantBuffer.renderParameters[8].w);
+			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_Z: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[9].x, m_constantBuffer.renderParameters[9].y, m_constantBuffer.renderParameters[9].z, m_constantBuffer.renderParameters[9].w);
+			ImGui::Text("RENDERPARM_INVERSE_PROJMATRIX_W: %.1f, %.1f, %.1f, %.1f", m_constantBuffer.renderParameters[10].x, m_constantBuffer.renderParameters[10].y, m_constantBuffer.renderParameters[10].z, m_constantBuffer.renderParameters[10].w);
 		}
 	}
 #endif

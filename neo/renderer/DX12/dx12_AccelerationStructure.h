@@ -184,7 +184,8 @@ public:
 	bool Generate();
 
 	void Reset(const ACCELERATION_INSTANCE_TYPE typesMask);
-	const bool IsReady() noexcept { return m_staticInstances.size() > 0 || m_dynamicInstances.size() > 0; }
+	const bool IsReady() noexcept { return GetCurrent().Exists(); }
+	const void WaitForFence() { return GetCurrent().fence.Wait(); }
 
 	TopLevelAccelerationStructure& GetCurrent() { return m_tlas; }
 

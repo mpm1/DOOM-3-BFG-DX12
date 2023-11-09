@@ -1,9 +1,7 @@
 #include "raytracing_global.inc"
 
 [shader("closesthit")] 
-void ClosestHit(inout HitInfo payload, Attributes attrib) 
+void ClosestHit(inout ShadowHitInfo payload, Attributes attrib) 
 {
-	// TODO: Handle lighting and normals. For now we are showing the distance.
-	float color = 1.0 - (RayTCurrent() / payload.maxDistance);
-	payload.diffuse = float3(0.0f, color, 0.0f);
+	payload.intensity = 0.0; // No light hits this point
 }

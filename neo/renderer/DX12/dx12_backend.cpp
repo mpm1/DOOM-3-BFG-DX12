@@ -854,6 +854,7 @@ const int INTERACTION_TEXUNIT_FALLOFF = 1;
 const int INTERACTION_TEXUNIT_PROJECTION = 2;
 const int INTERACTION_TEXUNIT_DIFFUSE = 3;
 const int INTERACTION_TEXUNIT_SPECULAR = 4;
+const int INTERACTION_TEXUINIT_SHADOW = 5;
 
 /*
 ==================
@@ -965,6 +966,10 @@ static void RB_DrawSingleInteraction(drawInteraction_t* din) {
 	// texture 4 is the per-surface specular map
 	GL_SelectTexture(INTERACTION_TEXUNIT_SPECULAR);
 	din->specularImage->Bind();
+
+	// texture 5 is the screenspace shadow texture.
+	GL_SelectTexture(INTERACTION_TEXUINIT_SHADOW);
+	dxRenderer.SetTexture(dxRenderer.GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
 
 	RB_DrawElementsWithCounters(din->surf);
 }
@@ -1706,6 +1711,10 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 				GL_SelectTexture(INTERACTION_TEXUNIT_SPECULAR);
 				surfaceShader->GetFastPathSpecularImage()->Bind();
 
+				// texture 5 is the screenspace shadow texture.
+				GL_SelectTexture(INTERACTION_TEXUINIT_SHADOW);
+				dxRenderer.SetTexture(dxRenderer.GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
+
 				RB_DrawElementsWithCounters(surf);
 
 				renderLog.CloseBlock();
@@ -1990,6 +1999,8 @@ static void RB_DrawInteractions() {
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DrawInteractions");
 
+	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+
 	GL_SelectTexture(0);
 
 	const bool useLightDepthBounds = r_useLightDepthBounds.GetBool();
@@ -1997,7 +2008,11 @@ static void RB_DrawInteractions() {
 	//
 	// for each light, perform shadowing and adding
 	//
+	UINT totalLights = 0;
 	for (const viewLight_t* vLight = backEnd.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
+		const UINT sceneIndex = totalLights;
+		++totalLights;
+
 		// do fogging later
 		if (vLight->lightShader->IsFogLight()) {
 			continue;
@@ -2009,6 +2024,8 @@ static void RB_DrawInteractions() {
 		if (vLight->localInteractions == NULL && vLight->globalInteractions == NULL && vLight->translucentInteractions == NULL) {
 			continue;
 		}
+
+		bool useRaytracedShadows = dxRenderer.SetActiveLight(sceneIndex).shadowMask > 0;
 
 		// Set command list.
 		//dxRenderer.ExecuteCommandList();
@@ -2056,7 +2073,7 @@ static void RB_DrawInteractions() {
 			}
 		}
 
-		if (vLight->globalShadows != NULL) {
+		if (!useRaytracedShadows && vLight->globalShadows != NULL) {
 			DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Global Light Shadows");
 
 			renderLog.OpenBlock("Global Light Shadows");
@@ -2072,7 +2089,7 @@ static void RB_DrawInteractions() {
 			renderLog.CloseBlock();
 		}
 
-		if (vLight->localShadows != NULL) {
+		if (!useRaytracedShadows && vLight->localShadows != NULL) {
 			DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Local Light Shadow");
 
 			renderLog.OpenBlock("Local Light Shadows");
@@ -2120,7 +2137,7 @@ static void RB_DrawInteractions() {
 	GL_State(GLS_DEFAULT);
 
 	// unbind texture units
-	for (int i = 0; i < 5; i++) {
+	for (int i = 0; i < TEXTURE_REGISTER_COUNT; i++) {
 		GL_SelectTexture(i);
 		globalImages->BindNull();
 	}
@@ -2130,6 +2147,10 @@ static void RB_DrawInteractions() {
 	if (useLightDepthBounds) {
 		GL_DepthBoundsTest(0.0f, 0.0f);
 	}
+
+	// Reset the shadowmap for the next frame
+	auto screenShadows = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP);
+	textureManager->SetTextureState(screenShadows, D3D12_RESOURCE_STATE_COMMON, commandList);
 
 	renderLog.CloseBlock();
 	renderLog.CloseMainBlock();
@@ -2845,10 +2866,34 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		R_MatrixTranspose(backEnd.viewDef->projectionMatrix, projMatrixTranspose);
 		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
 
+		{
+			// Setup viewport coordniates for screenspace shadows. 
+			int x = backEnd.viewDef->viewport.x1;
+			int y = backEnd.viewDef->viewport.y1;
+			int	w = backEnd.viewDef->viewport.x2 - backEnd.viewDef->viewport.x1 + 1;
+			int	h = backEnd.viewDef->viewport.y2 - backEnd.viewDef->viewport.y1 + 1;
+
+			// screen power of two correction factor (no longer relevant now)
+			float screenCorrectionParm[4];
+			screenCorrectionParm[0] = 1.0f;
+			screenCorrectionParm[1] = 1.0f;
+			screenCorrectionParm[2] = 0.0f;
+			screenCorrectionParm[3] = 1.0f;
+			SetFragmentParm(RENDERPARM_SCREENCORRECTIONFACTOR, screenCorrectionParm); // rpScreenCorrectionFactor
+
+			// window coord to 0.0 to 1.0 conversion
+			float windowCoordParm[4];
+			windowCoordParm[0] = 1.0f / w;
+			windowCoordParm[1] = 1.0f / h;
+			windowCoordParm[2] = 0.0f;
+			windowCoordParm[3] = 1.0f;
+			SetFragmentParm(RENDERPARM_WINDOWCOORD, windowCoordParm); // rpWindowCoord
+		}
+
 		if (raytracedEnabled)
 		{
 			// Set the inverse projection matrix
-			idRenderMatrix inverseProjection, inverseProjectionTranspose;
+			idRenderMatrix inverseProjection, inverseProjectionTranspose; //Mark start here. We may need to cut our clip off by a variable.
 			/*idRenderMatrix::CreateInverseProjectionMatrix(
 				backEnd.viewDef->renderView.fov_y, backEnd.viewDef->viewport.zmin,
 				backEnd.viewDef->viewport.zmax, backEnd.viewDef->viewport.GetWidth() / backEnd.viewDef->viewport.GetHeight(),
@@ -2891,13 +2936,17 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		// Fill the GBuffer
 		//RB_DrawGBuffer(drawSurfs, numDrawSurfs);
 
+		// Build our light list
+		dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix); //Mark, find out why lights keep changing location.
+
 		// Copy the depth buffer to a texture
+		auto depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
 		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
 		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::DEPTH_TEXTURE);
-		DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->CopySurfaceToTexture(depthTexture, textureManager);
+		depthStencil->CopySurfaceToTexture(depthTexture, textureManager)->Wait();
 	}
 
-	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays();
+	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); 
 	if (raytraceUpdated)
 	{
 		//-------------------------------------------------
@@ -2998,7 +3047,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	if (raytraceUpdated)
 	{
 		// TODO: Use this for debugging raytracing overlay.
-		dxRenderer.DXR_CopyResultToDisplay();
+		//dxRenderer.DXR_CopyResultToDisplay();
 	}
 
 	renderLog.CloseBlock();

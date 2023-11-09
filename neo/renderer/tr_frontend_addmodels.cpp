@@ -43,33 +43,6 @@ idCVar r_forceShadowCaps( "r_forceShadowCaps", "0", CVAR_RENDERER | CVAR_BOOL, "
 
 static const float CHECK_BOUNDS_EPSILON = 1.0f;
 
-namespace
-{
-	void AddEntityToRenderer(const qhandle_t& entityHandle, const idRenderEntityLocal* entity)
-	{//TODO: do this on entity update as well.
-		if (true || !entity->parms.noShadow)
-		{
-			//idRenderMatrix entityMatrix;
-
-			float origin[3], up[3], forward[3], left[3];
-
-			memcpy(origin, &entity->parms.origin, sizeof(float) * 3);
-			memcpy(forward, &entity->parms.axis[0], sizeof(float) * 3);
-			memcpy(left, &entity->parms.axis[1], sizeof(float) * 3);
-			memcpy(up, &entity->parms.axis[2], sizeof(float) * 3);
-			
-			const float transformation[3][4] = {
-				{forward[0], left[0], up[0], origin[0] },
-				{forward[1], left[1], up[1], origin[1] },
-				{forward[2], left[2], up[2], origin[2] }
-			};
-
-			//idRenderMatrix::CreateFromOriginAxis(entity->parms.origin, entity->parms.axis.Transpose(), entityMatrix);
-			dxRenderer.DXR_AddEntityToTLAS(entityHandle, *entity->parms.hModel, &transformation[0][0], entity->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
-		}
-	}
-}
-
 /*
 ==================
 R_SortViewEntities
@@ -459,7 +432,7 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 		(renderEntity->hModel->ModelHasInteractingSurfaces() ||
 			renderEntity->hModel->ModelHasShadowCastingSurfaces())) 
 	{
-		AddEntityToRenderer(entityIndex, entityDef);
+		dxRenderer.DXR_AddEntityToTLAS(entityIndex, *entityDef->parms.hModel, entityDef->modelRenderMatrix[0], entityDef->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
 	}
 
 	// if we aren't visible and none of the shadows stretch into the view,

@@ -125,6 +125,7 @@ ConstantBuffer<SceneConstants> sceneConstants : register(b0, space0);
 
 SamplerState baseSampler : register(s0, space0); 
 SamplerState lightSampler : register(s1, space0); 
+SamplerState pointSampler : register(s2, space0); 
 
 static float dot2( float2 a, float2 b ) { return dot( a, b ); }
 static float dot3( float3 a, float3 b ) { return dot( a, b ); }
@@ -201,6 +202,42 @@ static float4 idtex2Dproj( Texture2D<float4> samp, SamplerState samplerState, ha
 static float4 swizzleColor( float4 c ) { return c; }
 static float2 vposToScreenPosTexCoord( float2 vpos ) { return vpos.xy * sceneConstants.rpWindowCoord.xy; }
 
+// TODO: Create root signatures based on shader functionality. For now all shaders will have access.
+struct LightConstants {
+	uint lightMask; // Mask used to represent the light in screenspace shaders. 0 means no reference to the sceenpace shadow map.
+};
+ConstantBuffer<LightConstants> lightConstants : register(b0, space2);
+
+#ifdef USE_LIGHT
+uint ConvertShadowmapToMask(uint4 shadowMapValue)
+{
+	uint result =	shadowMapValue.a << 24;
+	result +=		shadowMapValue.b << 16;
+	result +=		shadowMapValue.g << 8;
+	result +=		shadowMapValue.r;
+
+	return result;
+}
+
+float GetScreenspaceIntensity(uint4 shadowMapValue)
+{
+	if(lightConstants.lightMask == 0)
+	{
+		return 1.0;
+	}
+	else
+	{
+		uint shadowMask = ConvertShadowmapToMask(shadowMapValue);
+
+		if((shadowMask & lightConstants.lightMask) == lightConstants.lightMask)
+		{
+			return 1.0;
+		}
+	}
+
+	return 0.0;
+}
+#endif
 
 #define BRANCH
 #define IFANY

@@ -2,10 +2,7 @@
 
 // General shader functions
 [shader("miss")]
-void Miss(inout HitInfo payload : SV_RayPayload)
+void Miss(inout ShadowHitInfo payload : SV_RayPayload)
 {
-    //float angle = WorldRayDirection().y;
-    //float3 color = (WorldRayDirection() + 1.0f) * 0.5f;
-
-    payload.diffuse = float3(0.0f, 0.0f, 0.0f);
+    payload.intensity = 1.0; // This light is visible at this point
 }

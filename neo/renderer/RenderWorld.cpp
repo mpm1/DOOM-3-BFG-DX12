@@ -285,6 +285,13 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 					R_ClearEntityDefDynamicModel( def );
 					def->parms = *re;
 
+					if (re->hModel != NULL &&
+						(re->hModel->ModelHasInteractingSurfaces() ||
+							re->hModel->ModelHasShadowCastingSurfaces()))
+					{
+						dxRenderer.DXR_AddEntityToTLAS(entityHandle, *def->parms.hModel, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
+					}
+
 					return;
 				}
 			}
@@ -327,6 +334,8 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 	// based on the model bounds, add references in each area
 	// that may contain the updated surface
 	R_CreateEntityRefs( def );	
+
+	dxRenderer.DXR_AddEntityToTLAS(entityHandle, *def->parms.hModel, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
 }
 
 /*

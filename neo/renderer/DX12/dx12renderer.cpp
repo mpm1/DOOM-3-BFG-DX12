@@ -179,7 +179,7 @@ void DX12Renderer::LoadPipelineState(D3D12_GRAPHICS_PIPELINE_STATE_DESC* psoDesc
 
 	psoDesc->pRootSignature = m_rootSignature->GetRootSignature();
 
-	DX12Rendering::ThrowIfFailed(device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));	
+	DX12Rendering::ThrowIfFailed(device->CreateGraphicsPipelineState(psoDesc, IID_PPV_ARGS(ppPipelineState)));
 }
 
 void DX12Renderer::SetActivePipelineState(ID3D12PipelineState* pPipelineState) {
@@ -227,7 +227,7 @@ void DX12Renderer::LoadAssets() {
 	}
 
 	// Create Empty Root Signature
-	m_rootSignature = new DX12RootSignature(device, sizeof(m_constantBuffer));
+	m_rootSignature = new DX12RootSignature(device, sizeof(m_constantBuffer), sizeof(m_lights) /* Light buffer only contains 1 entry */);
 
 	{
 		std::fill(m_activeTextures, m_activeTextures + TEXTURE_REGISTER_COUNT, static_cast<DX12Rendering::TextureBuffer*>(nullptr));
@@ -467,6 +467,7 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 		return false;
 	}
 	
+	const D3D12_CONSTANT_BUFFER_VIEW_DESC lightView = m_rootSignature->SetActiveLightView(m_activeLight, commandList);
 	const D3D12_CONSTANT_BUFFER_VIEW_DESC cbvView = m_rootSignature->SetCBVDescriptorTable(sizeof(m_constantBuffer), m_constantBuffer, m_objectIndex, commandList);
 
 	// Copy the Textures
@@ -723,9 +724,34 @@ void DX12Renderer::ReadPixels(int x, int y, int width, int height, UINT readBuff
 	common->Warning("Read Pixels not yet implemented.");
 }
 
+UINT DX12Renderer::SetLightData(const UINT sceneIndex, const UINT shadowMask)
+{
+	assert(sceneIndex <= MAX_SCENE_LIGHTS);
+
+	m_lights[sceneIndex].shadowMask = shadowMask;
+
+	return shadowMask;
+}
+
+void DX12Renderer::MoveLightsToHeap()
+{
+	//For now we have one entry for the lights. We may want to turn this into a struct for more extensive use.
+	m_rootSignature->SetLightDescriptorTable(sizeof(m_lights), m_lights);
+}
+
+const DX12Rendering::ShaderLightData DX12Renderer::SetActiveLight(const UINT lightIndex)
+{
+	assert(lightIndex < MAX_SCENE_LIGHTS);
+	const DX12Rendering::ShaderLightData& light = m_lights[lightIndex];
+
+	m_activeLight = lightIndex;
+
+	return light;
+}
+
 // Texture functions
 void DX12Renderer::SetActiveTextureRegister(UINT8 index) {
-	if (index < 5) {
+	if (index < TEXTURE_REGISTER_COUNT) {
 		m_activeTextureRegister = index;
 	}
 }
@@ -760,9 +786,6 @@ void DX12Renderer::DXR_UpdateAccelerationStructure()
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
 	m_raytracing->GenerateTLAS();
-
-	// TODO: what else do we need to reset.
-	//m_raytracing->ResetFrame();
 }
 
 void DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
@@ -902,14 +925,69 @@ bool DX12Renderer::DXR_CastRays()
 	{
 		// Copy the raytraced shadow data
 		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
-		DX12Rendering::TextureBuffer* lightTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_LIGHT_1);
+		DX12Rendering::TextureBuffer* lightTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP);
 
-		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceDiffuseMap);
+		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceShadowMask);
 
-		surface->CopySurfaceToTexture(lightTexture, textureManager);
+		surface->CopySurfaceToTexture(lightTexture, textureManager)->Wait(); // Wait for the copy to complete.
 	}
 
 	return result;
+}
+
+void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* worldMatrix)
+{
+	if (!IsRaytracingEnabled()) {
+		return;
+	}
+	
+	m_raytracing->ResetLightList();
+
+	UINT lightIndex = 0;
+	for (const viewLight_t* vLight = viewLights; vLight != NULL; vLight = vLight->next) {
+		UINT shadowMask = vLight->shadowMask;
+
+		if (shadowMask > 0)
+		{
+			idVec4 localLight(0.0f);
+			R_GlobalPointToLocal(worldMatrix, vLight->globalLightOrigin, localLight.ToVec3());
+
+			const XMFLOAT3 location(localLight.ToFloatPtr());
+			XMFLOAT4 scissor(
+				vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
+				vLight->scissorRect.y1 + m_viewport.TopLeftY,
+				vLight->scissorRect.x2 + 1 - vLight->scissorRect.x1,
+				0);
+			scissor.z += scissor.x; // right
+			scissor.w += (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1);// m_viewport.Height - scissor.y; // bottom
+			//scissor.y = scissor.w - (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1); // top
+
+			//float* radBegin = vLight->lightDef->parms.lightRadius.ToFloatPtr();
+			float radius = std::numeric_limits<float>::max(); // TODO: fix for lights that 
+			/*for (uint rCheck = 0; rCheck < 3; ++rCheck)
+			{
+				const float value = std::abs(radBegin[rCheck]);
+
+				if (value > radius)
+				{
+					radius = value;
+				}
+			}*/
+
+			if (!m_raytracing->AddLight(lightIndex, vLight->shadowMask, location, radius, scissor))
+			{
+				// Could not add the raytraced light
+				shadowMask = 0;
+			}
+		}
+
+		SetLightData(lightIndex, shadowMask);
+
+		++lightIndex;
+	}
+
+	// Move the light data to the GPU
+	dxRenderer.MoveLightsToHeap();
 }
 
 void DX12Renderer::DXR_DenoiseResult()
@@ -925,7 +1003,7 @@ void DX12Renderer::DXR_GenerateResult()
 void DX12Renderer::DXR_CopyResultToDisplay()
 {
 	//renderTarget->fence.Wait();
-	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceDiffuseMap, 0, 0, 0, 0, m_width / 2, m_height);
+	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceShadowMask, 0, 0, 0, 0, m_width / 2, m_height);
 }
 
 void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)

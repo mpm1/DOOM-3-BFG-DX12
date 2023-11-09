@@ -27,8 +27,7 @@ namespace DX12Rendering {
 		Normal, // Normals in the world space. This can be used for Raytracing.
 
 		// RayTracing
-		RaytraceShadowMap,
-		RaytraceDiffuseMap,
+		RaytraceShadowMask, // Each bit is a light mask
 
 		// Final Result
 		RenderTarget1,
@@ -46,7 +45,7 @@ namespace DX12Rendering {
 	{
 		eRenderSurface::Diffuse,
 		eRenderSurface::Specular,
-		eRenderSurface::RaytraceDiffuseMap,
+		eRenderSurface::RaytraceShadowMask,
 		eRenderSurface::RenderTarget1,
 		eRenderSurface::RenderTarget2,
 	};

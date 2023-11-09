@@ -37,10 +37,13 @@
 
 #define DX12_FRAME_COUNT 2
 
-#define TEXTURE_REGISTER_COUNT 5
+#define TEXTURE_REGISTER_COUNT 6
 #define MAX_DESCRIPTOR_COUNT 7 // 2 CBV and 5 Shader Resource View
 #define MAX_OBJECT_COUNT 10000
 #define MAX_HEAP_INDEX_COUNT 70000
+
+#define MAX_SCENE_LIGHTS 128 // Total lights allowed in a scene.
+#define MAX_DXR_LIGHTS 32 // We use each light as a mask position.
 
 #define DX12_ALIGN(SIZE, ALIGNMENT) ((SIZE) + (ALIGNMENT - 1)) & ~(ALIGNMENT - 1)
 
@@ -211,6 +214,15 @@ namespace DX12Rendering {
 		UINT16 m_value;
 		ComPtr<ID3D12Fence> m_fence;
 		HANDLE m_fenceEvent;
+	};
+
+	// Light data being sent to the shaders. This must be 256 byte aligned to be properly referenced.
+	__declspec(align(256)) struct ShaderLightData
+	{
+		UINT shadowMask;
+		UINT pad0;
+		UINT pad1;
+		UINT pad2;
 	};
 }
 

@@ -11,7 +11,7 @@ using namespace Microsoft::WRL;
 
 class DX12RootSignature {
 public:
-	DX12RootSignature(ID3D12Device5* device, const size_t constantBufferSize);
+	DX12RootSignature(ID3D12Device5* device, const size_t constantBufferSize, const size_t lightBufferSize);
 	~DX12RootSignature();
 
 	ID3D12RootSignature* GetRootSignature() { return m_rootSignature.Get(); }
@@ -22,6 +22,10 @@ public:
 	/// </summary>
 	/// <param name="frameIndex"></param>
 	void BeginFrame(UINT frameIndex);
+
+	// Lighting
+	void SetLightDescriptorTable(const size_t lightBufferSize, const DX12Rendering::ShaderLightData* constantBuffer);
+	D3D12_CONSTANT_BUFFER_VIEW_DESC SetActiveLightView(UINT lightIndex, DX12Rendering::Commands::CommandList* commandList);
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC SetJointDescriptorTable(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* m_constantBuffer, UINT objectIndex, DX12Rendering::Commands::CommandList* commandList);
@@ -35,8 +39,11 @@ private:
 	UINT m_cbvHeapIncrementor;
 	UINT m_cbvHeapIndex;
 
+	const UINT m_lightSpaceOffset;
+	const UINT m_constantBufferOffset;
+
 	void CreateRootSignature();
-	void CreateCBVHeap(const size_t constantBufferSize);
+	void CreateCBVHeap(const size_t constantBufferSize, const size_t lightBufferSize);
 
 	void OnDestroy();
 

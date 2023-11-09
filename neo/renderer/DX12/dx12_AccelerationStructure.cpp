@@ -14,7 +14,7 @@ namespace
 
 		desc.InstanceID = instance.instanceId;
 		desc.InstanceContributionToHitGroupIndex = instance.hitGroupIndex;
-		desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE; // Should we implement back face culling?
+		desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;// | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE; // Should we implement back face culling?
 
 		// Model View Matrix matrix
 		memcpy(desc.Transform, &instance.transformation, sizeof(desc.Transform));
@@ -499,6 +499,8 @@ namespace DX12Rendering {
 			uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 			commandList->ResourceBarrier(1, &uavBarrier);
 		});
+
+		commandList->AddPostFenceSignal(&fence);
 
 		return true;
 	}
