@@ -306,23 +306,14 @@ void DX12Renderer::SetCommandListDefaults(const bool resetPipelineState) {
 		commandList->RSSetScissorRects(1, &m_scissorRect);
 
 		commandList->OMSetStencilRef(m_stencilRef);
-
-		const DX12Rendering::RenderSurface* renderTarget = GetCurrentRenderTarget();
-		const DX12Rendering::RenderSurface* depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
-
-		D3D12_CPU_DESCRIPTOR_HANDLE renderTargets[1] =
-		{
-			renderTarget->GetRtv()
-		};
-
-		commandList->OMSetRenderTargets(1, renderTargets, FALSE, &(depthStencil->GetDsv()));
-
 		// Setup the initial heap location
 		ID3D12DescriptorHeap* descriptorHeaps[1] = {
 			m_rootSignature->GetCBVHeap(),
 		};
 		commandList->SetDescriptorHeaps(1, descriptorHeaps);
 	});
+
+	EnforceRenderTargets(commandList);
 }
 
 void DX12Renderer::CycleDirectCommandList() {
@@ -383,8 +374,10 @@ void DX12Renderer::BeginDraw() {
 	}
 
 	{
+		ResetRenderTargets();
+
 		D3D12_RESOURCE_BARRIER transition = {};
-		if (GetCurrentRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transition))
+		if (GetOutputRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transition))
 		{
 			commandList->CommandResourceBarrier(1, &transition);
 		}
@@ -401,7 +394,7 @@ void DX12Renderer::EndDraw() {
 #ifdef DEBUG_IMGUI
 	D3D12_CPU_DESCRIPTOR_HANDLE renderTargets[1] =
 	{
-		GetCurrentRenderTarget()->GetRtv()
+		GetOutputRenderTarget()->GetRtv()
 	};
 
 	DX12Rendering::ImGui_StartFrame();
@@ -416,7 +409,7 @@ void DX12Renderer::EndDraw() {
 	{
 		// present the backbuffer
 		D3D12_RESOURCE_BARRIER transition = {};
-		if (GetCurrentRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_PRESENT, &transition))
+		if (GetOutputRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_PRESENT, &transition))
 		{
 			commandList->ResourceBarrier(1, &transition);
 		}
@@ -542,7 +535,7 @@ void DX12Renderer::Clear(const bool color, const bool depth, const bool stencil,
 		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{
 			if (color) {
-				const DX12Rendering::RenderSurface* renderTarget = GetCurrentRenderTarget();
+				const DX12Rendering::RenderSurface* renderTarget = GetOutputRenderTarget();
 				
 				commandList->ClearRenderTargetView(renderTarget->GetRtv(), colorRGBA, 0, nullptr);
 			}
@@ -626,6 +619,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Diffuse)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Resize(width, height);
@@ -943,7 +937,6 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 	
 	m_raytracing->ResetLightList();
 
-	UINT lightIndex = 0;
 	for (const viewLight_t* vLight = viewLights; vLight != NULL; vLight = vLight->next) {
 		UINT shadowMask = vLight->shadowMask;
 
@@ -974,16 +967,14 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				}
 			}*/
 
-			if (!m_raytracing->AddLight(lightIndex, vLight->shadowMask, location, radius, scissor))
+			if (!m_raytracing->AddLight(vLight->sceneIndex, vLight->shadowMask, location, radius, scissor))
 			{
 				// Could not add the raytraced light
 				shadowMask = 0;
 			}
 		}
 
-		SetLightData(lightIndex, shadowMask);
-
-		++lightIndex;
+		SetLightData(vLight->sceneIndex, shadowMask);
 	}
 
 	// Move the light data to the GPU
@@ -1000,10 +991,49 @@ void DX12Renderer::DXR_GenerateResult()
 	// TODO
 }
 
-void DX12Renderer::DXR_CopyResultToDisplay()
+void DX12Renderer::ResetRenderTargets() 
+{ 
+	m_renderTargets[0] = GetOutputRenderTarget(); 
+	m_activeRenderTargets = 1; 
+}
+
+void DX12Renderer::EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList)
 {
-	//renderTarget->fence.Wait();
-	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceShadowMask, 0, 0, 0, 0, m_width / 2, m_height);
+	assert(commandList != nullptr);
+
+	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
+	{
+		UINT totalRenderTargets = 0;
+		const DX12Rendering::RenderSurface** renderTargets = GetCurrentRenderTargets(totalRenderTargets);
+
+		const DX12Rendering::RenderSurface* depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+
+		std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> renderRtvs;
+		renderRtvs.reserve(totalRenderTargets);
+		for (uint index = 0; index < totalRenderTargets; ++index)
+		{
+			renderRtvs.push_back(renderTargets[index]->GetRtv());
+		}
+
+		commandList->OMSetRenderTargets(totalRenderTargets, renderRtvs.data(), FALSE, &(depthStencil->GetDsv()));
+	});
+}
+
+void DX12Renderer::SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count)
+{
+	assert(count < MAX_RENDER_TARGETS);
+	
+	m_activeRenderTargets = count;
+	for (int index = 0; index < count; ++index)
+	{
+		m_renderTargets[index] = DX12Rendering::GetSurface(surfaces[index]);
+	}
+}
+
+const DX12Rendering::RenderSurface** DX12Renderer::GetCurrentRenderTargets(UINT& count)
+{ 
+	count = m_activeRenderTargets; 
+	return (const DX12Rendering::RenderSurface**)m_renderTargets;
 }
 
 void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)
@@ -1012,7 +1042,7 @@ void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId,
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::CopySurfaceToDisplay");
 
 	DX12Rendering::RenderSurface& surface = *DX12Rendering::GetSurface(surfaceId);
-	DX12Rendering::RenderSurface& renderTarget = *GetCurrentRenderTarget();
+	DX12Rendering::RenderSurface& renderTarget = *GetOutputRenderTarget();
 
 	commandList->AddPreFenceWait(&surface.fence); // Wait for all drawing to complete.
 
@@ -1053,6 +1083,12 @@ void DX12Renderer::DebugAddLight(const viewLight_t& light)
 void DX12Renderer::DebugClearLights()
 {
 	m_debugLights.clear();
+}
+
+void DX12Renderer::CopyDebugResultToDisplay()
+{
+	//renderTarget->fence.Wait();
+	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::Normal, 0, 0, 0, 0, m_width / 2, m_height);
 }
 
 #ifdef DEBUG_IMGUI

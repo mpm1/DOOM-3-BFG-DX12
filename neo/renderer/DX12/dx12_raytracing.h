@@ -43,7 +43,10 @@ namespace DX12Rendering {
 	{
 		UINT lightIndex;
 		UINT shadowMask;
-		UINT pad[2];
+		UINT pad1;
+		UINT pad2;
+
+		XMFLOAT4 emmisiveRadius; // The radius in which the light is visible. This is used to calculate the soft shadows.
 
 		XMFLOAT3	location;
 		float		radius;

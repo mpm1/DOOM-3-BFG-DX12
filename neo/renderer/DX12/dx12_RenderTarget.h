@@ -43,6 +43,7 @@ namespace DX12Rendering {
 
 	const std::vector<eRenderSurface> ViewRenderTarget =
 	{
+		eRenderSurface::Normal,
 		eRenderSurface::Diffuse,
 		eRenderSurface::Specular,
 		eRenderSurface::RaytraceShadowMask,

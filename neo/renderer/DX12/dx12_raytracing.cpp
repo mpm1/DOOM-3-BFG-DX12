@@ -222,6 +222,9 @@ namespace DX12Rendering {
 
 	bool Raytracing::AddLight(const UINT lightIndex, const UINT shadowMask, const XMFLOAT3 location, const float radius, const XMFLOAT4 scissorWindow)
 	{
+		static UINT padValue = 0;
+		padValue = (padValue + 1) % 3459871;
+
 		UINT index = m_constantBuffer.lightCount;
 		if(index >= MAX_DXR_LIGHTS)
 		{ 
@@ -234,6 +237,9 @@ namespace DX12Rendering {
 		m_constantBuffer.lights[index].location = location;
 		m_constantBuffer.lights[index].radius = radius;
 		m_constantBuffer.lights[index].scissor = scissorWindow;
+
+		m_constantBuffer.lights[index].emmisiveRadius.x = m_constantBuffer.lights[index].emmisiveRadius.y = m_constantBuffer.lights[index].emmisiveRadius.z = 1.0f;
+		m_constantBuffer.lights[index].pad1 = padValue;
 
 		++m_constantBuffer.lightCount;
 

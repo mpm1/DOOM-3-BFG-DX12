@@ -1,57 +1,6 @@
 /*
 Used for storing render data into a gbuffer which can be used later to calcuate what is needed for raytraced lighting.
 */
+#define VERTEX_SHADER
 
-#include "global.inc"
-
-struct VS_IN {
-	float4 position : POSITION;
-	float2 texcoord : TEXCOORD0;
-	float4 normal : NORMAL;
-	float4 tangent : TANGENT;
-	float4 color : COLOR0;
-};
-
-struct VS_OUT {
-	float4 position		: SV_POSITION;
-	float4 texcoord0	: TEXCOORD0;
-	float3 normal		: TEXCOORD1;
-	float3 tangent		: TEXCOORD2;
-	float3 binormal		: TEXCOORD3;
-};
-
-float3 applyNormalTransform(float3 inVector)
-{
-	float4 result;
-
-	float4 checkVector = float4(inVector, 1.0);
-
-	result.x = dot4(checkVector, sceneConstants.rpNormalMatrixX);
-	result.y = dot4(checkVector, sceneConstants.rpNormalMatrixY);
-	result.z = dot4(checkVector, sceneConstants.rpNormalMatrixZ);
-	result.w = dot4(checkVector, sceneConstants.rpNormalMatrixW);
-
-	return result.xyz;
-}
-
-void main( VS_IN vertex, out VS_OUT result ) {
-	float3 vNormal = vertex.normal.xyz * 2.0 - 1.0;
-	float4 vTangent = vertex.tangent * 2.0 - 1.0;
-	float3 vBinormal = cross( vNormal.xyz, vTangent.xyz ) * vTangent.w;
-
-	result.normal = applyNormalTransform(vNormal);
-	result.tangent = applyNormalTransform(vTangent.xyz);
-	result.binormal = applyNormalTransform(vBinormal);
-
-	result.position.x = dot4( vertex.position, sceneConstants.rpMVPmatrixX );
-	result.position.y = dot4( vertex.position, sceneConstants.rpMVPmatrixY );
-	result.position.z = dot4( vertex.position, sceneConstants.rpMVPmatrixZ );
-	result.position.w = dot4( vertex.position, sceneConstants.rpMVPmatrixW );
-
-	float4 defaultTexCoord = float4( 0.0f, 0.5f, 0.0f, 1.0f );
-
-	//textures 0 takes the base coordinates by the texture matrix
-	result.texcoord0 = defaultTexCoord;
-	result.texcoord0.x = dot4( vertex.texcoord.xy, sceneConstants.rpBumpMatrixS );
-	result.texcoord0.y = dot4( vertex.texcoord.xy, sceneConstants.rpBumpMatrixT );
-}
+#include "gbuffer.inc"

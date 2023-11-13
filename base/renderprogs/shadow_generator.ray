@@ -39,7 +39,7 @@ void RayGen() {
 	if(depth <= 1.0f)
 	{
 		float minLerpRange = clamp((depth - 0.96) / (1.0 - 0.96), 0, 1.0);
-		float minDist = lerp(0.1, 0.5, minLerpRange); // The further back we are, the more error we want to allow for.
+		float minDist = lerp(0.3, 1.0, minLerpRange); // The further back we are, the more error we want to allow for.
 		
 		float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz;
 		float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
@@ -51,9 +51,11 @@ void RayGen() {
 			SceneLight light = sceneConstants.lights[lightIndex];
 			uint shadowMask = light.shadowMask;
 
+			float3 randValue = normalize(random3(lerpValues.xy + light.pad1) * 2.0 - 1.0); //TODO: Add a time value
+
 			//TODO: fix the scissor window. //if (IsInsideViewport(screenLocation.xy, light.scissor))
 			{
-				float3 lightPosition = light.location;
+				float3 lightPosition = light.location + (light.emmisiveRadius.xyz * randValue);
 
 				// Initialize the ray payload
 				ShadowHitInfo payload;

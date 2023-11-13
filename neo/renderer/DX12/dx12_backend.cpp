@@ -1825,9 +1825,40 @@ RB_DrawGBuffer
 ==================
 */
 static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
+	
+	constexpr uint surfaceLength = 1;
+	const DX12Rendering::eRenderSurface surfaceList[surfaceLength] = {
+		DX12Rendering::eRenderSurface::Normal
+	}; // All surfaces that will be drawn during the gbuffer
+
 	// TODO: FIX THIS UP TO PROPERLY CREATE SOME USEFUL BUFFERS
+	dxRenderer.SetRenderTargets(surfaceList, surfaceLength);
+
 	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawGBuffer");
+
+	// Update the buffer states to D3D12_RESOURCE_STATE_RENDER_TARGET
+	commandList->AddCommandAction([surfaceList](ID3D12GraphicsCommandList4* commandList)
+	{
+		int transitionCount = 0;
+		D3D12_RESOURCE_BARRIER transitions[1]{};
+
+		for (DX12Rendering::eRenderSurface surface : surfaceList)
+		{
+			DX12Rendering::RenderSurface* outputSurface = DX12Rendering::GetSurface(surface);
+
+			if (outputSurface->TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transitions[transitionCount]))
+			{
+				++transitionCount;
+			}
+		}
+
+		if (transitionCount > 0)
+		{
+			commandList->ResourceBarrier(transitionCount, transitions);
+		}
+	});
+
 	//Set this to write to the appropriate render surfaces
 	GL_SelectTexture(0);
 
@@ -1974,6 +2005,30 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 
 		//TODO: Create the perferated codepath.
 	}
+
+	// Update the buffer states to D3D12_RESOURCE_STATE_COMMON
+	commandList->AddCommandAction([surfaceList](ID3D12GraphicsCommandList4* commandList)
+	{
+		int transitionCount = 0;
+		D3D12_RESOURCE_BARRIER transitions[1];
+
+		for (const DX12Rendering::eRenderSurface surface : surfaceList)
+		{
+			DX12Rendering::RenderSurface* outputSurface = DX12Rendering::GetSurface(surface);
+
+			if (outputSurface->TryTransition(D3D12_RESOURCE_STATE_COMMON, &transitions[transitionCount]))
+			{
+				++transitionCount;
+			}
+		}
+
+		if (transitionCount > 0)
+		{
+			commandList->ResourceBarrier(transitionCount, transitions);
+		}
+	});
+
+	dxRenderer.ResetRenderTargets();
 }
 
 /*
@@ -2008,11 +2063,7 @@ static void RB_DrawInteractions() {
 	//
 	// for each light, perform shadowing and adding
 	//
-	UINT totalLights = 0;
 	for (const viewLight_t* vLight = backEnd.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
-		const UINT sceneIndex = totalLights;
-		++totalLights;
-
 		// do fogging later
 		if (vLight->lightShader->IsFogLight()) {
 			continue;
@@ -2025,7 +2076,7 @@ static void RB_DrawInteractions() {
 			continue;
 		}
 
-		bool useRaytracedShadows = dxRenderer.SetActiveLight(sceneIndex).shadowMask > 0;
+		bool useRaytracedShadows = dxRenderer.SetActiveLight(vLight->sceneIndex).shadowMask > 0;
 
 		// Set command list.
 		//dxRenderer.ExecuteCommandList();
@@ -2765,6 +2816,8 @@ static void RB_FogAllLights() {
 	backEnd.currentSpace = NULL;
 
 	for (viewLight_t* vLight = backEnd.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
+		dxRenderer.SetActiveLight(vLight->sceneIndex);
+
 		if (vLight->lightShader->IsFogLight()) {
 			RB_FogPass(vLight->globalInteractions, vLight->localInteractions, vLight);
 		}
@@ -2934,7 +2987,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
 
 		// Fill the GBuffer
-		//RB_DrawGBuffer(drawSurfs, numDrawSurfs);
+		RB_DrawGBuffer(drawSurfs, numDrawSurfs);
 
 		// Build our light list
 		dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix); //Mark, find out why lights keep changing location.
@@ -3044,11 +3097,11 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		renderLog.CloseMainBlock();
 	}	
 
-	if (raytraceUpdated)
-	{
-		// TODO: Use this for debugging raytracing overlay.
-		//dxRenderer.DXR_CopyResultToDisplay();
+#ifdef _DEBUG
+	if (backEnd.viewDef->viewEntitys != NULL) {
+		dxRenderer.CopyDebugResultToDisplay();
 	}
+#endif
 
 	renderLog.CloseBlock();
 }
@@ -3219,7 +3272,11 @@ void RB_PathTraceViewInternal(const viewDef_t* viewDef)
 		dxRenderer.DXR_DenoiseResult();
 		dxRenderer.DXR_GenerateResult();
 	}
-	dxRenderer.DXR_CopyResultToDisplay();
+
+#ifdef  _DEBUG
+	dxRenderer.CopyDebugResultToDisplay();
+#endif // DEBUG
+
 
 	//-------------------------------------------------
 	// fog and blend lights, drawn after emissive surfaces

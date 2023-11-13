@@ -18,6 +18,8 @@
 #define BUFFER_RGB 0x01
 #define BUFFER_STENCIL 0x02
 
+#define MAX_RENDER_TARGETS 5
+
 #define COMMAND_LIST_COUNT 5
 
 using namespace DirectX;
@@ -131,7 +133,11 @@ public:
 
 	void DXR_DenoiseResult(); // Performs a Denoise pass on all rendering channels.
 	void DXR_GenerateResult(); // Collapses all channels into a single image.
-	void DXR_CopyResultToDisplay(); // Copies the resulting image to the user display.
+
+	// Render Targets
+	void SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count);
+	void EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList);
+	void ResetRenderTargets();
 
 #pragma region Top Level Acceleration Structure
 	//TODO
@@ -147,6 +153,8 @@ public:
 #ifdef _DEBUG
 	void DebugAddLight(const viewLight_t& light);
 	void DebugClearLights();
+
+	void CopyDebugResultToDisplay(); // Copies the resulting image to the user display.
 #endif
 
 private:
@@ -176,6 +184,10 @@ private:
 	UINT m_stencilRef = 0;
 
 	UINT m_objectIndex = 0;
+
+	// Render Targets
+	UINT m_activeRenderTargets = 0;
+	DX12Rendering::RenderSurface* m_renderTargets[MAX_RENDER_TARGETS];
 
 	// Synchronization
 	UINT m_frameIndex;
@@ -218,7 +230,9 @@ private:
 
 	bool IsScissorWindowValid();
 
-	DX12Rendering::RenderSurface* GetCurrentRenderTarget() { return DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex);  }
+
+	const DX12Rendering::RenderSurface** GetCurrentRenderTargets(UINT& count);
+	DX12Rendering::RenderSurface* GetOutputRenderTarget() { return DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex); }
 
 #ifdef _DEBUG
 	std::vector<viewLight_t> m_debugLights;

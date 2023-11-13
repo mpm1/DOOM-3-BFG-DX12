@@ -20,6 +20,8 @@ struct SceneLight {
     uint    pad1;
     uint    pad2;
 
+    float4   emmisiveRadius;
+
     float3  location;
     float   radius;
     
@@ -110,4 +112,17 @@ uint4 ConvertShadowmapMaskToVector(uint shadowMask)
     return result;
 }
 
-SamplerState    pointSampler : register(s0, space0); // Sampler that will grab the exact point information from the shader.
+// Temp random function. found here: https://thebookofshaders.com/10/
+float random1(float2 st, float2 dotDir) {
+    return frac(sin(dot(st.xy, dotDir)) * 43758.5453123);
+}
+
+float3 random3(float2 st) {
+    return float3(
+		random1(st, float2(12.9898, 78.233)),
+		random1(st, float2(39.346, 11.135)),
+		random1(st, float2(73.156, 52.235))
+	);
+}
+
+SamplerState    pointSampler : register(s0, space0); // Replace this with Sampler that will grab the exact point information from the shader.

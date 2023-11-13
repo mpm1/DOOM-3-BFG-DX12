@@ -320,6 +320,7 @@ struct viewLight_t {
 	void*					shadowAccelerationStructure; // acceleration structure used for shadow ray casting.
 
 	UINT shadowMask; // used to determine which screenspace shadow will be used by the interaction shader
+	UINT sceneIndex;
 };
 
 // a viewEntity is created whenever a idRenderEntityLocal is considered for inclusion

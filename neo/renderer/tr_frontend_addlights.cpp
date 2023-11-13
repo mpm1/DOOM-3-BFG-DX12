@@ -609,15 +609,11 @@ void R_OptimizeViewLightsList() {
 	// Add all shadow masks to the generated lights
 	UINT shadowLightIndex = 0;
 	for (viewLight_t* vLight = tr.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
-		vLight->shadowMask = 0x00000000;
+		assert(shadowLightIndex < MAX_SCENE_LIGHTS);
 
-		// do fogging later
-		if (vLight->lightShader->IsFogLight()) {
-			continue;
-		}
-		if (vLight->lightShader->IsBlendLight()) {
-			continue;
-		}
+		vLight->shadowMask = 0x00000000;
+		vLight->sceneIndex = shadowLightIndex;
+		++shadowLightIndex;
 
 		if (vLight->removeFromList)
 		{
@@ -642,7 +638,5 @@ void R_OptimizeViewLightsList() {
 		{
 			continue;
 		}
-
-		++shadowLightIndex;
 	}
 }
