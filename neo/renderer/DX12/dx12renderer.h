@@ -57,6 +57,9 @@ namespace DX12Rendering {
 		UINT cbvHeapIndex;
 		UINT8* m_constantBufferGPUAddress;
 	};
+
+	// Defines a single graphics pass (i.e. z-pass, GBuffer, transparents, emmisives). It will setup the root signature and all render targets for the pass.
+	struct RenderPassBlock;
 }
 
 //TODO: move everything into the correct namespace
@@ -138,6 +141,7 @@ public:
 	void SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count);
 	void EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList);
 	void ResetRenderTargets();
+	DX12Rendering::eRenderSurface GetOutputSurface() { return (DX12Rendering::eRenderSurface)(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex); }
 
 #pragma region Top Level Acceleration Structure
 	//TODO
@@ -232,7 +236,7 @@ private:
 
 
 	const DX12Rendering::RenderSurface** GetCurrentRenderTargets(UINT& count);
-	DX12Rendering::RenderSurface* GetOutputRenderTarget() { return DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex); }
+	DX12Rendering::RenderSurface* GetOutputRenderTarget() { return DX12Rendering::GetSurface(GetOutputSurface()); }
 
 #ifdef _DEBUG
 	std::vector<viewLight_t> m_debugLights;
@@ -255,6 +259,31 @@ private:
 #endif
 
 #endif
+};
+
+struct DX12Rendering::RenderPassBlock
+{ // TODO: Make all passes use this block object.
+	const UINT renderTargetCount;
+	const std::string name;
+
+	/// <summary>
+	/// Defines a code block that will setup the current root signature and render targets. When the block is complete, we will execute the command lists and return to the generic render targets.
+	/// </summary>
+	/// <param name="name">Name of the block. This will show up in PIX captures.</param>
+	/// <param name="commandListType">The type of command list to execute these actions on.</param>
+	/// <param name="renderTargetList">An array of data specifying all of the render targets to attach.</param>
+	/// <param name="renderTargetCount">The total numer of render targets to attach.</param>
+	RenderPassBlock(const std::string name, const DX12Rendering::Commands::dx12_commandList_t commandListType, const DX12Rendering::eRenderSurface* renderTargetList = nullptr, const UINT renderTargetCount = 0);
+	~RenderPassBlock();
+
+	DX12Rendering::Commands::CommandList* GetCommandList() { return m_commandList; }
+	static RenderPassBlock* GetCurrentRenderPass();
+
+private:
+	DX12Rendering::eRenderSurface m_renderSurfaces[MAX_RENDER_TARGETS];
+	DX12Rendering::Commands::CommandList* m_commandList;
+
+	void UpdateRenderState(D3D12_RESOURCE_STATES renderState);
 };
 
 extern DX12Renderer dxRenderer;
