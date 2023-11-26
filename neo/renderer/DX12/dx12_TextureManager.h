@@ -8,6 +8,7 @@ namespace DX12Rendering
 	enum eGlobalTexture
 	{
 		DEPTH_TEXTURE,
+		VIEW_DEPTH,
 		RAYTRACED_SHADOWMAP,
 
 		TEXTURE_COUNT

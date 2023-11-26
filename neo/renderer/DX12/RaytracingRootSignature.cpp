@@ -17,16 +17,16 @@ namespace DX12Rendering {
 				0 /*t0*/,
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				1
+				DX12Rendering::e_RaytracingHeapIndex::SRV_TLAS
 			));
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
-				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /*Top-level acceleration structure*/,
+				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Depth Texture */,
 				1,
 				1 /*t1*/,
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				2
+				DX12Rendering::e_RaytracingHeapIndex::SRV_DepthTexture
 			));
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
@@ -35,19 +35,30 @@ namespace DX12Rendering {
 				0 /*b0*/,
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				3
+				DX12Rendering::e_RaytracingHeapIndex::CBV_CameraProperties
 			));
 		}
 
 		if (flags & WRITE_OUTPUT > 0) {
+			// Shadow Mask Buffer
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_UAV /* UAV representing the output buffer*/,
-				1 /*1 descriptor */,
-				0 /*u0*/,
+				2 /*2 descriptors */,
+				0 /*u0, u1*/,
 				0 /*use the implicit register space 0*/,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				0 /*heap slot where the UAV is defined*/
+				DX12Rendering::e_RaytracingHeapIndex::UAV_ShadowMap /*heap slot where the first UAV is defined*/
 			));
+
+			// Diffuse Buffer
+			//descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
+			//	D3D12_DESCRIPTOR_RANGE_TYPE_UAV /* UAV representing the output buffer*/,
+			//	1 /*1 descriptor */,
+			//	1 /*u1*/,
+			//	0 /*use the implicit register space 0*/,
+			//	D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+			//	DX12Rendering::e_RaytracingHeapIndex::UAV_DiffuseMap /*heap slot where the UAV is defined*/
+			//));
 		}
 		
 		if (descriptorRanges.size() > 0) {

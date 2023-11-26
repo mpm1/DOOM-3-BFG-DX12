@@ -619,7 +619,9 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Diffuse)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular)->Resize(width, height);
+
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Resize(width, height);
@@ -955,19 +957,30 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 			scissor.w += (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1);// m_viewport.Height - scissor.y; // bottom
 			//scissor.y = scissor.w - (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1); // top
 
-			//float* radBegin = vLight->lightDef->parms.lightRadius.ToFloatPtr();
-			float radius = std::numeric_limits<float>::max(); // TODO: fix for lights that 
-			/*for (uint rCheck = 0; rCheck < 3; ++rCheck)
+			XMFLOAT4 lightColor(0.55, 0.53, 0.5, 1.0); // TODO: Get actual color.
+
+			float* radBegin = vLight->lightDef->parms.lightRadius.ToFloatPtr();
+			float radius = 0;// std::numeric_limits<float>::max(); // TODO: fix for lights that 
+			if (vLight->lightDef->parms.pointLight)
 			{
-				const float value = std::abs(radBegin[rCheck]);
-
-				if (value > radius)
+				for (uint rCheck = 0; rCheck < 3; ++rCheck)
 				{
-					radius = value;
-				}
-			}*/
+					const float value = std::abs(radBegin[rCheck]);
 
-			if (!m_raytracing->AddLight(vLight->sceneIndex, vLight->shadowMask, location, radius, scissor))
+					if (value > radius)
+					{
+						radius = value;
+					}
+				}
+
+				radius *= 2.0;
+			}
+			else
+			{
+				radius = std::numeric_limits<float>::max();
+			}
+
+			if (!m_raytracing->AddLight(vLight->sceneIndex, vLight->shadowMask, location, lightColor, radius, scissor))
 			{
 				// Could not add the raytraced light
 				shadowMask = 0;
@@ -1088,7 +1101,7 @@ void DX12Renderer::DebugClearLights()
 void DX12Renderer::CopyDebugResultToDisplay()
 {
 	//renderTarget->fence.Wait();
-	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::Normal, 0, 0, 0, 0, m_width / 2, m_height);
+	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::Diffuse, 0, 0, 0, 0, m_width / 2, m_height);
 }
 
 #ifdef DEBUG_IMGUI
@@ -1203,77 +1216,3 @@ void DX12Renderer::ImGuiDebugWindows()
 
 #endif
 #endif
-
-namespace
-{
-	static std::vector<DX12Rendering::RenderPassBlock*> m_activeRenderPasses;
-}
-
-DX12Rendering::RenderPassBlock::RenderPassBlock(const std::string name, const DX12Rendering::Commands::dx12_commandList_t commandListType, const DX12Rendering::eRenderSurface * renderTargetList, const UINT renderTargetCount) :
-	name(name),
-	renderTargetCount(renderTargetList == nullptr ? 1 : renderTargetCount)
-{
-	assert(this->renderTargetCount <= MAX_RENDER_TARGETS && this->renderTargetCount > 0);
-
-	m_activeRenderPasses.push_back(this);
-
-	if (renderTargetList == nullptr)
-	{
-		// Use our default output.
-		m_renderSurfaces[0] = dxRenderer.GetOutputSurface();
-	}
-	else
-	{
-		memcpy(m_renderSurfaces, renderTargetList, sizeof(DX12Rendering::eRenderSurface) * renderTargetCount);
-	}
-
-	m_commandList = DX12Rendering::Commands::GetCommandList(commandListType);
-
-	DX12Rendering::CaptureEventStart(m_commandList, name);
-
-	UpdateRenderState(D3D12_RESOURCE_STATE_RENDER_TARGET);
-
-	dxRenderer.SetRenderTargets(m_renderSurfaces, this->renderTargetCount);
-	dxRenderer.SetCommandListDefaults(false);
-}
-
-DX12Rendering::RenderPassBlock::~RenderPassBlock()
-{
-	UpdateRenderState(D3D12_RESOURCE_STATE_COMMON);
-	dxRenderer.ResetRenderTargets();
-
-	DX12Rendering::CaptureEventEnd(m_commandList);
-	m_commandList->Cycle();
-
-	m_activeRenderPasses.pop_back();
-}
-
-DX12Rendering::RenderPassBlock* DX12Rendering::RenderPassBlock::GetCurrentRenderPass()
-{
-	return m_activeRenderPasses.back();
-}
-
-void DX12Rendering::RenderPassBlock::UpdateRenderState(D3D12_RESOURCE_STATES renderState)
-{
-	m_commandList->AddCommandAction([renderTargetCount = this->renderTargetCount, surfaceList = this->m_renderSurfaces](ID3D12GraphicsCommandList4* commandList)
-	{
-		std::vector<D3D12_RESOURCE_BARRIER> transitions;
-		transitions.reserve(renderTargetCount);
-
-		for (int index = 0; index < renderTargetCount; ++index)
-		{
-			DX12Rendering::RenderSurface* outputSurface = DX12Rendering::GetSurface(surfaceList[index]);
-
-			D3D12_RESOURCE_BARRIER transition;
-			if (outputSurface->TryTransition(D3D12_RESOURCE_STATE_COMMON, &transition))
-			{
-				transitions.push_back(transition);
-			}
-		}
-
-		if (transitions.size() > 0)
-		{
-			commandList->ResourceBarrier(transitions.size(), transitions.data());
-		}
-	});
-}

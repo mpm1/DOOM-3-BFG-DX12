@@ -360,7 +360,7 @@ void idRenderProgManager::SetUniformValue(const renderParm_t rp, const float* va
 int idRenderProgManager::FindProgram(const char* name, int vIndex, int fIndex) {
 	for (int i = 0; i < shaderPrograms.Num(); ++i) {
 		if ((shaderPrograms[i].vertexShaderIndex == vIndex) && (shaderPrograms[i].fragmentShaderIndex == fIndex)) {
-			LoadProgram(i, vIndex, fIndex);
+			LoadProgram(i, vIndex, fIndex); //TODO: We need a better way to pass the render target count.
 			return i;
 		}
 	}
@@ -407,7 +407,7 @@ void idRenderProgManager::LoadProgram(const int programIndex, const int vertexSh
 	psoDesc->BlendState = blendState;
 	psoDesc->SampleMask = UINT_MAX;
 	psoDesc->PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc->NumRenderTargets = 1;
+	psoDesc->NumRenderTargets = MAX_RENDER_TARGETS;
 	psoDesc->RTVFormats[0] = DXGI_FORMAT_R8G8B8A8_UNORM;
 	psoDesc->DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	psoDesc->SampleDesc.Count = 1;

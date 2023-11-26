@@ -8,6 +8,7 @@
 #include "./dx12_global.h"
 #include "./dx12_DeviceManager.h"
 #include "./dx12_CommandList.h"
+#include "./dx12_RenderPass.h"
 #include "./dx12_RootSignature.h"
 #include "./dx12_raytracing.h"
 #include "./dx12_TextureManager.h"
@@ -17,8 +18,6 @@
 
 #define BUFFER_RGB 0x01
 #define BUFFER_STENCIL 0x02
-
-#define MAX_RENDER_TARGETS 5
 
 #define COMMAND_LIST_COUNT 5
 
@@ -56,10 +55,7 @@ namespace DX12Rendering {
 		ComPtr<ID3D12Resource> cbvUploadHeap;
 		UINT cbvHeapIndex;
 		UINT8* m_constantBufferGPUAddress;
-	};
-
-	// Defines a single graphics pass (i.e. z-pass, GBuffer, transparents, emmisives). It will setup the root signature and all render targets for the pass.
-	struct RenderPassBlock;
+	};	
 }
 
 //TODO: move everything into the correct namespace
@@ -259,31 +255,6 @@ private:
 #endif
 
 #endif
-};
-
-struct DX12Rendering::RenderPassBlock
-{ // TODO: Make all passes use this block object.
-	const UINT renderTargetCount;
-	const std::string name;
-
-	/// <summary>
-	/// Defines a code block that will setup the current root signature and render targets. When the block is complete, we will execute the command lists and return to the generic render targets.
-	/// </summary>
-	/// <param name="name">Name of the block. This will show up in PIX captures.</param>
-	/// <param name="commandListType">The type of command list to execute these actions on.</param>
-	/// <param name="renderTargetList">An array of data specifying all of the render targets to attach.</param>
-	/// <param name="renderTargetCount">The total numer of render targets to attach.</param>
-	RenderPassBlock(const std::string name, const DX12Rendering::Commands::dx12_commandList_t commandListType, const DX12Rendering::eRenderSurface* renderTargetList = nullptr, const UINT renderTargetCount = 0);
-	~RenderPassBlock();
-
-	DX12Rendering::Commands::CommandList* GetCommandList() { return m_commandList; }
-	static RenderPassBlock* GetCurrentRenderPass();
-
-private:
-	DX12Rendering::eRenderSurface m_renderSurfaces[MAX_RENDER_TARGETS];
-	DX12Rendering::Commands::CommandList* m_commandList;
-
-	void UpdateRenderState(D3D12_RESOURCE_STATES renderState);
 };
 
 extern DX12Renderer dxRenderer;

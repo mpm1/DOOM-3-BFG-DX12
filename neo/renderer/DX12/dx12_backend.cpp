@@ -1825,9 +1825,10 @@ RB_DrawGBuffer
 ==================
 */
 static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
-	const UINT surfaceCount = 1;
+	const UINT surfaceCount = 2;
 	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
-		DX12Rendering::eRenderSurface::Normal
+		DX12Rendering::eRenderSurface::Normal,
+		DX12Rendering::eRenderSurface::ViewDepth
 	};
 
 	DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
@@ -1845,9 +1846,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		// TODO: Handle Sub Views
 	}
 
-	const drawSurf_t** perforatedSurfaces = (const drawSurf_t**)_alloca(numDrawSurfs * sizeof(drawSurf_t*));
-	int numPerforatedSurfaces = 0;
-
 	// draw all the opaque surfaces and build up a list of perforated surfaces that
 	// we will defer drawing until all opaque surfaces are done
 	GL_State(GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL | GLS_STENCIL_FUNC_ALWAYS);
@@ -1864,12 +1862,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 
 		// translucent surfaces don't put anything in the depth buffer
 		if (shader->Coverage() == MC_TRANSLUCENT) {
-			continue;
-		}
-		if (shader->Coverage() == MC_PERFORATED) {
-			// save for later drawing
-			perforatedSurfaces[numPerforatedSurfaces] = surf;
-			numPerforatedSurfaces++;
 			continue;
 		}
 
@@ -1891,6 +1883,11 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 			R_MatrixTranspose(normalMatrix.ToFloatPtr(), normalMatrixTranspose);
 			//TODO: Find the appropriate matrix
 			SetVertexParms(RENDERPARM_NORMALMATRIX_X, normalMatrix.ToFloatPtr(), 4);
+
+			// Set ModelView Matrix
+			float modelViewMatrixTranspose[16];
+			R_MatrixTranspose(surf->space->modelViewMatrix, modelViewMatrixTranspose);
+			SetVertexParms(RENDERPARM_MODELVIEWMATRIX_X, modelViewMatrixTranspose, 4);
 		}
 
 		const idMaterial* surfaceShader = surf->material;
@@ -1972,12 +1969,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		RB_DrawElementsWithCounters(surf);
 	}
 
-	// draw all perforated surfaces with the general code path
-	if (numPerforatedSurfaces > 0) {
-		//DX12Rendering::Commands::CommandListCycleBlock subCycleBlock(commandList, "PerforatedSurfacs");
-
-		//TODO: Create the perferated codepath.
-	}
+	renderPassBlock.GetCommandList()->AddPostFenceSignal(&DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth)->fence);
 }
 
 /*
@@ -2849,7 +2841,19 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		SetVertexParm(RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
 
 		if (raytracedEnabled)
-		{
+		{			
+			float fov[4]; // { xmin, ymin, xmax, ymax }
+			const float zNear = (viewDef->renderView.cramZNear) ? (r_znear.GetFloat() * 0.25f) : r_znear.GetFloat();
+
+			fov[3] = zNear * tan(viewDef->renderView.fov_y * idMath::PI / 360.0f); // ymax
+			fov[1] = -fov[3]; // ymin
+
+			fov[2] = zNear * tan(viewDef->renderView.fov_x * idMath::PI / 360.0f); // xmax
+			fov[0] = -fov[2]; // xmain
+
+			dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_FOV, fov);
+
+			parm[3] = zNear;
 			dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
 		}
 
@@ -2944,10 +2948,12 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix); //Mark, find out why lights keep changing location.
 
 		// Copy the depth buffer to a texture
-		auto depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+		auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
+		viewDepth->fence.Wait();
+
 		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
-		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::DEPTH_TEXTURE);
-		depthStencil->CopySurfaceToTexture(depthTexture, textureManager)->Wait();
+		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
+		viewDepth->CopySurfaceToTexture(depthTexture, textureManager)->Wait();
 	}
 
 	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); 

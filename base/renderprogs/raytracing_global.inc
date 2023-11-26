@@ -21,6 +21,7 @@ struct SceneLight {
     uint    pad2;
 
     float4   emmisiveRadius;
+    float4   color;
 
     float3  location;
     float   radius;
@@ -29,7 +30,8 @@ struct SceneLight {
 };
 
 struct RenderParameters {
-	float4 globalEyePos;
+	float4 globalEyePos; // {eye.x, eye.y, eye.z, zNear plane}
+    float4 fov; // { min fovX, min fovY, max fovX, max fovY }  
     float4 viewport; // {left, top, right, bottom}
     float4 scissor; // {left, top, right, bottom}
 
@@ -88,12 +90,14 @@ inline float4 GetInverseView(float4 location, in SceneConstants constants)
 
 inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in SceneConstants constants)
 {
-    screenPosition.y = 1.0 - screenPosition.y; // Invert the y for directx style coordinates.
+    float4 viewPosition = float4(
+        lerp(constants.rp.fov.x, constants.rp.fov.z, screenPosition.x),
+        lerp(constants.rp.fov.y, constants.rp.fov.w, 1.0 - screenPosition.y),
+        -constants.rp.globalEyePos.w, // We make this negitive due to the system using OpenGL coordinates
+        1.0
+    );
 
-    float4 clipPosition = float4(screenPosition * 2.0 - 1.0, depth, 1.0);
-    float4 viewPosition = GetInverseProjection(clipPosition, constants);
-    
-    viewPosition /= viewPosition.w;
+    viewPosition.xyz = normalize(viewPosition.xyz) * depth;
 
     float4 worldPosition = GetInverseView(viewPosition, constants);
 

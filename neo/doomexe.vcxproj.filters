@@ -633,6 +633,9 @@
     <ClInclude Include="renderer\DX12\dx12_RenderTarget.h">
       <Filter>Renderer\DX12</Filter>
     </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_RenderPass.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cm\CollisionModel_contacts.cpp">
@@ -1321,6 +1324,9 @@
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_RenderTarget.cpp">
       <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_RenderPass.cpp">
+      <Filter>Renderer</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

@@ -23,6 +23,7 @@ namespace DX12Rendering {
 
 	enum dxr_renderParm_t {
 		RENDERPARM_GLOBALEYEPOS = 0,
+		RENDERPARM_FOV, // { min fov x, min fov y, max fov x, max fov y }
 		RENDERPARM_VIEWPORT, // {left, top, right, bottom}
 		RENDERPARAM_SCISSOR, // {left, top, right, bottom}
 
@@ -47,6 +48,7 @@ namespace DX12Rendering {
 		UINT pad2;
 
 		XMFLOAT4 emmisiveRadius; // The radius in which the light is visible. This is used to calculate the soft shadows.
+		XMFLOAT4 color;
 
 		XMFLOAT3	location;
 		float		radius;
@@ -84,7 +86,7 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	void ResetLightList();
-	bool AddLight(const UINT index, const UINT shadowMask, const XMFLOAT3 location, const float radius, const XMFLOAT4 scissorWindow);
+	bool AddLight(const UINT index, const UINT shadowMask, const XMFLOAT3 location, XMFLOAT4 color, const float radius, const XMFLOAT4 scissorWindow);
 	UINT GetLightMask(const UINT index);
 
 	void GenerateTLAS();
@@ -112,7 +114,8 @@ public:
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
-		RenderSurface* outputSurface
+		const DX12Rendering::eRenderSurface* renderTargetList,
+		const UINT renderTargetCount
 	);
 
 	/// <summary>
@@ -164,6 +167,8 @@ private:
 
 	void CreateShaderBindingTables();
 	void CreateShadowBindingTable();
+
+	void SetOutputTexture(DX12Rendering::eRenderSurface renderSurface, DX12Rendering::e_RaytracingHeapIndex uav);
 
 	void CreateCBVHeap(const size_t constantBufferSize);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(

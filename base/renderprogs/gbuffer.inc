@@ -22,6 +22,7 @@ struct VS_OUT {
 	float3 normal		: TEXCOORD1;
 	float3 tangent		: TEXCOORD2;
 	float3 binormal		: TEXCOORD3;
+	float4 viewPosition	: TEXCOORD4;
 };
 
 float3 applyNormalTransform(float3 inVector)
@@ -42,6 +43,8 @@ void main( VS_IN vertex, out VS_OUT result ) {
 	float3 vNormal = vertex.normal.xyz * 2.0 - 1.0;
 	float4 vTangent = vertex.tangent * 2.0 - 1.0;
 	float3 vBinormal = cross( vNormal.xyz, vTangent.xyz ) * vTangent.w;
+
+	float4 modelPosition;
 
 #ifdef SKINNED
 	//--------------------------------------------------------------
@@ -93,26 +96,28 @@ void main( VS_IN vertex, out VS_OUT result ) {
 	binormal.z = dot3( matZ, vBinormal );
 	binormal = normalize( binormal );
 
-	float4 modelPosition;
 	modelPosition.x = dot4( matX, vertex.position );
 	modelPosition.y = dot4( matY, vertex.position );
 	modelPosition.z = dot4( matZ, vertex.position );
 	modelPosition.w = 1.0;
-
-	result.position.x = dot4( modelPosition, sceneConstants.rpMVPmatrixX );
-	result.position.y = dot4( modelPosition, sceneConstants.rpMVPmatrixY );
-	result.position.z = dot4( modelPosition, sceneConstants.rpMVPmatrixZ );
-	result.position.w = dot4( modelPosition, sceneConstants.rpMVPmatrixW );
 #else
-	result.position.x = dot4( vertex.position, sceneConstants.rpMVPmatrixX );
-	result.position.y = dot4( vertex.position, sceneConstants.rpMVPmatrixY );
-	result.position.z = dot4( vertex.position, sceneConstants.rpMVPmatrixZ );
-	result.position.w = dot4( vertex.position, sceneConstants.rpMVPmatrixW );
+	modelPosition = vertex.position;
 
 	float3 normal = vNormal;
 	float3 tangent = vTangent;
 	float3 binormal = vBinormal;
 #endif // end SKINNED
+
+	// Calculate the fragment position
+	result.viewPosition.x = dot4( modelPosition, sceneConstants.rpModelViewMatrixX );
+	result.viewPosition.y = dot4( modelPosition, sceneConstants.rpModelViewMatrixY );
+	result.viewPosition.z = dot4( modelPosition, sceneConstants.rpModelViewMatrixZ );
+	result.viewPosition.w = dot4( modelPosition, sceneConstants.rpModelViewMatrixW );
+
+	result.position.x = dot4( modelPosition, sceneConstants.rpMVPmatrixX );
+	result.position.y = dot4( modelPosition, sceneConstants.rpMVPmatrixY );
+	result.position.z = dot4( modelPosition, sceneConstants.rpMVPmatrixZ );
+	result.position.w = dot4( modelPosition, sceneConstants.rpMVPmatrixW );
 	
 	// Generate normal space
 	result.normal = applyNormalTransform(normal);
@@ -137,14 +142,19 @@ struct PS_IN {
 	half3 texcoord1	: TEXCOORD1_centroid; // Normal
 	half3 texcoord2	: TEXCOORD2_centroid; // Tangent
 	half3 texcoord3	: TEXCOORD3_centroid; // Binormal
+
+	float4 viewPosition : TEXCOORD4;
 };
 
 struct PS_OUT {
 	half3 normal	: SV_TARGET0;
+	float viewDepth	: SV_TARGET1;
 };
 
 void main( PS_IN fragment, out PS_OUT result ) {
-	half4 bumpMap =			samp0.Sample(baseSampler, fragment.texcoord0.xy );
+	result.viewDepth = length(fragment.viewPosition.xyz);// / fragment.viewPosition.w); // The depth going into the view space. Note, z will be negitive
+
+	half4 bumpMap =	samp0.Sample(baseSampler, fragment.texcoord0.xy );
 
 	half3 localNormal;
 	localNormal.xy = bumpMap.wy - 0.5;

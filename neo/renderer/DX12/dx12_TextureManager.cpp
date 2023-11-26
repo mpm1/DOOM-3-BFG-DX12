@@ -48,6 +48,11 @@ namespace DX12Rendering
 				textureDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
 				break;
 
+			case eGlobalTexture::VIEW_DEPTH:
+				name = "view_depth";
+				textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
+				break;
+
 			case eGlobalTexture::RAYTRACED_SHADOWMAP:
 				name = "raytraced_shadowmap";
 				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UINT;
