@@ -9,6 +9,7 @@ namespace DX12Rendering
 	{
 		DEPTH_TEXTURE,
 		VIEW_DEPTH,
+		WORLD_NORMALS,
 		RAYTRACED_SHADOWMAP,
 
 		TEXTURE_COUNT
@@ -28,7 +29,7 @@ namespace DX12Rendering
 		{
 		}
 
-		bool Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc);
+		bool Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc, D3D12_RESOURCE_STATES resourceState);
 
 		const bool IsReady() { return Exists(); }
 
@@ -52,12 +53,14 @@ namespace DX12Rendering
 		bool SetTextureCopyState(TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
 		bool SetTexturePixelShaderState(TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
 		bool SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
+		bool SetTextureStates(TextureBuffer** buffers, UINT bufferCount, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
 
 		// Data management
 		void StartTextureWrite(TextureBuffer* buffer);
 		void EndTextureWrite(TextureBuffer* buffer);
 
-		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping);
+		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState);
+
 		TextureBuffer* GetTextureBuffer(uint64 textureHandle); //TODO: Move everything to a reference to create bindless textures.
 		void FreeTextureBuffer(TextureBuffer* buffer);
 		void SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);

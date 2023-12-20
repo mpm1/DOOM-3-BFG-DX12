@@ -1878,11 +1878,17 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 				modelMatrix[8], modelMatrix[9], modelMatrix[10], modelMatrix[11],
 				modelMatrix[12], modelMatrix[13], modelMatrix[14], modelMatrix[15]
 			); // TODO: Precalculate value
-			normalMatrix.Inverse();
+			//normalMatrix = normalMatrix.Transpose();
+			normalMatrix = normalMatrix.Inverse();
 			float normalMatrixTranspose[16];
 			R_MatrixTranspose(normalMatrix.ToFloatPtr(), normalMatrixTranspose);
 			//TODO: Find the appropriate matrix
 			SetVertexParms(RENDERPARM_NORMALMATRIX_X, normalMatrix.ToFloatPtr(), 4);
+
+			// set model Matrix
+			float modelMatrixTranspose[16];
+			R_MatrixTranspose(surf->space->modelMatrix, modelMatrixTranspose);
+			SetVertexParms(RENDERPARM_MODELMATRIX_X, modelMatrixTranspose, 4);
 
 			// Set ModelView Matrix
 			float modelViewMatrixTranspose[16];
@@ -1968,8 +1974,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		// draw it solid
 		RB_DrawElementsWithCounters(surf);
 	}
-
-	renderPassBlock.GetCommandList()->AddPostFenceSignal(&DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth)->fence);
 }
 
 /*
@@ -2953,7 +2957,12 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
 		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
-		viewDepth->CopySurfaceToTexture(depthTexture, textureManager)->Wait();
+		viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
+
+		// Copy the normal map to a texture
+		auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);
+		DX12Rendering::TextureBuffer* normalTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
+		normalMap->CopySurfaceToTexture(normalTexture, textureManager)->Wait();
 	}
 
 	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); 

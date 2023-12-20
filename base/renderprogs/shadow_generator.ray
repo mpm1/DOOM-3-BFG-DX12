@@ -9,7 +9,7 @@ RaytracingAccelerationStructure SceneBVH :register(t0);
 
 // Depth buffer used to access the initial location
 uniform Texture2D<float>	depthBuffer : register(t1);
-//uniform Texture2D<float>	normalMap	: register(t2);
+uniform Texture2D<float4>	normalMap	: register(t2);
 
 // Constants used to define the camera state
 ConstantBuffer<SceneConstants> sceneConstants : register(b0, space0);
@@ -38,13 +38,11 @@ void RayGen() {
 
 	// Get the depth buffer location
 	float depth = depthBuffer.GatherRed(pointSampler, lerpValues.xy).r;
+	float3 normal = normalize((normalMap.Gather(pointSampler, lerpValues.xy).xyz * 2.0) - 1.0);
 
 	{		
-		float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz;
+		float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz; //Mark start here. is this truely correct?
 		float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
-
-		float minDist = 3.0; // TODO: Move this out based on normal.
-		float3 startingPoint = worldPosition + (pointToEye * minDist); // Start slightly out from the world position.
 
 		for(uint lightIndex = 0; lightIndex < sceneConstants.lightCount; ++lightIndex)
 		{
@@ -56,50 +54,63 @@ void RayGen() {
 			//TODO: fix the scissor window. //if (IsInsideViewport(screenLocation.xy, light.scissor))
 			{
 				float3 localDiffuse = float3(0.0, 0.0, 0.0); // We can average this value if we want to cast multiple rays for this light.
-				float3 lightPosition = light.location; // + (light.emmisiveRadius.xyz * randValue);
-				float radius = light.radius + minDist;
+				float3 lightPosition = light.center; // + (light.emmisiveRadius.xyz * randValue);
+				float radius = light.radius;
+
+				float3 lightVector = normalize(lightPosition - worldPosition); //Or is this the wrong angle?
+
+				float intensity = saturate(dot(normal, lightVector));
 
 				// Initialize the ray payload
 				ShadowHitInfo payload;
-				payload.maxDistance = distance(lightPosition, startingPoint);
+				payload.maxDistance = min(radius, distance(lightPosition, worldPosition));
 				payload.intensity = 0.0;
-
-				float intensity = 1.0 - max(0.0, payload.maxDistance / radius);
+				
+				if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
+				{
+					float falloff = pow(1.0 - max(0.0, payload.maxDistance / radius), 2.0); // Squared falloff 
+					intensity *= falloff;
+				}
+				
+				payload.intensity = intensity;
 
 				if(intensity > 0)
 				{
-					// We are inside the light radius.
-					// Define a ray, consisting of origin, direction, and the min-max distance values
-					RayDesc ray;
-					ray.TMin = 0.001;
-					ray.TMax = payload.maxDistance;
-					ray.Origin = lightPosition;
-					ray.Direction = normalize(startingPoint - lightPosition);
+					if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS) // For now, all lights will cast shadows.
+					{
+						// We are inside the light radius.
+						// Define a ray, consisting of origin, direction, and the min-max distance values
+						RayDesc ray;
+						ray.TMin = 1.0;
+						ray.TMax = payload.maxDistance;
+						ray.Origin = worldPosition;
+						ray.Direction = lightVector;
 
-					TraceRay(
-						SceneBVH,
-						RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-						0xFF,
-						0,
-						0, // First Hit Shader
-						0, // Miss Shader
-						ray,
-						payload
-					);
+						TraceRay(
+							SceneBVH,
+							RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+							0xFF,
+							0,
+							0, // First Hit Shader
+							0, // Miss Shader
+							ray,
+							payload
+						);
+					}
 
 					if (payload.intensity > 0.0)
 					{
 						resultMask += shadowMask;
 
-						localDiffuse += (light.color * pow(intensity, 2.0));// Squared falloff
+						localDiffuse += (light.color.rgb * intensity); // TODO: Get real light and color from the light texture.
 					}
 				}
 
-				resultDiffuse += localDiffuse;
-			}
+				resultDiffuse += saturate(localDiffuse); // TODO: Change this to a colour light space
+			} 
 		}
 	}
 	
 	shadowMask[DispatchRaysIndex().xy] = ConvertShadowmapMaskToVector(resultMask);
-	diffuseMask[DispatchRaysIndex().xy] = float4(resultDiffuse.rgb, 1.0);
+	diffuseMask[DispatchRaysIndex().xy] = float4(saturate(resultDiffuse.rgb), 1.0);
 }

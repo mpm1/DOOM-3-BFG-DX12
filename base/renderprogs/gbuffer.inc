@@ -36,7 +36,9 @@ float3 applyNormalTransform(float3 inVector)
 	result.z = dot4(checkVector, sceneConstants.rpNormalMatrixZ);
 	result.w = dot4(checkVector, sceneConstants.rpNormalMatrixW);
 
-	return result.xyz;
+	//result *= result.w;
+
+	return normalize(result.xyz);
 }
 
 void main( VS_IN vertex, out VS_OUT result ) {
@@ -103,9 +105,9 @@ void main( VS_IN vertex, out VS_OUT result ) {
 #else
 	modelPosition = vertex.position;
 
-	float3 normal = vNormal;
-	float3 tangent = vTangent;
-	float3 binormal = vBinormal;
+	float3 normal = vNormal.xyz;
+	float3 tangent = vTangent.xyz;
+	float3 binormal = vBinormal.xyz;
 #endif // end SKINNED
 
 	// Calculate the fragment position
@@ -139,9 +141,9 @@ uniform Texture2D<float4>	samp0 : register(t0); // texture 1 is the per-surface 
 struct PS_IN {
 	half4 position	: SV_POSITION;
 	half4 texcoord0	: TEXCOORD0_centroid; // Bumpmap location
-	half3 texcoord1	: TEXCOORD1_centroid; // Normal
-	half3 texcoord2	: TEXCOORD2_centroid; // Tangent
-	half3 texcoord3	: TEXCOORD3_centroid; // Binormal
+	half3 normal	: TEXCOORD1_centroid; // Normal
+	half3 tangent	: TEXCOORD2_centroid; // Tangent
+	half3 binormal	: TEXCOORD3_centroid; // Binormal
 
 	float4 viewPosition : TEXCOORD4;
 };
@@ -161,10 +163,11 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	localNormal.z = sqrt( abs( dot( localNormal.xy, localNormal.xy ) - 0.25 ) );
 	localNormal = normalize( localNormal );
 
-	result.normal.x = dot3(fragment.texcoord2, localNormal);
-	result.normal.y = dot3(fragment.texcoord3, localNormal);
-	result.normal.z = dot3(fragment.texcoord1, localNormal);
+	result.normal = fragment.normal;
+	/*result.normal.x = dot3(fragment.tangent, localNormal);
+	result.normal.y = dot3(fragment.binormal, localNormal);
+	result.normal.z = dot3(fragment.normal, localNormal);*/
 
-	result.normal = (result.normal * 0.5f) + 0.5f;
+	result.normal = (normalize(result.normal) + 1.0) / 2.0f;
 }
 #endif // end PIXEL_SHADER

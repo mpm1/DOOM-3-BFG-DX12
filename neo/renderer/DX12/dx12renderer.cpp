@@ -938,27 +938,58 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 	}
 	
 	m_raytracing->ResetLightList();
+	UINT lightIndex = 0;
 
 	for (const viewLight_t* vLight = viewLights; vLight != NULL; vLight = vLight->next) {
+		// some rare lights have multiple animating stages, loop over them outside the surface list
+		const idMaterial* lightShader = vLight->lightShader;
+		const float* lightRegs = vLight->shaderRegisters;
+
+		bool isAmbientLight = lightShader->IsAmbientLight(); // TODO: add as flag.
+		if (isAmbientLight)
+		{
+			continue; // For now we won't add any ambient light.
+		}
+
 		UINT shadowMask = vLight->shadowMask;
 
-		if (shadowMask > 0)
+		const XMFLOAT3 location(
+			vLight->globalLightOrigin.x,
+			vLight->globalLightOrigin.y,
+			vLight->globalLightOrigin.z);
+
+		XMFLOAT4 scissor(
+			vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
+			vLight->scissorRect.y1 + m_viewport.TopLeftY,
+			vLight->scissorRect.x2 + 1 - vLight->scissorRect.x1,
+			0);
+
+		scissor.z += scissor.x; // right
+		scissor.w += (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1);// m_viewport.Height - scissor.y; // bottom
+		//scissor.y = scissor.w - (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1); // top
+
+		const float lightScale = r_lightScale.GetFloat();
+
+		for (int lightStageNum = 0; lightStageNum < lightShader->GetNumStages(); lightStageNum++) 
 		{
-			idVec4 localLight(0.0f);
-			R_GlobalPointToLocal(worldMatrix, vLight->globalLightOrigin, localLight.ToVec3());
+			const shaderStage_t* lightStage = lightShader->GetStage(lightStageNum);
 
-			const XMFLOAT3 location(localLight.ToFloatPtr());
-			XMFLOAT4 scissor(
-				vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
-				vLight->scissorRect.y1 + m_viewport.TopLeftY,
-				vLight->scissorRect.x2 + 1 - vLight->scissorRect.x1,
-				0);
-			scissor.z += scissor.x; // right
-			scissor.w += (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1);// m_viewport.Height - scissor.y; // bottom
-			//scissor.y = scissor.w - (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1); // top
+			// ignore stages that fail the condition
+			if (!lightRegs[lightStage->conditionRegister]) {
+				continue;
+			}
 
-			XMFLOAT4 lightColor(0.55, 0.53, 0.5, 1.0); // TODO: Get actual color.
+			XMFLOAT4 lightColor(
+				lightScale * lightRegs[lightStage->color.registers[0]],
+				lightScale * lightRegs[lightStage->color.registers[1]],
+				lightScale * lightRegs[lightStage->color.registers[2]],
+				lightRegs[lightStage->color.registers[3]]);
 
+			// apply the world-global overbright and the 2x factor for specular
+			const XMFLOAT4 diffuseColor = lightColor;
+			//const XMFLOAT4 specularColor = lightColor * 2.0f;
+
+			// Mark figure this part out.
 			float* radBegin = vLight->lightDef->parms.lightRadius.ToFloatPtr();
 			float radius = 0;// std::numeric_limits<float>::max(); // TODO: fix for lights that 
 			if (vLight->lightDef->parms.pointLight)
@@ -980,14 +1011,15 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				radius = std::numeric_limits<float>::max();
 			}
 
-			if (!m_raytracing->AddLight(vLight->sceneIndex, vLight->shadowMask, location, lightColor, radius, scissor))
+			if (!m_raytracing->AddLight(vLight->sceneIndex, vLight->shadowMask, location, lightColor, radius, scissor, true/*vLight->castsShadows*/))
 			{
 				// Could not add the raytraced light
 				shadowMask = 0;
 			}
-		}
 
-		SetLightData(vLight->sceneIndex, shadowMask);
+			SetLightData(lightIndex, shadowMask);
+			++lightIndex;
+		}
 	}
 
 	// Move the light data to the GPU

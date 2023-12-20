@@ -22,11 +22,11 @@ namespace DX12Rendering {
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Depth Texture */,
-				1,
+				2, /* Two descriptors: depth, normal */
 				1 /*t1*/,
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				DX12Rendering::e_RaytracingHeapIndex::SRV_DepthTexture
+				DX12Rendering::e_RaytracingHeapIndex::SRV_DepthTexture // Starting texture
 			));
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(

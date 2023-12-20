@@ -59,6 +59,7 @@ namespace DX12Rendering {
 		UAV_DiffuseMap,
 		SRV_TLAS,
 		SRV_DepthTexture,
+		SRV_NormalTexture,
 		CBV_CameraProperties
 	};
 

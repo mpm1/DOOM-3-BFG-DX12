@@ -578,7 +578,7 @@ void idImage::AllocImage() {
 	}
 
 	// Allocate the texture
-	textureResource = dxRenderer.GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc, shaderComponentAlignment);
+	textureResource = dxRenderer.GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc, shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COPY_DEST);
 
 	if (textureResource == nullptr) {
 		return;

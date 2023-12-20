@@ -45,12 +45,20 @@ namespace DX12Rendering {
 		UINT lightIndex;
 		UINT shadowMask;
 		UINT pad1;
-		UINT pad2;
+		
+		union
+		{
+			UINT flags;
+			struct {
+				bool castsShadows : 1;
+				bool flagPad[sizeof(UINT) - 1];
+			};
+		};
 
 		XMFLOAT4 emmisiveRadius; // The radius in which the light is visible. This is used to calculate the soft shadows.
 		XMFLOAT4 color;
 
-		XMFLOAT3	location;
+		XMFLOAT3	center;
 		float		radius;
 
 		XMFLOAT4	scissor; // Light view scissor window {left, top, right, bottom}
@@ -63,7 +71,7 @@ namespace DX12Rendering {
 		UINT lightCount;
 		UINT pad[3];
 
-		dxr_lightData_t lights[MAX_DXR_LIGHTS];
+		dxr_lightData_t lights[MAX_SCENE_LIGHTS];
 	};
 
 	class TopLevelAccelerationStructure;
@@ -86,7 +94,7 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	void ResetLightList();
-	bool AddLight(const UINT index, const UINT shadowMask, const XMFLOAT3 location, XMFLOAT4 color, const float radius, const XMFLOAT4 scissorWindow);
+	bool AddLight(const UINT index, const UINT shadowMask, const XMFLOAT3 location, XMFLOAT4 color, const float radius, const XMFLOAT4 scissorWindow, bool castsShadows);
 	UINT GetLightMask(const UINT index);
 
 	void GenerateTLAS();
@@ -115,7 +123,10 @@ public:
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
 		const DX12Rendering::eRenderSurface* renderTargetList,
-		const UINT renderTargetCount
+		const UINT renderTargetCount,
+		TextureBuffer** buffers,
+		const UINT bufferCount,
+		DX12Rendering::TextureManager* textureManager
 	);
 
 	/// <summary>

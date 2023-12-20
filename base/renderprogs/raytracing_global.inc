@@ -14,16 +14,19 @@ struct Attributes
   float4	location; // Location of the hit.
 };
 
+#define LIGHT_FLAG_CASTS_SHADOWS 0x00000001
+
 struct SceneLight {
     uint    sceneIndex;
     uint    shadowMask;
     uint    pad1;
-    uint    pad2;
+    
+    uint    flags;
 
     float4   emmisiveRadius;
     float4   color;
 
-    float3  location;
+    float3  center;
     float   radius;
     
     float4  scissor; // Light scissor window {left, top, right, bottom}
@@ -47,7 +50,7 @@ struct RenderParameters {
 
 };
 
-#define MAX_SHADOW_LIGHTS 32 // Only 32 so that we can mask each result to a bit.
+#define MAX_SHADOW_LIGHTS 128
 
 struct SceneConstants {
     RenderParameters rp;

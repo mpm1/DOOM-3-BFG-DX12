@@ -612,6 +612,7 @@ void R_OptimizeViewLightsList() {
 		assert(shadowLightIndex < MAX_SCENE_LIGHTS);
 
 		vLight->shadowMask = 0x00000000;
+		vLight->castsShadows = false;
 		vLight->sceneIndex = shadowLightIndex;
 		++shadowLightIndex;
 
@@ -629,6 +630,8 @@ void R_OptimizeViewLightsList() {
 		if (vLight->localInteractions == NULL && vLight->globalInteractions == NULL && vLight->translucentInteractions == NULL) {
 			continue;
 		}
+
+		vLight->castsShadows = true;
 
 		if (shadowLightIndex < MAX_DXR_LIGHTS)
 		{
