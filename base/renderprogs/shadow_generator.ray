@@ -38,7 +38,7 @@ void RayGen() {
 
 	// Get the depth buffer location
 	float depth = depthBuffer.GatherRed(pointSampler, lerpValues.xy).r;
-	float3 normal = normalize((normalMap.Gather(pointSampler, lerpValues.xy).xyz * 2.0) - 1.0);
+	float3 normal = normalize((normalMap.SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
 
 	{		
 		float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz; //Mark start here. is this truely correct?
