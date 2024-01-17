@@ -1499,6 +1499,10 @@
     <None Include="..\base\renderprogs\gbuffer.inc">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\base\renderprogs\functions.inc" />
+    <None Include="..\base\renderprogs\bindless_textures.inc">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sys\win32\rc\doom.rc">

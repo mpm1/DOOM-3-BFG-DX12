@@ -9,10 +9,10 @@ RaytracingAccelerationStructure SceneBVH :register(t0);
 
 // Depth buffer used to access the initial location
 uniform Texture2D<float>	depthBuffer : register(t1);
-uniform Texture2D<float4>	normalMap	: register(t2);
+uniform Texture2D<float4>	flatNormalMap	: register(t2); // Used to know the polygon normal
 
 // Constants used to define the camera state
-ConstantBuffer<SceneConstants> sceneConstants : register(b0, space0);
+ConstantBuffer<RaytracedSceneConstants> sceneConstants : register(b0, space0);
 
 bool IsInsideViewport(float2 p, float4 viewport)
 {
@@ -20,6 +20,29 @@ bool IsInsideViewport(float2 p, float4 viewport)
 		&& (p.y >= viewport.y && p.y <= viewport.w);
 
 	return true;
+}
+
+float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
+{
+	Texture2D<float4> falloffTexture =  GetBindlessTexture4f(light.falloffIndex);
+	float4 falloff = falloffTexture.SampleLevel(projectionSampler, float2(dot4( worldPosition, light.falloffS ), 0), 0);
+	
+	return falloff.rgb;
+}
+
+float3 CalculateProjection(SceneLight light, float4 worldPosition)
+{
+	float4 projection = float4(
+		dot4(worldPosition, light.projectionS),
+		dot4(worldPosition, light.projectionT),
+		0.0f,
+		dot4(worldPosition, light.projectionQ)
+	);
+
+	projection.xy /= projection.w;
+	Texture2D<float4> projectionTexture = GetBindlessTexture4f(light.projectionIndex);
+
+	return projectionTexture.SampleLevel(projectionSampler, projection.xy, 0).rgb;
 }
 
 [shader("raygeneration")]
@@ -38,10 +61,11 @@ void RayGen() {
 
 	// Get the depth buffer location
 	float depth = depthBuffer.GatherRed(pointSampler, lerpValues.xy).r;
-	float3 normal = normalize((normalMap.SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
+	float3 flatNormal = normalize((flatNormalMap.SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
+	float3 normal = flatNormal; // TODO: have a new texture that uses this more complex normal.
 
 	{		
-		float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz; //Mark start here. is this truely correct?
+		float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz + (k_minSurfaceDistance * flatNormal);
 		float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
 
 		for(uint lightIndex = 0; lightIndex < sceneConstants.lightCount; ++lightIndex)
@@ -55,28 +79,28 @@ void RayGen() {
 			{
 				float3 localDiffuse = float3(0.0, 0.0, 0.0); // We can average this value if we want to cast multiple rays for this light.
 				float3 lightPosition = light.center; // + (light.emmisiveRadius.xyz * randValue);
-				float radius = light.radius;
+				float maxDistance = distance(lightPosition, worldPosition);
 
-				float3 lightVector = normalize(lightPosition - worldPosition); //Or is this the wrong angle?
+				float3 lightVector = normalize(lightPosition - worldPosition);
 
 				float intensity = saturate(dot(normal, lightVector));
+				float3 lightColor = float3(intensity, intensity, intensity);
 
-				// Initialize the ray payload
-				ShadowHitInfo payload;
-				payload.maxDistance = min(radius, distance(lightPosition, worldPosition));
-				payload.intensity = 0.0;
-				
 				if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
 				{
-					float falloff = pow(1.0 - max(0.0, payload.maxDistance / radius), 2.0); // Squared falloff 
-					intensity *= falloff;
+					lightColor = lightColor * 
+						CalculateFalloff(light, float4(worldPosition, 1.0)) * 
+						CalculateProjection(light, float4(worldPosition, 1.0));
 				}
-				
-				payload.intensity = intensity;
 
-				if(intensity > 0)
+				if(intensity > 0 && length(lightColor) > 0)
 				{
-					if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS) // For now, all lights will cast shadows.
+					// Initialize the ray payload
+					ShadowHitInfo payload;
+					payload.maxDistance = maxDistance;
+					payload.intensity = intensity;
+
+					if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS)
 					{
 						// We are inside the light radius.
 						// Define a ray, consisting of origin, direction, and the min-max distance values
@@ -102,7 +126,7 @@ void RayGen() {
 					{
 						resultMask += shadowMask;
 
-						localDiffuse += (light.color.rgb * intensity); // TODO: Get real light and color from the light texture.
+						localDiffuse += (light.color.rgb * lightColor); // TODO: Get real light and color from the light texture.
 					}
 				}
 

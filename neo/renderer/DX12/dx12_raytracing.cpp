@@ -21,6 +21,16 @@ namespace DX12Rendering {
 			return false;
 		}
 
+		D3D12_FEATURE_DATA_D3D12_OPTIONS options = {};
+		if (!DX12Rendering::WarnIfFailed(device->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS, &options, sizeof(options)))) {
+			return false;
+		}
+
+		if (options.ResourceBindingTier < D3D12_RESOURCE_BINDING_TIER_3) {
+			DX12Rendering::WarnMessage("Binding Tier is not supported.");
+			return false;
+		}
+
 		return true;
 	}
 
@@ -31,7 +41,8 @@ namespace DX12Rendering {
 		m_hitSignature(NONE),
 		m_width(screenWidth),
 		m_height(screenHeight),
-		m_tlasManager(&m_blasManager)
+		m_tlasManager(&m_blasManager),
+		m_nextDescriptorHeapIndex(0)
 		//m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
 		//m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
@@ -51,6 +62,8 @@ namespace DX12Rendering {
 		{
 			return;
 		}
+
+		m_nextDescriptorHeapIndex = 0;
 
 		if (UINT count = GetBLASManager()->Generate() > 0)
 		{
@@ -154,12 +167,13 @@ namespace DX12Rendering {
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-		// Create a SRV/UAV/CBV descriptor heap. We need 6 entries - 
+		// Create a SRV/UAV/CBV descriptor heap. We need 6 entries + texture entries - 
 		// 2 UAV for the raytracing output
 		// 1 SRV for the TLAS 
 		// 2 SRV for the Depth Texture, Normal Texture
 		// 1 CBV for the Camera properties
-		m_generalUavHeaps = CreateDescriptorHeap(device, 6, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+		// 1024 SRV for textures.
+		m_generalUavHeaps = CreateDescriptorHeap(device, DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 
 		// Add the output buffers
@@ -232,7 +246,29 @@ namespace DX12Rendering {
 		return 0x00000000;
 	}
 
-	bool Raytracing::AddLight(const UINT lightIndex, const UINT shadowMask, const XMFLOAT3 location, XMFLOAT4 color, const float radius, const XMFLOAT4 scissorWindow, bool castsShadows)
+	UINT Raytracing::AddImageToDescriptorHeap(const DX12Rendering::TextureBuffer* texture)
+	{
+		if (m_nextDescriptorHeapIndex >= DX12Rendering::DESCRIPTOR_TEXTURE_COUNT)
+		{
+			return 0;
+		}
+
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+		if (device == nullptr)
+		{
+			return 0;
+		}
+
+		const UINT index = m_nextDescriptorHeapIndex;
+		++m_nextDescriptorHeapIndex;
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart(), index + DX12Rendering::e_RaytracingHeapIndex::SRV_TextureArray /* starting point */, m_cbvHeapIncrementor);
+		device->CreateShaderResourceView(texture->resource.Get(), &texture->textureView, textureHandle);
+
+		return index;
+	}
+
+	bool Raytracing::AddLight(const UINT lightIndex, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows)
 	{
 		static UINT padValue = 0;
 		padValue = (padValue + 1) % 3459871;
@@ -244,6 +280,9 @@ namespace DX12Rendering {
 			return false;
 		}
 
+		m_constantBuffer.lights[index].falloffIndex = 0;
+		m_constantBuffer.lights[index].projectionIndex = 0;
+
 		m_constantBuffer.lights[index].flags = 0;
 
 		m_constantBuffer.lights[index].castsShadows = castsShadows;
@@ -253,13 +292,17 @@ namespace DX12Rendering {
 
 		m_constantBuffer.lights[index].center = location;
 
-		m_constantBuffer.lights[index].radius = radius;
 		m_constantBuffer.lights[index].scissor = scissorWindow;
 
 		m_constantBuffer.lights[index].color = color;
 
-		m_constantBuffer.lights[index].emmisiveRadius.x = m_constantBuffer.lights[index].emmisiveRadius.y = m_constantBuffer.lights[index].emmisiveRadius.z = 1.0f;
-		m_constantBuffer.lights[index].pad1 = padValue;
+		m_constantBuffer.lights[index].projectionS = lightProjection[0];
+		m_constantBuffer.lights[index].projectionT = lightProjection[1];
+		m_constantBuffer.lights[index].projectionQ = lightProjection[2];
+		m_constantBuffer.lights[index].falloffS = lightProjection[3];
+
+		m_constantBuffer.lights[index].falloffIndex = AddImageToDescriptorHeap(falloffTexture);
+		m_constantBuffer.lights[index].projectionIndex = AddImageToDescriptorHeap(projectionTexture);
 
 		++m_constantBuffer.lightCount;
 

@@ -30,6 +30,15 @@ namespace DX12Rendering {
 			));
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
+				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Texture Array */,
+				DESCRIPTOR_TEXTURE_COUNT, /* Total number of possible textures */
+				3 /*t3*/,
+				0, /* space0. We will define different spaces if we want to use more than texture 2D, but use the same data. */
+				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+				DX12Rendering::e_RaytracingHeapIndex::SRV_TextureArray // Starting texture
+			));
+
+			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_CBV /*Camera constant buffer*/,
 				1,
 				0 /*b0*/,
@@ -80,9 +89,10 @@ namespace DX12Rendering {
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Set Samplers
-		const UINT samplerCount = 1;
+		const UINT samplerCount = 2;
 		CD3DX12_STATIC_SAMPLER_DESC staticSampler[samplerCount];
 		staticSampler[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // Point Sampler
+		staticSampler[1].Init(1, D3D12_FILTER_ANISOTROPIC, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // Light projection sampler
 
 		// Describe the raytracing root signature.
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;

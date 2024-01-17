@@ -60,7 +60,9 @@ namespace DX12Rendering {
 		SRV_TLAS,
 		SRV_DepthTexture,
 		SRV_NormalTexture,
-		CBV_CameraProperties
+		CBV_CameraProperties,
+
+		SRV_TextureArray // Used as the starting point for all indexed entries in the descriptor heap
 	};
 
 	namespace Commands

@@ -1,3 +1,9 @@
+#include "functions.inc"
+#include "bindless_textures.inc"
+
+// Minimum distance from the surface, based on the normal vector, where we begin to cast rays.
+static const float k_minSurfaceDistance = 0.1;
+
 // Ray payload. Contains:
 // Diffuse color
 // Emmissive color
@@ -19,17 +25,25 @@ struct Attributes
 struct SceneLight {
     uint    sceneIndex;
     uint    shadowMask;
-    uint    pad1;
-    
-    uint    flags;
+    uint    falloffIndex;
+    uint    projectionIndex;
 
-    float4   emmisiveRadius;
+    uint    flags;
+    uint    pad1;
+    uint    pad2;
+    uint    pad3;
+
     float4   color;
 
-    float3  center;
-    float   radius;
+    float4  center;
     
     float4  scissor; // Light scissor window {left, top, right, bottom}
+
+    // Used to calculate the angle and falloff for the light influence.
+    float4  projectionS;
+    float4  projectionT;
+    float4  projectionQ;
+    float4  falloffS;
 };
 
 struct RenderParameters {
@@ -52,7 +66,7 @@ struct RenderParameters {
 
 #define MAX_SHADOW_LIGHTS 128
 
-struct SceneConstants {
+struct RaytracedSceneConstants {
     RenderParameters rp;
 
     uint lightCount;
@@ -63,15 +77,7 @@ struct SceneConstants {
     SceneLight lights[MAX_SHADOW_LIGHTS];
 };
 
-static float dot2( float2 a, float2 b ) { return dot( a, b ); }
-static float dot3( float3 a, float3 b ) { return dot( a, b ); }
-static float dot3( float3 a, float4 b ) { return dot( a, b.xyz ); }
-static float dot3( float4 a, float3 b ) { return dot( a.xyz, b ); }
-static float dot3( float4 a, float4 b ) { return dot( a.xyz, b.xyz ); }
-static float dot4( float4 a, float4 b ) { return dot( a, b ); }
-static float dot4( float2 a, float4 b ) { return dot( float4( a, 0, 1 ), b ); }
-
-inline float4 GetInverseProjection(float4 location, in SceneConstants constants)
+inline float4 GetInverseProjection(float4 location, in RaytracedSceneConstants constants)
 {
     return float4(
         dot4(location, constants.rp.invProjMatrixX),
@@ -81,7 +87,7 @@ inline float4 GetInverseProjection(float4 location, in SceneConstants constants)
     );
 }
 
-inline float4 GetInverseView(float4 location, in SceneConstants constants)
+inline float4 GetInverseView(float4 location, in RaytracedSceneConstants constants)
 {
     return float4(
         dot4(location, constants.rp.invViewMatrixX),
@@ -91,7 +97,7 @@ inline float4 GetInverseView(float4 location, in SceneConstants constants)
     );
 }
 
-inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in SceneConstants constants)
+inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in RaytracedSceneConstants constants)
 {
     float4 viewPosition = float4(
         lerp(constants.rp.fov.x, constants.rp.fov.z, screenPosition.x),
@@ -133,3 +139,4 @@ float3 random3(float2 st) {
 }
 
 SamplerState    pointSampler : register(s0, space0); // Replace this with Sampler that will grab the exact point information from the shader.
+SamplerState    projectionSampler : register(s1, space0);

@@ -18,10 +18,10 @@ struct VS_IN {
 
 struct VS_OUT {
 	float4 position		: SV_POSITION;
-	float4 texcoord0	: TEXCOORD0;
-	float3 normal		: TEXCOORD1;
-	float3 tangent		: TEXCOORD2;
-	float3 binormal		: TEXCOORD3;
+	float4 texcoord0	: TEXCOORD0_centroid;
+	float3 normal		: TEXCOORD1_centroid;
+	float3 tangent		: TEXCOORD2_centroid;
+	float3 binormal		: TEXCOORD3_centroid;
 	float4 viewPosition	: TEXCOORD4;
 };
 

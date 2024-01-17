@@ -21,6 +21,9 @@ namespace DX12Rendering {
 	const UINT VERTCACHE_VERTEX_MEMORY = 31 * 1024 * 1024 * 256;
 	const UINT VERTCACHE_JOINT_MEMORY= 256 * 1024 * 256;
 
+	const UINT DESCRIPTOR_TEXTURE_COUNT = 1024;
+	const UINT DESCRIPTOR_HEAP_SIZE = 6 /* basic entries */ + DESCRIPTOR_TEXTURE_COUNT /* texture space */;
+
 	enum dxr_renderParm_t {
 		RENDERPARM_GLOBALEYEPOS = 0,
 		RENDERPARM_FOV, // { min fov x, min fov y, max fov x, max fov y }
@@ -44,7 +47,8 @@ namespace DX12Rendering {
 	{
 		UINT lightIndex;
 		UINT shadowMask;
-		UINT pad1;
+		UINT falloffIndex;
+		UINT projectionIndex;
 		
 		union
 		{
@@ -54,14 +58,21 @@ namespace DX12Rendering {
 				bool flagPad[sizeof(UINT) - 1];
 			};
 		};
+		UINT pad1;
+		UINT pad2;
+		UINT pad3;
 
-		XMFLOAT4 emmisiveRadius; // The radius in which the light is visible. This is used to calculate the soft shadows.
 		XMFLOAT4 color;
 
-		XMFLOAT3	center;
-		float		radius;
+		XMFLOAT4	center;
 
 		XMFLOAT4	scissor; // Light view scissor window {left, top, right, bottom}
+
+		// Used to calculate the angle and falloff for the light influence.
+		XMFLOAT4	projectionS;
+		XMFLOAT4	projectionT;
+		XMFLOAT4	projectionQ;
+		XMFLOAT4	falloffS;
 	};
 
 	struct dxr_sceneConstants_t
@@ -94,8 +105,11 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	void ResetLightList();
-	bool AddLight(const UINT index, const UINT shadowMask, const XMFLOAT3 location, XMFLOAT4 color, const float radius, const XMFLOAT4 scissorWindow, bool castsShadows);
+	bool AddLight(const UINT index, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows);
 	UINT GetLightMask(const UINT index);
+
+	/// Adds an image to the descriptor heap and returns the associated index.
+	UINT AddImageToDescriptorHeap(const DX12Rendering::TextureBuffer* texture);
 
 	void GenerateTLAS();
 
@@ -168,6 +182,7 @@ private:
 
 	ComPtr<ID3D12DescriptorHeap> m_generalUavHeaps;
 	ComPtr<ID3D12Resource> m_generalSBTData;
+	UINT m_nextDescriptorHeapIndex;
 
 	ShaderBindingTable m_generalSBTDesc;
 

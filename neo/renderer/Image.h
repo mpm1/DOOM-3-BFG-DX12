@@ -78,6 +78,9 @@ public:
 	// May perform file loading if the image was not preloaded.
 	void		Bind();
 
+	// Setup the texture to be referenced blindlessly. This should be the GPU address to the texture. 
+	const void*		Bindless();
+
 	// Should be called at least once
 	void		SetSamplerState( textureFilter_t tf, textureRepeat_t tr );
 

@@ -953,10 +953,11 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 
 		UINT shadowMask = vLight->shadowMask;
 
-		const XMFLOAT3 location(
+		const XMFLOAT4 location(
 			vLight->globalLightOrigin.x,
 			vLight->globalLightOrigin.y,
-			vLight->globalLightOrigin.z);
+			vLight->globalLightOrigin.z,
+			1.0f);
 
 		XMFLOAT4 scissor(
 			vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
@@ -984,34 +985,27 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				lightScale * lightRegs[lightStage->color.registers[1]],
 				lightScale * lightRegs[lightStage->color.registers[2]],
 				lightRegs[lightStage->color.registers[3]]);
-
+			
 			// apply the world-global overbright and the 2x factor for specular
 			const XMFLOAT4 diffuseColor = lightColor;
 			//const XMFLOAT4 specularColor = lightColor * 2.0f;
 
-			// Mark figure this part out.
-			float* radBegin = vLight->lightDef->parms.lightRadius.ToFloatPtr();
-			float radius = 0;// std::numeric_limits<float>::max(); // TODO: fix for lights that 
-			if (vLight->lightDef->parms.pointLight)
-			{
-				for (uint rCheck = 0; rCheck < 3; ++rCheck)
-				{
-					const float value = std::abs(radBegin[rCheck]);
-
-					if (value > radius)
-					{
-						radius = value;
-					}
-				}
-
-				radius *= 2.0;
-			}
-			else
-			{
-				radius = std::numeric_limits<float>::max();
+			// transform the light project into model local space
+			XMFLOAT4 lightProjection[4];
+			for (int i = 0; i < 4; i++) {
+				memcpy(&lightProjection[i], vLight->lightProject[i].ToFloatPtr(), sizeof(float) * 4);
 			}
 
-			if (!m_raytracing->AddLight(vLight->sceneIndex, vLight->shadowMask, location, lightColor, radius, scissor, true/*vLight->castsShadows*/))
+			// TODO: we need to add the light textures in some cases.
+			// optionally multiply the local light projection by the light texture matrix
+			if (lightStage->texture.hasMatrix) {
+				//RB_BakeTextureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
+			}
+
+			if (!m_raytracing->AddLight(vLight->sceneIndex, 
+				static_cast<const DX12Rendering::TextureBuffer*>(vLight->falloffImage->Bindless()), 
+				static_cast<const DX12Rendering::TextureBuffer*>(lightStage->texture.image->Bindless()), 
+				vLight->shadowMask, location, lightColor, lightProjection, scissor, true/*vLight->castsShadows*/))
 			{
 				// Could not add the raytraced light
 				shadowMask = 0;
