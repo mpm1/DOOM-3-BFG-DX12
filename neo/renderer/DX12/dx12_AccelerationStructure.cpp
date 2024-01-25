@@ -26,14 +26,14 @@ namespace
 			desc.AccelerationStructure = 0;
 
 			// Unreachable
-			desc.InstanceMask = 0x00;
+			desc.InstanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
 		}
 		else
 		{
 			desc.AccelerationStructure = blas->resource->GetGPUVirtualAddress();
 
 			// Always visible.
-			desc.InstanceMask = 0xFF; //TODO: setup so we track shadow casting instances. Eventually we can add surfaces with emmisive as well.
+			desc.InstanceMask = instance.mask; //TODO: setup so we track shadow casting instances. Eventually we can add surfaces with emmisive as well.
 		}
 
 		return result;
@@ -612,7 +612,7 @@ namespace DX12Rendering {
 		return result;
 	}
 
-	void TLASManager::AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE typesMask)
+	void TLASManager::AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, ACCELLERATION_INSTANCE_MASK instanceMask)
 	{
 		DX12Rendering::WriteLock instanceLock(m_instanceLock);
 		const BottomLevelAccelerationStructure* blas = m_blasManager->GetBLAS(blasId);
@@ -624,21 +624,23 @@ namespace DX12Rendering {
 		MarkDirty();
 
 		DX12Rendering::Instance* instance;
-		if (TryGetWriteInstance(entityId, typesMask, &instance))
+		if (TryGetWriteInstance(entityId, instanceTypes, &instance))
 		{
 			instance->blasId = blasId;
+			instance->mask = instanceMask;
+
 			memcpy(instance->transformation, transform, sizeof(float[3][4]));
 			return;
 		}
 
 		UINT hitShaderIndex = 0; /* TODO: Find the hit group index containing the normal map of the surface. */
-		if ((typesMask && INSTANCE_TYPE_STATIC) != 0)
+		if ((instanceTypes && INSTANCE_TYPE_STATIC) != 0)
 		{
-			m_staticInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex);
+			m_staticInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask);
 		}
-		else if ((typesMask && INSTANCE_TYPE_DYNAMIC) != 0)
+		else if ((instanceTypes && INSTANCE_TYPE_DYNAMIC) != 0)
 		{
-			m_dynamicInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex);
+			m_dynamicInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask);
 		}
 	}
 

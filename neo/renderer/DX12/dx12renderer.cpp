@@ -824,6 +824,18 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
 			continue;
 		}
 
+		if (!surf.shader->LightCastsShadows())
+		{
+			// If we dont cast shadows, drop it.
+			continue;
+		}
+
+		if (surf.shader->IsPortalSky())
+		{
+			// No point in casting against the sky.
+			continue;
+		}
+
 		const vertCacheHandle_t& vbHandle = surf.geometry->ambientCache;
 		const vertCacheHandle_t& ibHandle = surf.geometry->indexCache;
 
@@ -878,7 +890,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
 	}
 }
 
-void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
+void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
 {
 	if (!IsRaytracingEnabled()) {
 		return;
@@ -887,7 +899,7 @@ void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderMod
 	dxHandle_t modelHandle = GetHandle(&model);
 	dxHandle_t instanceHandle = static_cast<dxHandle_t>(entityIndex);
 
-	m_raytracing->GetTLASManager()->AddInstance(instanceHandle, modelHandle, transform, typesMask);
+	m_raytracing->GetTLASManager()->AddInstance(instanceHandle, modelHandle, transform, typesMask, instanceMask);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)
@@ -999,6 +1011,8 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 			// TODO: we need to add the light textures in some cases.
 			// optionally multiply the local light projection by the light texture matrix
 			if (lightStage->texture.hasMatrix) {
+				Mark start here and fix this up
+					Also fix the flicker
 				//RB_BakeTextureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
 			}
 

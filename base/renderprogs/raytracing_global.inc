@@ -22,6 +22,9 @@ struct Attributes
 
 #define LIGHT_FLAG_CASTS_SHADOWS 0x00000001
 
+#define INSTANCE_MASK_CAST_SHADOW 0x01
+#define INSTANCE_MASK_SKYBOX 0x02
+
 struct SceneLight {
     uint    sceneIndex;
     uint    shadowMask;

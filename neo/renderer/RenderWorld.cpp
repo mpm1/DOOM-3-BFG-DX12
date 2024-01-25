@@ -257,6 +257,18 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 		entityDefs.Append( NULL );
 	}
 
+	bool shouldAddTLAS = re->hModel != NULL && (re->hModel->ModelHasInteractingSurfaces() || re->hModel->ModelHasShadowCastingSurfaces());
+	
+	UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+	{
+		// Calculate the instance mask
+		if (re->hModel->ModelHasShadowCastingSurfaces())
+		{
+			instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+		}
+	}
+
+
 	idRenderEntityLocal	*def = entityDefs[entityHandle];
 	if ( def != NULL ) {
 
@@ -285,11 +297,9 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 					R_ClearEntityDefDynamicModel( def );
 					def->parms = *re;
 
-					if (re->hModel != NULL &&
-						(re->hModel->ModelHasInteractingSurfaces() ||
-							re->hModel->ModelHasShadowCastingSurfaces()))
+					if (shouldAddTLAS)
 					{
-						dxRenderer.DXR_AddEntityToTLAS(entityHandle, *def->parms.hModel, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
+						dxRenderer.DXR_AddEntityToTLAS(entityHandle, *def->parms.hModel, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
 					}
 
 					return;
@@ -335,7 +345,10 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 	// that may contain the updated surface
 	R_CreateEntityRefs( def );	
 
-	dxRenderer.DXR_AddEntityToTLAS(entityHandle, *def->parms.hModel, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
+	if (shouldAddTLAS)
+	{
+		dxRenderer.DXR_AddEntityToTLAS(entityHandle, *def->parms.hModel, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
+	}
 }
 
 /*

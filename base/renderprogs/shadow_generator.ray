@@ -113,7 +113,7 @@ void RayGen() {
 						TraceRay(
 							SceneBVH,
 							RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-							0xFF,
+							INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
 							0,
 							0, // First Hit Shader
 							0, // Miss Shader

@@ -432,7 +432,16 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 		(renderEntity->hModel->ModelHasInteractingSurfaces() ||
 			renderEntity->hModel->ModelHasShadowCastingSurfaces())) 
 	{
-		dxRenderer.DXR_AddEntityToTLAS(entityIndex, *entityDef->parms.hModel, entityDef->modelRenderMatrix[0], entityDef->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC);
+		UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+		{
+			// Calculate the instance mask
+			if (renderEntity->hModel->ModelHasShadowCastingSurfaces())
+			{
+				instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+			}
+		}
+
+		dxRenderer.DXR_AddEntityToTLAS(entityIndex, *entityDef->parms.hModel, entityDef->modelRenderMatrix[0], entityDef->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
 	}
 
 	// if we aren't visible and none of the shadows stretch into the view,
