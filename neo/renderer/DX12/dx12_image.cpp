@@ -110,15 +110,21 @@ void idImage::SubImageUpload(int mipLevel, int x, int y, int z, int width, int h
 
 	if (opts.format == FMT_RGB565) {
 
-		auto data = std::make_unique<byte[]>(imageSize);
-		RGB565SwapBytes(imageSize, static_cast<const byte*>(pic), data.get());
+		byte* data = dxRenderer.GetTextureManager()->CreateTemporaryImageStorage(imageSize);// std::make_unique<byte[]>(imageSize);
+		RGB565SwapBytes(imageSize, static_cast<const byte*>(pic), data);
 
 #ifdef _DEBUG
-		RGB565Image debugImg = { data.get(), width, height };
-		RGB565Image debugImgFull = { data.get(), width << 1, height << 1 };
+		static RGB565Image topDebugImg;
+		RGB565Image debugImg = { data, width, height };
+		
+		if (mipLevel == 0)
+		{
+			//Used to check if the top level image is being overridden
+			topDebugImg = debugImg;
+		}
 #endif // _DEBUG
 
-		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, data.get());
+		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, data);
 	}
 	else {
 		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, pic);

@@ -1011,8 +1011,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 			// TODO: we need to add the light textures in some cases.
 			// optionally multiply the local light projection by the light texture matrix
 			if (lightStage->texture.hasMatrix) {
-				Mark start here and fix this up
-					Also fix the flicker
+				// Mark, implement
 				//RB_BakeTextureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
 			}
 

@@ -22,7 +22,7 @@ namespace DX12Rendering
 	}
 
 	TextureManager::TextureManager() :
-		m_textureUploadHeap(3840*2160*4*16, 512, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap")
+		m_textureUploadHeap(3840*2160*4*16, D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap")
 	{
 
 	}
@@ -174,6 +174,19 @@ namespace DX12Rendering
 		copyCommands->Cycle();
 
 		DX12Rendering::CaptureEventEnd(copyCommands);
+
+		// Clean out the temp images
+		m_tempImages.clear();
+	}
+
+	byte* TextureManager::CreateTemporaryImageStorage(const UINT imageSize)
+	{
+		assert(imageSize >= 2);
+		// TODO: Remove and just use unique_ptr
+		auto data = std::make_unique<byte[]>(DX12_ALIGN(imageSize, 512));
+		m_tempImages.push_back(std::move(data));
+
+		return m_tempImages.back().get();
 	}
 
 	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState) 
@@ -217,14 +230,16 @@ namespace DX12Rendering
 
 			SetTextureCopyState(buffer, mipLevel);
 
+			ScratchBuffer& uploadHeap = m_textureUploadHeap;
+
 			UINT64 intermediateOffset;
-			if (!m_textureUploadHeap.RequestSpace(copyCommands, imageSize, intermediateOffset, true))
+			if (!uploadHeap.RequestSpace(copyCommands, imageSize, intermediateOffset, true))
 			{
 				copyCommands->Cycle();
 				m_textureUploadHeap.fence.Wait(); // Since we are not streaming in textures, we'll forcfully wait for our upload.
 			}
 
-			copyCommands->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
+			copyCommands->AddCommandAction([image, bytesPerRow, imageSize, mipLevel, resourceIndex, intermediateOffset, &uploadHeap, &buffer](ID3D12GraphicsCommandList4* commandList)
 			{
 				D3D12_SUBRESOURCE_DATA textureData = {};
 				textureData.pData = image;
@@ -233,7 +248,7 @@ namespace DX12Rendering
 
 				const UINT subresource = D3D12CalcSubresource(mipLevel, resourceIndex, 0, buffer->m_textureDesc.MipLevels, buffer->m_textureDesc.DepthOrArraySize);
 
-				UpdateSubresources(commandList, buffer->resource.Get(), m_textureUploadHeap.resource.Get(), intermediateOffset, subresource, 1, &textureData);
+				UpdateSubresources(commandList, buffer->resource.Get(), uploadHeap.resource.Get(), intermediateOffset, subresource, 1, &textureData);
 			});
 		}
 		else

@@ -35,7 +35,6 @@ namespace DX12Rendering
 
 		const CD3DX12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptorHandle() const { return m_gpuHandle; }
 		void SetGPUDescriptorHandle(CD3DX12_GPU_DESCRIPTOR_HANDLE handle) { m_gpuHandle = handle; }
-
 	private:
 		D3D12_RESOURCE_DESC m_textureDesc;
 		CD3DX12_GPU_DESCRIPTOR_HANDLE m_gpuHandle;
@@ -66,10 +65,16 @@ namespace DX12Rendering
 		void SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);
 
 		TextureBuffer* GetGlobalTexture(eGlobalTexture textureId);
+
+		// Stores images in temporary data. This is reset on EndTextureWrite.
+		byte* CreateTemporaryImageStorage(const UINT imageSize);
+
 	private:
 		ScratchBuffer m_textureUploadHeap;
 		// TODO: Create bindless textures.
 		std::vector<DX12Rendering::TextureBuffer*> m_textures; // Stores the active texture information in the scene.
+
+		std::vector<std::unique_ptr<byte[]>> m_tempImages;
 	};
 }
 #endif
