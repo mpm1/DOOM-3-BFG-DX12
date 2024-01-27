@@ -36,6 +36,16 @@ namespace DX12Rendering
 		INSTANCE_TYPE_DYNAMIC = 1 << 1
 	} 	ACCELERATION_INSTANCE_TYPE;
 
+	typedef
+		enum ACCELLERATION_INSTANCE_MASK
+	{
+		INSTANCE_MASK_NONE = 0,
+		INSTANCE_MASK_CAST_SHADOW = 1 << 0,
+		INSTANCE_MASK_SKYBOX = 1 << 1
+
+	} ACCELLERATION_INSTANCE_MASK;
+
+
 	DEFINE_ENUM_FLAG_OPERATORS(ACCELERATION_INSTANCE_TYPE);
 
 	struct DX12AccelerationObject {
@@ -52,12 +62,14 @@ namespace DX12Rendering
 		const dxHandle_t	instanceId;
 		dxHandle_t			blasId;
 		UINT				hitGroupIndex; // TODO: We will change this to point to the hitGroup in the stack that contains the normal map for the surface.
-		//TODO: Add support for bone information.
+		UINT				mask; // ACCELLERATION_INSTANCE_MASK
+										   //TODO: Add support for bone information.
 
-		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId, UINT hitGroupIndex) :
+		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId, UINT hitGroupIndex, ACCELLERATION_INSTANCE_MASK mask) :
 			instanceId(id),
 			blasId(blasId),
 			hitGroupIndex(hitGroupIndex),
+			mask(mask),
 			transformation{}
 		{
 			std::memcpy(transformation, srcTransformation, sizeof(float[3][4]));
@@ -189,7 +201,7 @@ public:
 
 	TopLevelAccelerationStructure& GetCurrent() { return m_tlas; }
 
-	void AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE typesMask);
+	void AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, const ACCELLERATION_INSTANCE_MASK instanceMask);
 
 	void AddGPUWait(DX12Rendering::Commands::CommandList* commandList) { m_tlas.fence.GPUWait(commandList->GetCommandQueue()); }
 

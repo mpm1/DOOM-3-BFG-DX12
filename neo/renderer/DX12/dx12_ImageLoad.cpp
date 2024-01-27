@@ -500,6 +500,22 @@ void idImage::Bind() {
 
 }
 
+const void* idImage::Bindless() {
+
+	RENDERLOG_PRINTF("idImage::Bindless( %s )\n", GetName());
+
+	// load the image if necessary (FIXME: not SMP safe!)
+	if (!IsLoaded()) {
+		// load the image on demand here, which isn't our normal game operating mode
+		ActuallyLoadImage(true);
+	}
+
+	const DX12Rendering::TextureBuffer* resource = static_cast<DX12Rendering::TextureBuffer*>(textureResource);
+
+	return resource;
+}
+
+
 /*
 ================
 MakePowerOfTwo

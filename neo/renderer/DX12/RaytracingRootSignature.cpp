@@ -17,16 +17,25 @@ namespace DX12Rendering {
 				0 /*t0*/,
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				1
+				DX12Rendering::e_RaytracingHeapIndex::SRV_TLAS
 			));
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
-				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /*Top-level acceleration structure*/,
-				1,
+				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Depth Texture */,
+				2, /* Two descriptors: depth, normal */
 				1 /*t1*/,
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				2
+				DX12Rendering::e_RaytracingHeapIndex::SRV_DepthTexture // Starting texture
+			));
+
+			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
+				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Texture Array */,
+				DESCRIPTOR_TEXTURE_COUNT, /* Total number of possible textures */
+				3 /*t3*/,
+				0, /* space0. We will define different spaces if we want to use more than texture 2D, but use the same data. */
+				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+				DX12Rendering::e_RaytracingHeapIndex::SRV_TextureArray // Starting texture
 			));
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
@@ -35,19 +44,30 @@ namespace DX12Rendering {
 				0 /*b0*/,
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				3
+				DX12Rendering::e_RaytracingHeapIndex::CBV_CameraProperties
 			));
 		}
 
 		if (flags & WRITE_OUTPUT > 0) {
+			// Shadow Mask Buffer
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_UAV /* UAV representing the output buffer*/,
-				1 /*1 descriptor */,
-				0 /*u0*/,
+				2 /*2 descriptors */,
+				0 /*u0, u1*/,
 				0 /*use the implicit register space 0*/,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				0 /*heap slot where the UAV is defined*/
+				DX12Rendering::e_RaytracingHeapIndex::UAV_ShadowMap /*heap slot where the first UAV is defined*/
 			));
+
+			// Diffuse Buffer
+			//descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
+			//	D3D12_DESCRIPTOR_RANGE_TYPE_UAV /* UAV representing the output buffer*/,
+			//	1 /*1 descriptor */,
+			//	1 /*u1*/,
+			//	0 /*use the implicit register space 0*/,
+			//	D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+			//	DX12Rendering::e_RaytracingHeapIndex::UAV_DiffuseMap /*heap slot where the UAV is defined*/
+			//));
 		}
 		
 		if (descriptorRanges.size() > 0) {
@@ -69,9 +89,10 @@ namespace DX12Rendering {
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Set Samplers
-		const UINT samplerCount = 1;
+		const UINT samplerCount = 2;
 		CD3DX12_STATIC_SAMPLER_DESC staticSampler[samplerCount];
 		staticSampler[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // Point Sampler
+		staticSampler[1].Init(1, D3D12_FILTER_ANISOTROPIC, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // Light projection sampler
 
 		// Describe the raytracing root signature.
 		CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;

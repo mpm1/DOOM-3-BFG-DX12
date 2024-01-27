@@ -1,16 +1,18 @@
 #include "raytracing_global.inc"
 
 // Raytracing output to texture, accessed as UAV
-RWTexture2D<uint4> gOutput :register(u0);
+RWTexture2D<uint4> shadowMask :register(u0);
+RWTexture2D<float4> diffuseMask :register(u1);
 
 // Raytracing acceleration structure, accessed as a SRV
 RaytracingAccelerationStructure SceneBVH :register(t0);
 
 // Depth buffer used to access the initial location
-uniform Texture2D<float4>	depthBuffer : register(t1);
+uniform Texture2D<float>	depthBuffer : register(t1);
+uniform Texture2D<float4>	flatNormalMap	: register(t2); // Used to know the polygon normal
 
 // Constants used to define the camera state
-ConstantBuffer<SceneConstants> sceneConstants : register(b0, space0);
+ConstantBuffer<RaytracedSceneConstants> sceneConstants : register(b0, space0);
 
 bool IsInsideViewport(float2 p, float4 viewport)
 {
@@ -20,9 +22,33 @@ bool IsInsideViewport(float2 p, float4 viewport)
 	return true;
 }
 
+float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
+{
+	Texture2D<float4> falloffTexture =  GetBindlessTexture4f(light.falloffIndex);
+	float4 falloff = falloffTexture.SampleLevel(projectionSampler, float2(dot4( worldPosition, light.falloffS ), 0), 0);
+	
+	return falloff.rgb;
+}
+
+float3 CalculateProjection(SceneLight light, float4 worldPosition)
+{
+	float4 projection = float4(
+		dot4(worldPosition, light.projectionS),
+		dot4(worldPosition, light.projectionT),
+		0.0f,
+		dot4(worldPosition, light.projectionQ)
+	);
+
+	projection.xy /= projection.w;
+	Texture2D<float4> projectionTexture = GetBindlessTexture4f(light.projectionIndex);
+
+	return projectionTexture.SampleLevel(projectionSampler, projection.xy, 0).rgb;
+}
+
 [shader("raygeneration")]
 void RayGen() {
 	uint resultMask = 0x00000000;
+	float3 resultDiffuse = float3(0.0, 0.0, 0.0);
 
 	// Get the ray location on the screen
 	float2 lerpValues = ((float2)DispatchRaysIndex() + 0.5) / (float2)DispatchRaysDimensions();
@@ -35,60 +61,80 @@ void RayGen() {
 
 	// Get the depth buffer location
 	float depth = depthBuffer.GatherRed(pointSampler, lerpValues.xy).r;
+	float3 flatNormal = normalize((flatNormalMap.SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
+	float3 normal = flatNormal; // TODO: have a new texture that uses this more complex normal.
 
-	if(depth <= 1.0f)
-	{
-		float minLerpRange = clamp((depth - 0.96) / (1.0 - 0.96), 0, 1.0);
-		float minDist = lerp(0.1, 0.5, minLerpRange); // The further back we are, the more error we want to allow for.
-		
-		float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz;
+	{		
+		float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz + (k_minSurfaceDistance * flatNormal);
 		float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
-
-		float3 startingPoint = worldPosition + (pointToEye * minDist); // Start slightly out from the world position.
 
 		for(uint lightIndex = 0; lightIndex < sceneConstants.lightCount; ++lightIndex)
 		{
 			SceneLight light = sceneConstants.lights[lightIndex];
 			uint shadowMask = light.shadowMask;
 
+			//float3 randValue = normalize(random3(lerpValues.xy + light.pad1) * 2.0 - 1.0); //TODO: Add a time value
+
 			//TODO: fix the scissor window. //if (IsInsideViewport(screenLocation.xy, light.scissor))
 			{
-				float3 lightPosition = light.location;
+				float3 localDiffuse = float3(0.0, 0.0, 0.0); // We can average this value if we want to cast multiple rays for this light.
+				float3 lightPosition = light.center; // + (light.emmisiveRadius.xyz * randValue);
+				float maxDistance = distance(lightPosition, worldPosition);
 
-				// Initialize the ray payload
-				ShadowHitInfo payload;
-				payload.maxDistance = distance(lightPosition, startingPoint);
-				payload.intensity = 0.0;
+				float3 lightVector = normalize(lightPosition - worldPosition);
 
-				//if(distance(lightPosition, worldPosition) <= payload.maxDistance)
+				float intensity = saturate(dot(normal, lightVector));
+				float3 lightColor = float3(intensity, intensity, intensity);
+
+				if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
 				{
-					// We are inside the light radius.
-					// Define a ray, consisting of origin, direction, and the min-max distance values
-					RayDesc ray;
-					ray.TMin = 0.0;
-					ray.TMax = payload.maxDistance;
-					ray.Origin = startingPoint;
-					ray.Direction = normalize(lightPosition - startingPoint);
+					lightColor = lightColor * 
+						CalculateFalloff(light, float4(worldPosition, 1.0)) * 
+						CalculateProjection(light, float4(worldPosition, 1.0));
+				}
 
-					TraceRay(
-						SceneBVH,
-						RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-						0xFF,
-						0,
-						0, // First Hit Shader
-						0, // Miss Shader
-						ray,
-						payload
-					);
+				if(intensity > 0 && length(lightColor) > 0)
+				{
+					// Initialize the ray payload
+					ShadowHitInfo payload;
+					payload.maxDistance = maxDistance;
+					payload.intensity = intensity;
 
-					if (payload.intensity > 0.5)
+					if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS)
+					{
+						// We are inside the light radius.
+						// Define a ray, consisting of origin, direction, and the min-max distance values
+						RayDesc ray;
+						ray.TMin = 1.0;
+						ray.TMax = payload.maxDistance;
+						ray.Origin = worldPosition;
+						ray.Direction = lightVector;
+
+						TraceRay(
+							SceneBVH,
+							RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+							INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
+							0,
+							0, // First Hit Shader
+							0, // Miss Shader
+							ray,
+							payload
+						);
+					}
+
+					if (payload.intensity > 0.0)
 					{
 						resultMask += shadowMask;
+
+						localDiffuse += (light.color.rgb * lightColor); // TODO: Get real light and color from the light texture.
 					}
 				}
-			}
+
+				resultDiffuse += saturate(localDiffuse); // TODO: Change this to a colour light space
+			} 
 		}
 	}
 	
-	gOutput[DispatchRaysIndex().xy] = ConvertShadowmapMaskToVector(resultMask);
+	shadowMask[DispatchRaysIndex().xy] = ConvertShadowmapMaskToVector(resultMask);
+	diffuseMask[DispatchRaysIndex().xy] = float4(saturate(resultDiffuse.rgb), 1.0);
 }

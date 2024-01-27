@@ -1,3 +1,9 @@
+#include "functions.inc"
+#include "bindless_textures.inc"
+
+// Minimum distance from the surface, based on the normal vector, where we begin to cast rays.
+static const float k_minSurfaceDistance = 0.1;
+
 // Ray payload. Contains:
 // Diffuse color
 // Emmissive color
@@ -14,20 +20,38 @@ struct Attributes
   float4	location; // Location of the hit.
 };
 
+#define LIGHT_FLAG_CASTS_SHADOWS 0x00000001
+
+#define INSTANCE_MASK_CAST_SHADOW 0x01
+#define INSTANCE_MASK_SKYBOX 0x02
+
 struct SceneLight {
     uint    sceneIndex;
     uint    shadowMask;
+    uint    falloffIndex;
+    uint    projectionIndex;
+
+    uint    flags;
     uint    pad1;
     uint    pad2;
+    uint    pad3;
 
-    float3  location;
-    float   radius;
+    float4   color;
+
+    float4  center;
     
     float4  scissor; // Light scissor window {left, top, right, bottom}
+
+    // Used to calculate the angle and falloff for the light influence.
+    float4  projectionS;
+    float4  projectionT;
+    float4  projectionQ;
+    float4  falloffS;
 };
 
 struct RenderParameters {
-	float4 globalEyePos;
+	float4 globalEyePos; // {eye.x, eye.y, eye.z, zNear plane}
+    float4 fov; // { min fovX, min fovY, max fovX, max fovY }  
     float4 viewport; // {left, top, right, bottom}
     float4 scissor; // {left, top, right, bottom}
 
@@ -43,9 +67,9 @@ struct RenderParameters {
 
 };
 
-#define MAX_SHADOW_LIGHTS 32 // Only 32 so that we can mask each result to a bit.
+#define MAX_SHADOW_LIGHTS 128
 
-struct SceneConstants {
+struct RaytracedSceneConstants {
     RenderParameters rp;
 
     uint lightCount;
@@ -56,15 +80,7 @@ struct SceneConstants {
     SceneLight lights[MAX_SHADOW_LIGHTS];
 };
 
-static float dot2( float2 a, float2 b ) { return dot( a, b ); }
-static float dot3( float3 a, float3 b ) { return dot( a, b ); }
-static float dot3( float3 a, float4 b ) { return dot( a, b.xyz ); }
-static float dot3( float4 a, float3 b ) { return dot( a.xyz, b ); }
-static float dot3( float4 a, float4 b ) { return dot( a.xyz, b.xyz ); }
-static float dot4( float4 a, float4 b ) { return dot( a, b ); }
-static float dot4( float2 a, float4 b ) { return dot( float4( a, 0, 1 ), b ); }
-
-inline float4 GetInverseProjection(float4 location, in SceneConstants constants)
+inline float4 GetInverseProjection(float4 location, in RaytracedSceneConstants constants)
 {
     return float4(
         dot4(location, constants.rp.invProjMatrixX),
@@ -74,7 +90,7 @@ inline float4 GetInverseProjection(float4 location, in SceneConstants constants)
     );
 }
 
-inline float4 GetInverseView(float4 location, in SceneConstants constants)
+inline float4 GetInverseView(float4 location, in RaytracedSceneConstants constants)
 {
     return float4(
         dot4(location, constants.rp.invViewMatrixX),
@@ -84,14 +100,16 @@ inline float4 GetInverseView(float4 location, in SceneConstants constants)
     );
 }
 
-inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in SceneConstants constants)
+inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in RaytracedSceneConstants constants)
 {
-    screenPosition.y = 1.0 - screenPosition.y; // Invert the y for directx style coordinates.
+    float4 viewPosition = float4(
+        lerp(constants.rp.fov.x, constants.rp.fov.z, screenPosition.x),
+        lerp(constants.rp.fov.y, constants.rp.fov.w, 1.0 - screenPosition.y),
+        -constants.rp.globalEyePos.w, // We make this negitive due to the system using OpenGL coordinates
+        1.0
+    );
 
-    float4 clipPosition = float4(screenPosition * 2.0 - 1.0, depth, 1.0);
-    float4 viewPosition = GetInverseProjection(clipPosition, constants);
-    
-    viewPosition /= viewPosition.w;
+    viewPosition.xyz = normalize(viewPosition.xyz) * depth;
 
     float4 worldPosition = GetInverseView(viewPosition, constants);
 
@@ -110,4 +128,18 @@ uint4 ConvertShadowmapMaskToVector(uint shadowMask)
     return result;
 }
 
-SamplerState    pointSampler : register(s0, space0); // Sampler that will grab the exact point information from the shader.
+// Temp random function. found here: https://thebookofshaders.com/10/
+float random1(float2 st, float2 dotDir) {
+    return frac(sin(dot(st.xy, dotDir)) * 43758.5453123);
+}
+
+float3 random3(float2 st) {
+    return float3(
+		random1(st, float2(12.9898, 78.233)),
+		random1(st, float2(39.346, 11.135)),
+		random1(st, float2(73.156, 52.235))
+	);
+}
+
+SamplerState    pointSampler : register(s0, space0); // Replace this with Sampler that will grab the exact point information from the shader.
+SamplerState    projectionSampler : register(s1, space0);

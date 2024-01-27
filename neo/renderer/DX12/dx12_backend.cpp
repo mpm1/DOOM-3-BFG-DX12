@@ -420,7 +420,7 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 }
 
 void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t vbHandle, const size_t vertexStride, const DX12Rendering::eSurfaceVariant variant) {
-	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	auto commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandList();
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawElementsWithCounters");
 
 	dxRenderer.SetCommandListDefaults(false);
@@ -756,8 +756,8 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	renderLog.OpenMainBlock(MRB_FILL_DEPTH_BUFFER);
 	renderLog.OpenBlock("RB_FillDepthBufferFast");
 
-	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DepthPass");
+	DX12Rendering::RenderPassBlock renderPassBlock("DepthPass", DX12Rendering::Commands::DIRECT);
+	DX12Rendering::Commands::CommandList* commandList = renderPassBlock.GetCommandList();
 
 	GL_StartDepthPass(backEnd.viewDef->scissor);
 
@@ -1112,7 +1112,7 @@ static void RB_StencilShadowPass(const drawSurf_t* drawSurfs, const viewLight_t*
 		return;
 	}
 	
-	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	auto commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandList();
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_StencilShadowPass");
 
 	RENDERLOG_PRINTF("---------- RB_StencilShadowPass ----------\n");
@@ -1414,7 +1414,7 @@ static void RB_StencilSelectLight(const viewLight_t* vLight) {
 	// TODO: Implement
 	renderLog.OpenBlock("Stencil Select");
 
-	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	auto commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandList();
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_StencilSelectLight");
 
 	// enable the light scissor
@@ -1825,9 +1825,14 @@ RB_DrawGBuffer
 ==================
 */
 static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
-	// TODO: FIX THIS UP TO PROPERLY CREATE SOME USEFUL BUFFERS
-	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawGBuffer");
+	const UINT surfaceCount = 2;
+	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
+		DX12Rendering::eRenderSurface::Normal,
+		DX12Rendering::eRenderSurface::ViewDepth
+	};
+
+	DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
+
 	//Set this to write to the appropriate render surfaces
 	GL_SelectTexture(0);
 
@@ -1840,9 +1845,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		}
 		// TODO: Handle Sub Views
 	}
-
-	const drawSurf_t** perforatedSurfaces = (const drawSurf_t**)_alloca(numDrawSurfs * sizeof(drawSurf_t*));
-	int numPerforatedSurfaces = 0;
 
 	// draw all the opaque surfaces and build up a list of perforated surfaces that
 	// we will defer drawing until all opaque surfaces are done
@@ -1862,12 +1864,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		if (shader->Coverage() == MC_TRANSLUCENT) {
 			continue;
 		}
-		if (shader->Coverage() == MC_PERFORATED) {
-			// save for later drawing
-			perforatedSurfaces[numPerforatedSurfaces] = surf;
-			numPerforatedSurfaces++;
-			continue;
-		}
 
 		// set mvp matrix
 		if (surf->space != backEnd.currentSpace) {
@@ -1882,11 +1878,22 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 				modelMatrix[8], modelMatrix[9], modelMatrix[10], modelMatrix[11],
 				modelMatrix[12], modelMatrix[13], modelMatrix[14], modelMatrix[15]
 			); // TODO: Precalculate value
-			normalMatrix.Inverse();
+			//normalMatrix = normalMatrix.Transpose();
+			normalMatrix = normalMatrix.Inverse();
 			float normalMatrixTranspose[16];
 			R_MatrixTranspose(normalMatrix.ToFloatPtr(), normalMatrixTranspose);
 			//TODO: Find the appropriate matrix
 			SetVertexParms(RENDERPARM_NORMALMATRIX_X, normalMatrix.ToFloatPtr(), 4);
+
+			// set model Matrix
+			float modelMatrixTranspose[16];
+			R_MatrixTranspose(surf->space->modelMatrix, modelMatrixTranspose);
+			SetVertexParms(RENDERPARM_MODELMATRIX_X, modelMatrixTranspose, 4);
+
+			// Set ModelView Matrix
+			float modelViewMatrixTranspose[16];
+			R_MatrixTranspose(surf->space->modelViewMatrix, modelViewMatrixTranspose);
+			SetVertexParms(RENDERPARM_MODELVIEWMATRIX_X, modelViewMatrixTranspose, 4);
 		}
 
 		const idMaterial* surfaceShader = surf->material;
@@ -1967,13 +1974,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		// draw it solid
 		RB_DrawElementsWithCounters(surf);
 	}
-
-	// draw all perforated surfaces with the general code path
-	if (numPerforatedSurfaces > 0) {
-		DX12Rendering::Commands::CommandListCycleBlock subCycleBlock(commandList, "PerforatedSurfacs");
-
-		//TODO: Create the perferated codepath.
-	}
 }
 
 /*
@@ -1996,8 +1996,8 @@ static void RB_DrawInteractions() {
 	renderLog.OpenMainBlock(MRB_DRAW_INTERACTIONS);
 	renderLog.OpenBlock("RB_DrawInteractions");
 
-	auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DrawInteractions");
+	DX12Rendering::RenderPassBlock renderPassBlock("DrawInteractions", DX12Rendering::Commands::DIRECT);
+	auto commandList = renderPassBlock.GetCommandList();
 
 	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
 
@@ -2008,11 +2008,7 @@ static void RB_DrawInteractions() {
 	//
 	// for each light, perform shadowing and adding
 	//
-	UINT totalLights = 0;
 	for (const viewLight_t* vLight = backEnd.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
-		const UINT sceneIndex = totalLights;
-		++totalLights;
-
 		// do fogging later
 		if (vLight->lightShader->IsFogLight()) {
 			continue;
@@ -2025,7 +2021,7 @@ static void RB_DrawInteractions() {
 			continue;
 		}
 
-		bool useRaytracedShadows = dxRenderer.SetActiveLight(sceneIndex).shadowMask > 0;
+		bool useRaytracedShadows = dxRenderer.SetActiveLight(vLight->sceneIndex).shadowMask > 0;
 
 		// Set command list.
 		//dxRenderer.ExecuteCommandList();
@@ -2761,10 +2757,14 @@ static void RB_FogAllLights() {
 	renderLog.OpenMainBlock(MRB_FOG_ALL_LIGHTS);
 	renderLog.OpenBlock("RB_FogAllLights");
 
+	DX12Rendering::RenderPassBlock renderPass("RB_FogAllLights", DX12Rendering::Commands::DIRECT);
+
 	// force fog plane to recalculate
 	backEnd.currentSpace = NULL;
 
 	for (viewLight_t* vLight = backEnd.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
+		dxRenderer.SetActiveLight(vLight->sceneIndex);
+
 		if (vLight->lightShader->IsFogLight()) {
 			RB_FogPass(vLight->globalInteractions, vLight->localInteractions, vLight);
 		}
@@ -2845,7 +2845,19 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		SetVertexParm(RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
 
 		if (raytracedEnabled)
-		{
+		{			
+			float fov[4]; // { xmin, ymin, xmax, ymax }
+			const float zNear = (viewDef->renderView.cramZNear) ? (r_znear.GetFloat() * 0.25f) : r_znear.GetFloat();
+
+			fov[3] = zNear * tan(viewDef->renderView.fov_y * idMath::PI / 360.0f); // ymax
+			fov[1] = -fov[3]; // ymin
+
+			fov[2] = zNear * tan(viewDef->renderView.fov_x * idMath::PI / 360.0f); // xmax
+			fov[0] = -fov[2]; // xmain
+
+			dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_FOV, fov);
+
+			parm[3] = zNear;
 			dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
 		}
 
@@ -2934,16 +2946,23 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
 
 		// Fill the GBuffer
-		//RB_DrawGBuffer(drawSurfs, numDrawSurfs);
+		RB_DrawGBuffer(drawSurfs, numDrawSurfs);
 
 		// Build our light list
 		dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix); //Mark, find out why lights keep changing location.
 
 		// Copy the depth buffer to a texture
-		auto depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+		auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
+		viewDepth->fence.Wait();
+
 		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
-		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::DEPTH_TEXTURE);
-		depthStencil->CopySurfaceToTexture(depthTexture, textureManager)->Wait();
+		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
+		viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
+
+		// Copy the normal map to a texture
+		auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);
+		DX12Rendering::TextureBuffer* normalTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
+		normalMap->CopySurfaceToTexture(normalTexture, textureManager)->Wait();
 	}
 
 	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); 
@@ -2972,8 +2991,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	//-------------------------------------------------
 	int processed = 0;
 	if (!r_skipShaderPasses.GetBool()) {
-		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
-		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "Draw_ShaderPasses");
+		DX12Rendering::RenderPassBlock renderPassBlock("Draw_ShaderPasses", DX12Rendering::Commands::DIRECT);
 
 		renderLog.OpenMainBlock(MRB_DRAW_SHADER_PASSES);
 		float guiScreenOffset;
@@ -3044,11 +3062,11 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		renderLog.CloseMainBlock();
 	}	
 
-	if (raytraceUpdated)
-	{
-		// TODO: Use this for debugging raytracing overlay.
-		//dxRenderer.DXR_CopyResultToDisplay();
+#ifdef _DEBUG
+	if (backEnd.viewDef->viewEntitys != NULL) {
+		dxRenderer.CopyDebugResultToDisplay();
 	}
+#endif
 
 	renderLog.CloseBlock();
 }
@@ -3090,210 +3108,6 @@ void RB_DrawView(const void* data, const int stereoEye) {
 		//GLimp_ActivateContext();
 		GL_SetDefaultState();
 	}
-}
-
-void RB_PathTraceViewInternal(const viewDef_t* viewDef)
-{
-	renderLog.OpenBlock("RB_PathTraceView");
-
-	//-------------------------------------------------
-	// guis can wind up referencing purged images that need to be loaded.
-	// this used to be in the gui emit code, but now that it can be running
-	// in a separate thread, it must not try to load images, so do it here.
-	//-------------------------------------------------
-	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
-	const int numDrawSurfs = viewDef->numDrawSurfs;
-
-	for (int i = 0; i < numDrawSurfs; i++) {
-		const drawSurf_t* ds = drawSurfs[i];
-		if (ds->material != NULL) {
-			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
-		}
-	}
-
-	//-------------------------------------------------
-	// RB_PathTraceView
-	//
-	// We will be running a fully path traced system. For this we need to:
-	//	- Set the viewport and scissor window
-	//	- Cast all rays.
-	//	- Accumulate light based off of emissive textures.
-	//-------------------------------------------------
-
-	// Verify the acceleration structure is properly updated
-	dxRenderer.DXR_UpdateAccelerationStructure();
-
-	// set the window clipping
-	GL_Viewport(viewDef->viewport.x1,
-		viewDef->viewport.y1,
-		viewDef->viewport.x2 + 1 - viewDef->viewport.x1,
-		viewDef->viewport.y2 + 1 - viewDef->viewport.y1);
-
-	// the scissor may be smaller than the viewport for subviews
-	GL_Scissor(backEnd.viewDef->viewport.x1 + viewDef->scissor.x1,
-		backEnd.viewDef->viewport.y1 + viewDef->scissor.y1,
-		viewDef->scissor.x2 + 1 - viewDef->scissor.x1,
-		viewDef->scissor.y2 + 1 - viewDef->scissor.y1);
-	backEnd.currentScissor = viewDef->scissor;
-
-	backEnd.glState.faceCulling = -1;		// force face culling to set next time
-
-	// ensures that depth writes are enabled for the depth clear
-	GL_State(GLS_DEFAULT);
-
-	// Clear the depth buffer and clear the stencil to 128 for stencil shadows as well as gui masking
-	GL_Clear(false, true, true, STENCIL_SHADOW_TEST_VALUE, 0.0f, 0.0f, 0.0f, 0.0f);
-
-	// normal face culling
-	GL_Cull(CT_FRONT_SIDED);
-
-	//------------------------------------
-	// sets variables that can be used by all programs
-	//------------------------------------
-	{
-		//
-		// set eye position in global space
-		//
-		float parm[4];
-		parm[0] = backEnd.viewDef->renderView.vieworg[0];
-		parm[1] = backEnd.viewDef->renderView.vieworg[1];
-		parm[2] = backEnd.viewDef->renderView.vieworg[2];
-		parm[3] = 1.0f;
-		SetVertexParm(RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
-		dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
-
-		// sets overbright to make world brighter
-		// This value is baked into the specularScale and diffuseScale values so
-		// the interaction programs don't need to perform the extra multiply,
-		// but any other renderprogs that want to obey the brightness value
-		// can reference this.
-		float overbright = r_lightScale.GetFloat() * 0.5f;
-		parm[0] = overbright;
-		parm[1] = overbright;
-		parm[2] = overbright;
-		parm[3] = overbright;
-		SetFragmentParm(RENDERPARM_OVERBRIGHT, parm);
-
-		// Set Projection Matrix
-		float projMatrixTranspose[16];
-		R_MatrixTranspose(backEnd.viewDef->projectionMatrix, projMatrixTranspose);
-		SetVertexParms(RENDERPARM_PROJMATRIX_X, projMatrixTranspose, 4);
-
-		// Set the inverse prokection matrix
-		idRenderMatrix inverseProjection, inverseProjectionTranspose;
-		idRenderMatrix::Inverse(backEnd.viewDef->projectionRenderMatrix, inverseProjection);
-		idRenderMatrix::Transpose(inverseProjection, inverseProjectionTranspose);
-		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_PROJMATRIX_X, inverseProjectionTranspose[0], 4);
-		
-		// Set the Inverse View Matrix
-		idRenderMatrix viewRenderMatrix, viewRenderMatrixInverse, viewRenderMatrixTranspose;
-
-		idRenderMatrix::CreateFromOriginAxis(-backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis.Transpose(), viewRenderMatrixInverse);
-		//idRenderMatrix::CreateFromOriginAxis(backEnd.viewDef->renderView.vieworg, backEnd.viewDef->renderView.viewaxis, viewRenderMatrix);
-		//idRenderMatrix::Inverse(viewRenderMatrix, viewRenderMatrixInverse);
-		idRenderMatrix::Transpose(viewRenderMatrixInverse, viewRenderMatrixTranspose);
-		dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, viewRenderMatrixInverse[0], 4); //Mark, figure out why this is wrong. Or if this is properly updating
-	}
-
-	//-------------------------------------------------
-	// Run the depth pass. This will make filling the Gbuffer faster.
-	//-------------------------------------------------
-	RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
-
-	//-------------------------------------------------
-	// Fill the Gbuffer.
-	// This buffer will include:
-	//		- Occlusion Map
-	//		- Motion Vector Map
-	//-------------------------------------------------
-	// TODO: Create this for denoising
-	if (dxRenderer.DXR_CastRays())
-	{
-		//-------------------------------------------------
-		// Cast rays into the scene
-		//-------------------------------------------------
-
-		//-------------------------------------------------
-		// Copy the raytraced buffer to view
-		//-------------------------------------------------
-		dxRenderer.DXR_DenoiseResult();
-		dxRenderer.DXR_GenerateResult();
-	}
-	dxRenderer.DXR_CopyResultToDisplay();
-
-	//-------------------------------------------------
-	// fog and blend lights, drawn after emissive surfaces
-	// so they are properly dimmed down
-	//-------------------------------------------------
-	RB_FogAllLights();
-
-	//-------------------------------------------------
-	// capture the depth for the motion blur before rendering any post process surfaces that may contribute to the depth
-	//-------------------------------------------------
-	if (r_motionBlur.GetInteger() > 0) {
-		const idScreenRect& viewport = backEnd.viewDef->viewport;
-		globalImages->currentDepthImage->CopyDepthbuffer(viewport.x1, viewport.y1, viewport.GetWidth(), viewport.GetHeight());
-	}
-
-	//-------------------------------------------------
-	// now draw any screen warping post-process effects using _currentRender
-	//-------------------------------------------------
-	int processed = INT_MAX; // TODO: Add any post processing.
-	if (processed < numDrawSurfs && !r_skipPostProcess.GetBool()) {
-		int x = backEnd.viewDef->viewport.x1;
-		int y = backEnd.viewDef->viewport.y1;
-		int	w = backEnd.viewDef->viewport.x2 - backEnd.viewDef->viewport.x1 + 1;
-		int	h = backEnd.viewDef->viewport.y2 - backEnd.viewDef->viewport.y1 + 1;
-
-		RENDERLOG_PRINTF("Resolve to %i x %i buffer\n", w, h);
-
-		GL_SelectTexture(0);
-
-		// resolve the screen
-		globalImages->currentRenderImage->CopyFramebuffer(x, y, w, h);
-		backEnd.currentRenderCopied = true;
-
-		// RENDERPARM_SCREENCORRECTIONFACTOR amd RENDERPARM_WINDOWCOORD overlap
-		// diffuseScale and specularScale
-
-		// screen power of two correction factor (no longer relevant now)
-		float screenCorrectionParm[4];
-		screenCorrectionParm[0] = 1.0f;
-		screenCorrectionParm[1] = 1.0f;
-		screenCorrectionParm[2] = 0.0f;
-		screenCorrectionParm[3] = 1.0f;
-		SetFragmentParm(RENDERPARM_SCREENCORRECTIONFACTOR, screenCorrectionParm); // rpScreenCorrectionFactor
-
-		// window coord to 0.0 to 1.0 conversion
-		float windowCoordParm[4];
-		windowCoordParm[0] = 1.0f / w;
-		windowCoordParm[1] = 1.0f / h;
-		windowCoordParm[2] = 0.0f;
-		windowCoordParm[3] = 1.0f;
-		SetFragmentParm(RENDERPARM_WINDOWCOORD, windowCoordParm); // rpWindowCoord
-
-		// render the remaining surfaces
-		renderLog.OpenMainBlock(MRB_DRAW_SHADER_PASSES_POST);
-		RB_DrawShaderPasses(drawSurfs + processed, numDrawSurfs - processed, 0.0f /* definitely not a gui */, 0);
-		renderLog.CloseMainBlock();
-	}
-
-	renderLog.CloseBlock();
-}
-
-void RB_PathTraceView(const void* data)
-{
-	const drawSurfsCommand_t* cmd = (const drawSurfsCommand_t*)data;
-	backEnd.viewDef = cmd->viewDef;
-
-	backEnd.currentRenderCopied = false;
-
-	// if there aren't any drawsurfs, do nothing
-	if (!backEnd.viewDef->numDrawSurfs) {
-		return;
-	}
-
-	RB_PathTraceViewInternal(cmd->viewDef);
 }
 
 void RB_CopyRender(const void* data) {

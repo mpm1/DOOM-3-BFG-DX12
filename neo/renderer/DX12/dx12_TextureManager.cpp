@@ -7,22 +7,22 @@
 
 namespace DX12Rendering
 {
-	bool TextureBuffer::Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc)
+	bool TextureBuffer::Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc, D3D12_RESOURCE_STATES resourceState)
 	{
 		Release();
 
 		m_textureDesc = textureDesc;
 
-		Allocate(textureDesc, D3D12_RESOURCE_STATE_COPY_DEST, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT));
+		Allocate(textureDesc, resourceState, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT));
 
-		m_lastTransitionState = D3D12_RESOURCE_STATE_COPY_DEST;
+		m_lastTransitionState = resourceState;
 		textureView = srcDesc;
 
 		return true;
 	}
 
 	TextureManager::TextureManager() :
-		m_textureUploadHeap(3840*2160*4*16, 512, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap")
+		m_textureUploadHeap(3840*2160*4*16, D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap")
 	{
 
 	}
@@ -48,6 +48,16 @@ namespace DX12Rendering
 				textureDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
 				break;
 
+			case eGlobalTexture::VIEW_DEPTH:
+				name = "view_depth";
+				textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
+				break;
+
+			case eGlobalTexture::WORLD_NORMALS:
+				name = "world_normals";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+
 			case eGlobalTexture::RAYTRACED_SHADOWMAP:
 				name = "raytraced_shadowmap";
 				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UINT;
@@ -55,11 +65,11 @@ namespace DX12Rendering
 
 			default:
 				name = "default_global_texture";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UINT;
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 				break;
 			}
 
-			TextureBuffer* globalTexture = dxRenderer.GetTextureManager()->AllocTextureBuffer(&idStr(name), textureDesc, shaderComponentAlignment);
+			TextureBuffer* globalTexture = dxRenderer.GetTextureManager()->AllocTextureBuffer(&idStr(name), textureDesc, shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON);
 			
 			if(m_textures.size() <= i)
 			{ 
@@ -105,6 +115,35 @@ namespace DX12Rendering
 		return SetTextureState(buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, commandList);
 	}
 
+	bool TextureManager::SetTextureStates(TextureBuffer** buffers, UINT bufferCount, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel) const
+	{
+		if (buffers == nullptr)
+		{
+			return false;
+		}
+
+		/*std::vector<D3D12_RESOURCE_BARRIER> transitions = {};
+		transitions.reserve(bufferCount);*/
+
+		for (UINT index = 0; index < bufferCount; ++index)
+		{
+			if (buffers[index]->m_lastTransitionState != usageState) {
+				/*transitions.push_back(CD3DX12_RESOURCE_BARRIER::Transition(buffers[index]->resource.Get(), buffers[index]->m_lastTransitionState, usageState, mipLevel));
+				*/
+
+				commandList->CommandResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(buffers[index]->resource.Get(), buffers[index]->m_lastTransitionState, usageState, mipLevel));
+				buffers[index]->m_lastTransitionState = usageState;
+			}
+		}
+
+		/*if (transitions.size() > 0)
+		{
+			commandList->CommandResourceBarrier(transitions.size(), std::move(transitions.data()));
+		}*/
+
+		return true;
+	}
+
 	bool TextureManager::SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel) const {
 		if (buffer == nullptr) {
 			return false;
@@ -135,9 +174,23 @@ namespace DX12Rendering
 		copyCommands->Cycle();
 
 		DX12Rendering::CaptureEventEnd(copyCommands);
+
+		// Clean out the temp images
+		m_tempImages.clear();
 	}
 
-	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping) {
+	byte* TextureManager::CreateTemporaryImageStorage(const UINT imageSize)
+	{
+		assert(imageSize >= 2);
+		// TODO: Remove and just use unique_ptr
+		auto data = std::make_unique<byte[]>(DX12_ALIGN(imageSize, 512));
+		m_tempImages.push_back(std::move(data));
+
+		return m_tempImages.back().get();
+	}
+
+	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState) 
+	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Create the name
@@ -154,7 +207,7 @@ namespace DX12Rendering
 		srvDesc.ViewDimension = textureDesc.DepthOrArraySize == 6 ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MipLevels = textureDesc.MipLevels;
 
-		if (buffer->Build(textureDesc, srvDesc))
+		if (buffer->Build(textureDesc, srvDesc, resourceState))
 		{
 			return buffer;
 		}
@@ -177,14 +230,16 @@ namespace DX12Rendering
 
 			SetTextureCopyState(buffer, mipLevel);
 
+			ScratchBuffer& uploadHeap = m_textureUploadHeap;
+
 			UINT64 intermediateOffset;
-			if (!m_textureUploadHeap.RequestSpace(copyCommands, imageSize, intermediateOffset, true))
+			if (!uploadHeap.RequestSpace(copyCommands, imageSize, intermediateOffset, true))
 			{
 				copyCommands->Cycle();
 				m_textureUploadHeap.fence.Wait(); // Since we are not streaming in textures, we'll forcfully wait for our upload.
 			}
 
-			copyCommands->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
+			copyCommands->AddCommandAction([image, bytesPerRow, imageSize, mipLevel, resourceIndex, intermediateOffset, &uploadHeap, &buffer](ID3D12GraphicsCommandList4* commandList)
 			{
 				D3D12_SUBRESOURCE_DATA textureData = {};
 				textureData.pData = image;
@@ -193,7 +248,7 @@ namespace DX12Rendering
 
 				const UINT subresource = D3D12CalcSubresource(mipLevel, resourceIndex, 0, buffer->m_textureDesc.MipLevels, buffer->m_textureDesc.DepthOrArraySize);
 
-				UpdateSubresources(commandList, buffer->resource.Get(), m_textureUploadHeap.resource.Get(), intermediateOffset, subresource, 1, &textureData);
+				UpdateSubresources(commandList, buffer->resource.Get(), uploadHeap.resource.Get(), intermediateOffset, subresource, 1, &textureData);
 			});
 		}
 		else

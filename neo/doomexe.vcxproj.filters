@@ -633,6 +633,9 @@
     <ClInclude Include="renderer\DX12\dx12_RenderTarget.h">
       <Filter>Renderer\DX12</Filter>
     </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_RenderPass.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="cm\CollisionModel_contacts.cpp">
@@ -1322,6 +1325,9 @@
     <ClCompile Include="renderer\DX12\dx12_RenderTarget.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_RenderPass.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="sys\win32\rc\res\doom.ico">
@@ -1491,6 +1497,10 @@
     </None>
     <None Include="packages.config" />
     <None Include="..\base\renderprogs\gbuffer.inc">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\base\renderprogs\functions.inc" />
+    <None Include="..\base\renderprogs\bindless_textures.inc">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>

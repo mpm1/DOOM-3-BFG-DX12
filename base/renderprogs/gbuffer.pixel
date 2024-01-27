@@ -1,30 +1,4 @@
-#include "global.inc"
+#define PIXEL_SHADER
+#define SKINNED
 
-uniform Texture2D<float4>	samp0 : register(t0); // texture 1 is the per-surface bump map
-
-struct PS_IN {
-	half4 position	: SV_POSITION;
-	half4 texcoord0	: TEXCOORD0_centroid; // Bumpmap location
-	half3 texcoord1	: TEXCOORD1_centroid; // Normal
-	half3 texcoord2	: TEXCOORD2_centroid; // Tangent
-	half3 texcoord3	: TEXCOORD3_centroid; // Binormal
-};
-
-struct PS_OUT {
-	half3 normal	: SV_TARGET0;
-};
-
-void main( PS_IN fragment, out PS_OUT result ) {
-	half4 bumpMap =			samp0.Sample(baseSampler, fragment.texcoord0.xy );
-
-	half3 localNormal;
-	localNormal.xy = bumpMap.wy - 0.5;
-	localNormal.z = sqrt( abs( dot( localNormal.xy, localNormal.xy ) - 0.25 ) );
-	localNormal = normalize( localNormal );
-
-	result.normal.x = dot3(fragment.texcoord2, localNormal);
-	result.normal.y = dot3(fragment.texcoord3, localNormal);
-	result.normal.z = dot3(fragment.texcoord1, localNormal);
-
-	result.normal = (result.normal * 0.5f) + 0.5f;
-}
+#include "gbuffer.inc"

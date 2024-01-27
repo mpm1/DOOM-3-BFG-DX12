@@ -12,6 +12,80 @@ idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use
 DX12Renderer dxRenderer;
 extern idCommon* common;
 
+namespace
+{
+	static void DX12_GetShaderTextureMatrix(const float* shaderRegisters, const textureStage_t* texture, float matrix[16]) {
+		// Copied from RB_GetShaderTextureMatrix
+		matrix[0 * 4 + 0] = shaderRegisters[texture->matrix[0][0]];
+		matrix[1 * 4 + 0] = shaderRegisters[texture->matrix[0][1]];
+		matrix[2 * 4 + 0] = 0.0f;
+		matrix[3 * 4 + 0] = shaderRegisters[texture->matrix[0][2]];
+
+		matrix[0 * 4 + 1] = shaderRegisters[texture->matrix[1][0]];
+		matrix[1 * 4 + 1] = shaderRegisters[texture->matrix[1][1]];
+		matrix[2 * 4 + 1] = 0.0f;
+		matrix[3 * 4 + 1] = shaderRegisters[texture->matrix[1][2]];
+
+		// we attempt to keep scrolls from generating incredibly large texture values, but
+		// center rotations and center scales can still generate offsets that need to be > 1
+		if (matrix[3 * 4 + 0] < -40.0f || matrix[12] > 40.0f) {
+			matrix[3 * 4 + 0] -= (int)matrix[3 * 4 + 0];
+		}
+		if (matrix[13] < -40.0f || matrix[13] > 40.0f) {
+			matrix[13] -= (int)matrix[13];
+		}
+
+		matrix[0 * 4 + 2] = 0.0f;
+		matrix[1 * 4 + 2] = 0.0f;
+		matrix[2 * 4 + 2] = 1.0f;
+		matrix[3 * 4 + 2] = 0.0f;
+
+		matrix[0 * 4 + 3] = 0.0f;
+		matrix[1 * 4 + 3] = 0.0f;
+		matrix[2 * 4 + 3] = 0.0f;
+		matrix[3 * 4 + 3] = 1.0f;
+	}
+
+	static void DX12_BakeTectureMatrixIntoTexgen(XMFLOAT4 lightProject[3], const float* textureMatrix)
+	{
+		float genMatrix[16];
+		float final[16];
+
+		genMatrix[0 * 4 + 0] = lightProject[0].x;
+		genMatrix[1 * 4 + 0] = lightProject[0].y;
+		genMatrix[2 * 4 + 0] = lightProject[0].z;
+		genMatrix[3 * 4 + 0] = lightProject[0].w;
+
+		genMatrix[0 * 4 + 1] = lightProject[1].x;
+		genMatrix[1 * 4 + 1] = lightProject[1].y;
+		genMatrix[2 * 4 + 1] = lightProject[1].z;
+		genMatrix[3 * 4 + 1] = lightProject[1].w;
+
+		genMatrix[0 * 4 + 2] = 0.0f;
+		genMatrix[1 * 4 + 2] = 0.0f;
+		genMatrix[2 * 4 + 2] = 0.0f;
+		genMatrix[3 * 4 + 2] = 0.0f;
+
+		genMatrix[0 * 4 + 3] = lightProject[2].x;
+		genMatrix[1 * 4 + 3] = lightProject[2].y;
+		genMatrix[2 * 4 + 3] = lightProject[2].z;
+		genMatrix[3 * 4 + 3] = lightProject[2].w;
+
+		R_MatrixMultiply(genMatrix, textureMatrix, final);
+
+		lightProject[0].x = final[0 * 4 + 0];
+		lightProject[0].y = final[1 * 4 + 0];
+		lightProject[0].z = final[2 * 4 + 0];
+		lightProject[0].w = final[3 * 4 + 0];
+
+		lightProject[1].x = final[0 * 4 + 1];
+		lightProject[1].y = final[1 * 4 + 1];
+		lightProject[1].z = final[2 * 4 + 1];
+		lightProject[1].w = final[3 * 4 + 1];
+	}
+}
+
+
 DX12Renderer::DX12Renderer() :
 	m_frameIndex(0),
 	m_width(2),
@@ -306,23 +380,14 @@ void DX12Renderer::SetCommandListDefaults(const bool resetPipelineState) {
 		commandList->RSSetScissorRects(1, &m_scissorRect);
 
 		commandList->OMSetStencilRef(m_stencilRef);
-
-		const DX12Rendering::RenderSurface* renderTarget = GetCurrentRenderTarget();
-		const DX12Rendering::RenderSurface* depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
-
-		D3D12_CPU_DESCRIPTOR_HANDLE renderTargets[1] =
-		{
-			renderTarget->GetRtv()
-		};
-
-		commandList->OMSetRenderTargets(1, renderTargets, FALSE, &(depthStencil->GetDsv()));
-
 		// Setup the initial heap location
 		ID3D12DescriptorHeap* descriptorHeaps[1] = {
 			m_rootSignature->GetCBVHeap(),
 		};
 		commandList->SetDescriptorHeaps(1, descriptorHeaps);
 	});
+
+	EnforceRenderTargets(commandList);
 }
 
 void DX12Renderer::CycleDirectCommandList() {
@@ -383,8 +448,10 @@ void DX12Renderer::BeginDraw() {
 	}
 
 	{
+		ResetRenderTargets();
+
 		D3D12_RESOURCE_BARRIER transition = {};
-		if (GetCurrentRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transition))
+		if (GetOutputRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transition))
 		{
 			commandList->CommandResourceBarrier(1, &transition);
 		}
@@ -401,7 +468,7 @@ void DX12Renderer::EndDraw() {
 #ifdef DEBUG_IMGUI
 	D3D12_CPU_DESCRIPTOR_HANDLE renderTargets[1] =
 	{
-		GetCurrentRenderTarget()->GetRtv()
+		GetOutputRenderTarget()->GetRtv()
 	};
 
 	DX12Rendering::ImGui_StartFrame();
@@ -416,7 +483,7 @@ void DX12Renderer::EndDraw() {
 	{
 		// present the backbuffer
 		D3D12_RESOURCE_BARRIER transition = {};
-		if (GetCurrentRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_PRESENT, &transition))
+		if (GetOutputRenderTarget()->TryTransition(D3D12_RESOURCE_STATE_PRESENT, &transition))
 		{
 			commandList->ResourceBarrier(1, &transition);
 		}
@@ -542,7 +609,7 @@ void DX12Renderer::Clear(const bool color, const bool depth, const bool stencil,
 		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{
 			if (color) {
-				const DX12Rendering::RenderSurface* renderTarget = GetCurrentRenderTarget();
+				const DX12Rendering::RenderSurface* renderTarget = GetOutputRenderTarget();
 				
 				commandList->ClearRenderTargetView(renderTarget->GetRtv(), colorRGBA, 0, nullptr);
 			}
@@ -626,6 +693,9 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Diffuse)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular)->Resize(width, height);
+
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Resize(width, height);
@@ -828,6 +898,18 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
 			continue;
 		}
 
+		if (!surf.shader->LightCastsShadows())
+		{
+			// If we dont cast shadows, drop it.
+			continue;
+		}
+
+		if (surf.shader->IsPortalSky())
+		{
+			// No point in casting against the sky.
+			continue;
+		}
+
 		const vertCacheHandle_t& vbHandle = surf.geometry->ambientCache;
 		const vertCacheHandle_t& ibHandle = surf.geometry->indexCache;
 
@@ -882,7 +964,7 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
 	}
 }
 
-void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask)
+void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
 {
 	if (!IsRaytracingEnabled()) {
 		return;
@@ -891,7 +973,7 @@ void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderMod
 	dxHandle_t modelHandle = GetHandle(&model);
 	dxHandle_t instanceHandle = static_cast<dxHandle_t>(entityIndex);
 
-	m_raytracing->GetTLASManager()->AddInstance(instanceHandle, modelHandle, transform, typesMask);
+	m_raytracing->GetTLASManager()->AddInstance(instanceHandle, modelHandle, transform, typesMask, instanceMask);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)
@@ -942,48 +1024,83 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 	}
 	
 	m_raytracing->ResetLightList();
-
 	UINT lightIndex = 0;
+
 	for (const viewLight_t* vLight = viewLights; vLight != NULL; vLight = vLight->next) {
+		// some rare lights have multiple animating stages, loop over them outside the surface list
+		const idMaterial* lightShader = vLight->lightShader;
+		const float* lightRegs = vLight->shaderRegisters;
+
+		bool isAmbientLight = lightShader->IsAmbientLight(); // TODO: add as flag.
+		if (isAmbientLight)
+		{
+			continue; // For now we won't add any ambient light.
+		}
+
 		UINT shadowMask = vLight->shadowMask;
 
-		if (shadowMask > 0)
+		const XMFLOAT4 location(
+			vLight->globalLightOrigin.x,
+			vLight->globalLightOrigin.y,
+			vLight->globalLightOrigin.z,
+			1.0f);
+
+		XMFLOAT4 scissor(
+			vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
+			vLight->scissorRect.y1 + m_viewport.TopLeftY,
+			vLight->scissorRect.x2 + 1 - vLight->scissorRect.x1,
+			0);
+
+		scissor.z += scissor.x; // right
+		scissor.w += (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1);// m_viewport.Height - scissor.y; // bottom
+		//scissor.y = scissor.w - (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1); // top
+
+		const float lightScale = r_lightScale.GetFloat();
+
+		for (int lightStageNum = 0; lightStageNum < lightShader->GetNumStages(); lightStageNum++) 
 		{
-			idVec4 localLight(0.0f);
-			R_GlobalPointToLocal(worldMatrix, vLight->globalLightOrigin, localLight.ToVec3());
+			const shaderStage_t* lightStage = lightShader->GetStage(lightStageNum);
 
-			const XMFLOAT3 location(localLight.ToFloatPtr());
-			XMFLOAT4 scissor(
-				vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
-				vLight->scissorRect.y1 + m_viewport.TopLeftY,
-				vLight->scissorRect.x2 + 1 - vLight->scissorRect.x1,
-				0);
-			scissor.z += scissor.x; // right
-			scissor.w += (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1);// m_viewport.Height - scissor.y; // bottom
-			//scissor.y = scissor.w - (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1); // top
+			// ignore stages that fail the condition
+			if (!lightRegs[lightStage->conditionRegister]) {
+				continue;
+			}
 
-			//float* radBegin = vLight->lightDef->parms.lightRadius.ToFloatPtr();
-			float radius = std::numeric_limits<float>::max(); // TODO: fix for lights that 
-			/*for (uint rCheck = 0; rCheck < 3; ++rCheck)
-			{
-				const float value = std::abs(radBegin[rCheck]);
+			XMFLOAT4 lightColor(
+				lightScale * lightRegs[lightStage->color.registers[0]],
+				lightScale * lightRegs[lightStage->color.registers[1]],
+				lightScale * lightRegs[lightStage->color.registers[2]],
+				lightRegs[lightStage->color.registers[3]]);
+			
+			// apply the world-global overbright and the 2x factor for specular
+			const XMFLOAT4 diffuseColor = lightColor;
+			//const XMFLOAT4 specularColor = lightColor * 2.0f;
 
-				if (value > radius)
-				{
-					radius = value;
-				}
-			}*/
+			// transform the light project into model local space
+			XMFLOAT4 lightProjection[4];
+			for (int i = 0; i < 4; i++) {
+				memcpy(&lightProjection[i], vLight->lightProject[i].ToFloatPtr(), sizeof(float) * 4);
+			}
 
-			if (!m_raytracing->AddLight(lightIndex, vLight->shadowMask, location, radius, scissor))
+			// optionally multiply the local light projection by the light texture matrix
+			if (lightStage->texture.hasMatrix) {
+				float lightTextureMatrix[16];
+				DX12_GetShaderTextureMatrix(lightRegs, &lightStage->texture, lightTextureMatrix);
+				DX12_BakeTectureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
+			}
+
+			if (!m_raytracing->AddLight(vLight->sceneIndex, 
+				static_cast<const DX12Rendering::TextureBuffer*>(vLight->falloffImage->Bindless()), 
+				static_cast<const DX12Rendering::TextureBuffer*>(lightStage->texture.image->Bindless()), 
+				vLight->shadowMask, location, lightColor, lightProjection, scissor, true/*vLight->castsShadows*/))
 			{
 				// Could not add the raytraced light
 				shadowMask = 0;
 			}
+
+			SetLightData(lightIndex, shadowMask);
+			++lightIndex;
 		}
-
-		SetLightData(lightIndex, shadowMask);
-
-		++lightIndex;
 	}
 
 	// Move the light data to the GPU
@@ -1000,10 +1117,49 @@ void DX12Renderer::DXR_GenerateResult()
 	// TODO
 }
 
-void DX12Renderer::DXR_CopyResultToDisplay()
+void DX12Renderer::ResetRenderTargets() 
+{ 
+	m_renderTargets[0] = GetOutputRenderTarget(); 
+	m_activeRenderTargets = 1; 
+}
+
+void DX12Renderer::EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList)
 {
-	//renderTarget->fence.Wait();
-	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::RaytraceShadowMask, 0, 0, 0, 0, m_width / 2, m_height);
+	assert(commandList != nullptr);
+
+	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
+	{
+		UINT totalRenderTargets = 0;
+		const DX12Rendering::RenderSurface** renderTargets = GetCurrentRenderTargets(totalRenderTargets);
+
+		const DX12Rendering::RenderSurface* depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+
+		std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> renderRtvs;
+		renderRtvs.reserve(totalRenderTargets);
+		for (uint index = 0; index < totalRenderTargets; ++index)
+		{
+			renderRtvs.push_back(renderTargets[index]->GetRtv());
+		}
+
+		commandList->OMSetRenderTargets(totalRenderTargets, renderRtvs.data(), FALSE, &(depthStencil->GetDsv()));
+	});
+}
+
+void DX12Renderer::SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count)
+{
+	assert(count < MAX_RENDER_TARGETS);
+	
+	m_activeRenderTargets = count;
+	for (int index = 0; index < count; ++index)
+	{
+		m_renderTargets[index] = DX12Rendering::GetSurface(surfaces[index]);
+	}
+}
+
+const DX12Rendering::RenderSurface** DX12Renderer::GetCurrentRenderTargets(UINT& count)
+{ 
+	count = m_activeRenderTargets; 
+	return (const DX12Rendering::RenderSurface**)m_renderTargets;
 }
 
 void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)
@@ -1012,7 +1168,7 @@ void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId,
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::CopySurfaceToDisplay");
 
 	DX12Rendering::RenderSurface& surface = *DX12Rendering::GetSurface(surfaceId);
-	DX12Rendering::RenderSurface& renderTarget = *GetCurrentRenderTarget();
+	DX12Rendering::RenderSurface& renderTarget = *GetOutputRenderTarget();
 
 	commandList->AddPreFenceWait(&surface.fence); // Wait for all drawing to complete.
 
@@ -1053,6 +1209,12 @@ void DX12Renderer::DebugAddLight(const viewLight_t& light)
 void DX12Renderer::DebugClearLights()
 {
 	m_debugLights.clear();
+}
+
+void DX12Renderer::CopyDebugResultToDisplay()
+{
+	//renderTarget->fence.Wait();
+	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::Diffuse, 0, 0, 0, 0, m_width / 2, m_height);
 }
 
 #ifdef DEBUG_IMGUI

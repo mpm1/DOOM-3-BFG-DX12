@@ -297,10 +297,11 @@ namespace DX12Rendering
 		{
 			D3D12_CLEAR_VALUE clearValue = {}; // Set to unknown.
 
-			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_NONE, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
-			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
+			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 			
 			m_surfaces.emplace_back(L"Normal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Normal, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"ViewDepth", DXGI_FORMAT_R32_FLOAT, eRenderSurface::ViewDepth, RENDER_SURFACE_FLAG_NONE, clearValue);
 
 			m_surfaces.emplace_back(L"RaytraceShadowMask", DXGI_FORMAT_R8G8B8A8_UINT, eRenderSurface::RaytraceShadowMask, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 

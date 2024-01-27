@@ -105,7 +105,6 @@ void DX12RootSignature::OnDestroy()
 void DX12RootSignature::BeginFrame(UINT frameIndex)
 {
 	assert(frameIndex >= 0 && frameIndex < DX12_FRAME_COUNT, "A positive frame index less than the specified Frame Count must be defined.");
-
 }
 
 void DX12RootSignature::SetLightDescriptorTable(const size_t lightBufferSize, const DX12Rendering::ShaderLightData* constantBuffer) {

@@ -21,8 +21,12 @@ namespace DX12Rendering {
 	const UINT VERTCACHE_VERTEX_MEMORY = 31 * 1024 * 1024 * 256;
 	const UINT VERTCACHE_JOINT_MEMORY= 256 * 1024 * 256;
 
+	const UINT DESCRIPTOR_TEXTURE_COUNT = 1024;
+	const UINT DESCRIPTOR_HEAP_SIZE = 6 /* basic entries */ + DESCRIPTOR_TEXTURE_COUNT /* texture space */;
+
 	enum dxr_renderParm_t {
 		RENDERPARM_GLOBALEYEPOS = 0,
+		RENDERPARM_FOV, // { min fov x, min fov y, max fov x, max fov y }
 		RENDERPARM_VIEWPORT, // {left, top, right, bottom}
 		RENDERPARAM_SCISSOR, // {left, top, right, bottom}
 
@@ -43,12 +47,32 @@ namespace DX12Rendering {
 	{
 		UINT lightIndex;
 		UINT shadowMask;
-		UINT pad[2];
+		UINT falloffIndex;
+		UINT projectionIndex;
+		
+		union
+		{
+			UINT flags;
+			struct {
+				bool castsShadows : 1;
+				bool flagPad[sizeof(UINT) - 1];
+			};
+		};
+		UINT pad1;
+		UINT pad2;
+		UINT pad3;
 
-		XMFLOAT3	location;
-		float		radius;
+		XMFLOAT4 color;
+
+		XMFLOAT4	center;
 
 		XMFLOAT4	scissor; // Light view scissor window {left, top, right, bottom}
+
+		// Used to calculate the angle and falloff for the light influence.
+		XMFLOAT4	projectionS;
+		XMFLOAT4	projectionT;
+		XMFLOAT4	projectionQ;
+		XMFLOAT4	falloffS;
 	};
 
 	struct dxr_sceneConstants_t
@@ -58,7 +82,7 @@ namespace DX12Rendering {
 		UINT lightCount;
 		UINT pad[3];
 
-		dxr_lightData_t lights[MAX_DXR_LIGHTS];
+		dxr_lightData_t lights[MAX_SCENE_LIGHTS];
 	};
 
 	class TopLevelAccelerationStructure;
@@ -81,8 +105,11 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	void ResetLightList();
-	bool AddLight(const UINT index, const UINT shadowMask, const XMFLOAT3 location, const float radius, const XMFLOAT4 scissorWindow);
+	bool AddLight(const UINT index, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows);
 	UINT GetLightMask(const UINT index);
+
+	/// Adds an image to the descriptor heap and returns the associated index.
+	UINT AddImageToDescriptorHeap(const DX12Rendering::TextureBuffer* texture);
 
 	void GenerateTLAS();
 
@@ -109,7 +136,11 @@ public:
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
-		RenderSurface* outputSurface
+		const DX12Rendering::eRenderSurface* renderTargetList,
+		const UINT renderTargetCount,
+		TextureBuffer** buffers,
+		const UINT bufferCount,
+		DX12Rendering::TextureManager* textureManager
 	);
 
 	/// <summary>
@@ -151,6 +182,7 @@ private:
 
 	ComPtr<ID3D12DescriptorHeap> m_generalUavHeaps;
 	ComPtr<ID3D12Resource> m_generalSBTData;
+	UINT m_nextDescriptorHeapIndex;
 
 	ShaderBindingTable m_generalSBTDesc;
 
@@ -161,6 +193,8 @@ private:
 
 	void CreateShaderBindingTables();
 	void CreateShadowBindingTable();
+
+	void SetOutputTexture(DX12Rendering::eRenderSurface renderSurface, DX12Rendering::e_RaytracingHeapIndex uav);
 
 	void CreateCBVHeap(const size_t constantBufferSize);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(

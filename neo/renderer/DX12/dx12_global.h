@@ -53,6 +53,18 @@ using namespace Microsoft::WRL;
 typedef UINT64 dxHandle_t;
 
 namespace DX12Rendering {
+	enum e_RaytracingHeapIndex
+	{
+		UAV_ShadowMap = 0,
+		UAV_DiffuseMap,
+		SRV_TLAS,
+		SRV_DepthTexture,
+		SRV_NormalTexture,
+		CBV_CameraProperties,
+
+		SRV_TextureArray // Used as the starting point for all indexed entries in the descriptor heap
+	};
+
 	namespace Commands
 	{
 		class CommandList;

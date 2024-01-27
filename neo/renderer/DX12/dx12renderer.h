@@ -8,6 +8,7 @@
 #include "./dx12_global.h"
 #include "./dx12_DeviceManager.h"
 #include "./dx12_CommandList.h"
+#include "./dx12_RenderPass.h"
 #include "./dx12_RootSignature.h"
 #include "./dx12_raytracing.h"
 #include "./dx12_TextureManager.h"
@@ -54,7 +55,7 @@ namespace DX12Rendering {
 		ComPtr<ID3D12Resource> cbvUploadHeap;
 		UINT cbvHeapIndex;
 		UINT8* m_constantBufferGPUAddress;
-	};
+	};	
 }
 
 //TODO: move everything into the correct namespace
@@ -120,7 +121,7 @@ public:
 
 	void DXR_UpdateModelInBLAS(const idRenderModel* model);
 
-	void DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask);
+	void DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
 
 	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
 	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);
@@ -131,7 +132,12 @@ public:
 
 	void DXR_DenoiseResult(); // Performs a Denoise pass on all rendering channels.
 	void DXR_GenerateResult(); // Collapses all channels into a single image.
-	void DXR_CopyResultToDisplay(); // Copies the resulting image to the user display.
+
+	// Render Targets
+	void SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count);
+	void EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList);
+	void ResetRenderTargets();
+	DX12Rendering::eRenderSurface GetOutputSurface() { return (DX12Rendering::eRenderSurface)(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex); }
 
 #pragma region Top Level Acceleration Structure
 	//TODO
@@ -147,6 +153,8 @@ public:
 #ifdef _DEBUG
 	void DebugAddLight(const viewLight_t& light);
 	void DebugClearLights();
+
+	void CopyDebugResultToDisplay(); // Copies the resulting image to the user display.
 #endif
 
 private:
@@ -176,6 +184,10 @@ private:
 	UINT m_stencilRef = 0;
 
 	UINT m_objectIndex = 0;
+
+	// Render Targets
+	UINT m_activeRenderTargets = 0;
+	DX12Rendering::RenderSurface* m_renderTargets[MAX_RENDER_TARGETS];
 
 	// Synchronization
 	UINT m_frameIndex;
@@ -218,7 +230,9 @@ private:
 
 	bool IsScissorWindowValid();
 
-	DX12Rendering::RenderSurface* GetCurrentRenderTarget() { return DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex);  }
+
+	const DX12Rendering::RenderSurface** GetCurrentRenderTargets(UINT& count);
+	DX12Rendering::RenderSurface* GetOutputRenderTarget() { return DX12Rendering::GetSurface(GetOutputSurface()); }
 
 #ifdef _DEBUG
 	std::vector<viewLight_t> m_debugLights;

@@ -461,6 +461,10 @@ void idImage::Bind() {
 
 }
 
+const void* idImage::Bindless() {
+	return nullptr;
+}
+
 /*
 ================
 MakePowerOfTwo
