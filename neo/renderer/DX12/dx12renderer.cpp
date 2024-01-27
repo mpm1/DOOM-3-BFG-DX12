@@ -12,6 +12,80 @@ idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use
 DX12Renderer dxRenderer;
 extern idCommon* common;
 
+namespace
+{
+	static void DX12_GetShaderTextureMatrix(const float* shaderRegisters, const textureStage_t* texture, float matrix[16]) {
+		// Copied from RB_GetShaderTextureMatrix
+		matrix[0 * 4 + 0] = shaderRegisters[texture->matrix[0][0]];
+		matrix[1 * 4 + 0] = shaderRegisters[texture->matrix[0][1]];
+		matrix[2 * 4 + 0] = 0.0f;
+		matrix[3 * 4 + 0] = shaderRegisters[texture->matrix[0][2]];
+
+		matrix[0 * 4 + 1] = shaderRegisters[texture->matrix[1][0]];
+		matrix[1 * 4 + 1] = shaderRegisters[texture->matrix[1][1]];
+		matrix[2 * 4 + 1] = 0.0f;
+		matrix[3 * 4 + 1] = shaderRegisters[texture->matrix[1][2]];
+
+		// we attempt to keep scrolls from generating incredibly large texture values, but
+		// center rotations and center scales can still generate offsets that need to be > 1
+		if (matrix[3 * 4 + 0] < -40.0f || matrix[12] > 40.0f) {
+			matrix[3 * 4 + 0] -= (int)matrix[3 * 4 + 0];
+		}
+		if (matrix[13] < -40.0f || matrix[13] > 40.0f) {
+			matrix[13] -= (int)matrix[13];
+		}
+
+		matrix[0 * 4 + 2] = 0.0f;
+		matrix[1 * 4 + 2] = 0.0f;
+		matrix[2 * 4 + 2] = 1.0f;
+		matrix[3 * 4 + 2] = 0.0f;
+
+		matrix[0 * 4 + 3] = 0.0f;
+		matrix[1 * 4 + 3] = 0.0f;
+		matrix[2 * 4 + 3] = 0.0f;
+		matrix[3 * 4 + 3] = 1.0f;
+	}
+
+	static void DX12_BakeTectureMatrixIntoTexgen(XMFLOAT4 lightProject[3], const float* textureMatrix)
+	{
+		float genMatrix[16];
+		float final[16];
+
+		genMatrix[0 * 4 + 0] = lightProject[0].x;
+		genMatrix[1 * 4 + 0] = lightProject[0].y;
+		genMatrix[2 * 4 + 0] = lightProject[0].z;
+		genMatrix[3 * 4 + 0] = lightProject[0].w;
+
+		genMatrix[0 * 4 + 1] = lightProject[1].x;
+		genMatrix[1 * 4 + 1] = lightProject[1].y;
+		genMatrix[2 * 4 + 1] = lightProject[1].z;
+		genMatrix[3 * 4 + 1] = lightProject[1].w;
+
+		genMatrix[0 * 4 + 2] = 0.0f;
+		genMatrix[1 * 4 + 2] = 0.0f;
+		genMatrix[2 * 4 + 2] = 0.0f;
+		genMatrix[3 * 4 + 2] = 0.0f;
+
+		genMatrix[0 * 4 + 3] = lightProject[2].x;
+		genMatrix[1 * 4 + 3] = lightProject[2].y;
+		genMatrix[2 * 4 + 3] = lightProject[2].z;
+		genMatrix[3 * 4 + 3] = lightProject[2].w;
+
+		R_MatrixMultiply(genMatrix, textureMatrix, final);
+
+		lightProject[0].x = final[0 * 4 + 0];
+		lightProject[0].y = final[1 * 4 + 0];
+		lightProject[0].z = final[2 * 4 + 0];
+		lightProject[0].w = final[3 * 4 + 0];
+
+		lightProject[1].x = final[0 * 4 + 1];
+		lightProject[1].y = final[1 * 4 + 1];
+		lightProject[1].z = final[2 * 4 + 1];
+		lightProject[1].w = final[3 * 4 + 1];
+	}
+}
+
+
 DX12Renderer::DX12Renderer() :
 	m_frameIndex(0),
 	m_width(2),
@@ -1008,11 +1082,11 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				memcpy(&lightProjection[i], vLight->lightProject[i].ToFloatPtr(), sizeof(float) * 4);
 			}
 
-			// TODO: we need to add the light textures in some cases.
 			// optionally multiply the local light projection by the light texture matrix
 			if (lightStage->texture.hasMatrix) {
-				// Mark, implement
-				//RB_BakeTextureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
+				float lightTextureMatrix[16];
+				DX12_GetShaderTextureMatrix(lightRegs, &lightStage->texture, lightTextureMatrix);
+				DX12_BakeTectureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
 			}
 
 			if (!m_raytracing->AddLight(vLight->sceneIndex, 
