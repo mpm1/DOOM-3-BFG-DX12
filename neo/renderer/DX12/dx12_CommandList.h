@@ -129,6 +129,14 @@ public:
 			fence->Signal(DX12Rendering::Device::GetDevice(), commandQueue);
 		});
 	}
+
+	void ClearRTV(D3D12_CPU_DESCRIPTOR_HANDLE renderTargetHandle, const float rgbaColor[4])
+	{
+		AddCommandAction([renderTargetHandle, rgbaColor](ID3D12GraphicsCommandList4* commandList)
+		{
+			commandList->ClearRenderTargetView(renderTargetHandle, rgbaColor, 0, nullptr);
+		});
+	}
 #pragma endregion
 
 	ID3D12CommandQueue* GetCommandQueue() { return m_commandQueue.Get(); }

@@ -1865,6 +1865,13 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 			continue;
 		}
 
+		if (!shader->ReceivesLighting())
+		{
+			// The GBuffer is only used to calculate light interactions. No point in adding these objects
+			continue;
+		}
+
+
 		// set mvp matrix
 		if (surf->space != backEnd.currentSpace) {
 			RB_SetMVP(surf->space->mvp);
@@ -2826,6 +2833,27 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 	// Clear the depth buffer and clear the stencil to 128 for stencil shadows as well as gui masking
 	GL_Clear(false, true, true, STENCIL_SHADOW_TEST_VALUE, 0.0f, 0.0f, 0.0f, 0.0f); //TODO: We need to properly implement this.
+
+	// Clear surfaces from the previous frame
+	{
+		const float zeroClear[4] = { 0, 0, 0, 0 };
+		const DX12Rendering::eRenderSurface clearSurfaces[] = {
+			DX12Rendering::eRenderSurface::ViewDepth,
+			DX12Rendering::eRenderSurface::Normal,
+			DX12Rendering::eRenderSurface::RaytraceShadowMask,
+			DX12Rendering::eRenderSurface::Diffuse,
+			DX12Rendering::eRenderSurface::Specular
+		};
+
+		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+
+		for (DX12Rendering::eRenderSurface surface : clearSurfaces)
+		{
+			commandList->ClearRTV(
+				DX12Rendering::GetSurface(surface)->GetRtv(),
+				zeroClear);
+		}
+	}
 
 	// normal face culling
 	GL_Cull(CT_FRONT_SIDED);
