@@ -171,10 +171,6 @@ void main( PS_IN fragment, out PS_OUT result ) {
 		fragment.tangent.y, fragment.binormal.y, fragment.normal.y,
 		fragment.tangent.z, fragment.binormal.z, fragment.normal.z
 	};
-	//result.normal = fragment.normal; MARK, these outputs are incorrect on some geometry and need to be addressed.
-	//result.normal.x = dot3(fragment.tangent, localNormal);
-	//result.normal.y = dot3(fragment.binormal, localNormal);
-	//result.normal.z = dot3(fragment.normal, localNormal);
 	result.normal = mul(normalMatrix, localNormal);
 
 	result.normal = (normalize(result.normal) + 1.0) / 2.0f;
