@@ -22,7 +22,7 @@ namespace DX12Rendering {
 	const UINT VERTCACHE_JOINT_MEMORY= 256 * 1024 * 256;
 
 	const UINT DESCRIPTOR_TEXTURE_COUNT = 1024;
-	const UINT DESCRIPTOR_HEAP_SIZE = 6 /* basic entries */ + DESCRIPTOR_TEXTURE_COUNT /* texture space */;
+	const UINT DESCRIPTOR_HEAP_SIZE = 4 /* basic entries */ + DESCRIPTOR_TEXTURE_COUNT /* texture space */;
 
 	enum dxr_renderParm_t {
 		RENDERPARM_GLOBALEYEPOS = 0,
@@ -80,7 +80,14 @@ namespace DX12Rendering {
 		XMFLOAT4 renderParameters[DX12Rendering::dxr_renderParm_t::COUNT];
 
 		UINT lightCount;
-		UINT pad[3];
+		UINT noiseTexureIndex;
+		UINT diffuseTextureIndex;
+		UINT specularTextureIndex;
+
+		UINT depthTextureIndex;
+		UINT flatNormalIndex;
+		UINT normalIndex;
+		UINT pad;
 
 		dxr_lightData_t lights[MAX_SCENE_LIGHTS];
 	};
@@ -137,10 +144,7 @@ public:
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
 		const DX12Rendering::eRenderSurface* renderTargetList,
-		const UINT renderTargetCount,
-		TextureBuffer** buffers,
-		const UINT bufferCount,
-		DX12Rendering::TextureManager* textureManager
+		const UINT renderTargetCount
 	);
 
 	/// <summary>

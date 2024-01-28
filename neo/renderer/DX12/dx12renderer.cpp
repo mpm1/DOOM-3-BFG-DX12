@@ -695,6 +695,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
@@ -1047,13 +1048,9 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 
 		XMFLOAT4 scissor(
 			vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
-			vLight->scissorRect.y1 + m_viewport.TopLeftY,
-			vLight->scissorRect.x2 + 1 - vLight->scissorRect.x1,
-			0);
-
-		scissor.z += scissor.x; // right
-		scissor.w += (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1);// m_viewport.Height - scissor.y; // bottom
-		//scissor.y = scissor.w - (vLight->scissorRect.y2 + 1 - vLight->scissorRect.y1); // top
+			vLight->scissorRect.y1 + m_viewport.TopLeftY, // top
+			vLight->scissorRect.x2 + m_viewport.TopLeftX, //right
+			vLight->scissorRect.y2 + m_viewport.TopLeftY); //bottom
 
 		const float lightScale = r_lightScale.GetFloat();
 

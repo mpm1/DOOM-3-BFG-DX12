@@ -7,10 +7,6 @@ RWTexture2D<float4> diffuseMask :register(u1);
 // Raytracing acceleration structure, accessed as a SRV
 RaytracingAccelerationStructure SceneBVH :register(t0);
 
-// Depth buffer used to access the initial location
-uniform Texture2D<float>	depthBuffer : register(t1);
-uniform Texture2D<float4>	flatNormalMap	: register(t2); // Used to know the polygon normal
-
 // Constants used to define the camera state
 ConstantBuffer<RaytracedSceneConstants> sceneConstants : register(b0, space0);
 
@@ -18,8 +14,6 @@ bool IsInsideViewport(float2 p, float4 viewport)
 {
 	return (p.x >= viewport.x && p.x <= viewport.z)
 		&& (p.y >= viewport.y && p.y <= viewport.w);
-
-	return true;
 }
 
 float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
@@ -30,7 +24,7 @@ float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
 	return falloff.rgb;
 }
 
-float3 CalculateProjection(SceneLight light, float4 worldPosition)
+float3 CalculateProjection(in SceneLight light, float4 worldPosition)
 {
 	float4 projection = float4(
 		dot4(worldPosition, light.projectionS),
@@ -54,19 +48,24 @@ void RayGen() {
 	float2 lerpValues = ((float2)DispatchRaysIndex() + 0.5) / (float2)DispatchRaysDimensions();
 	float3 screenLocation = float3(
 		lerp(sceneConstants.rp.viewport.x, sceneConstants.rp.viewport.z, lerpValues.x),
-		lerp(sceneConstants.rp.viewport.y, sceneConstants.rp.viewport.w, lerpValues.y),
+		lerp(sceneConstants.rp.viewport.y, sceneConstants.rp.viewport.w, 1.0 - lerpValues.y), // We need to flip the y coordinates due to the directx screen coordinates.
 		0.0f);
 	
 	uint lightCounts = min(sceneConstants.lightCount, MAX_SHADOW_LIGHTS);
 
 	// Get the depth buffer location
-	float depth = depthBuffer.GatherRed(pointSampler, lerpValues.xy).r;
+	float depth = GetBindlessTexture1f(sceneConstants.depthTextureIndex).GatherRed(pointSampler, lerpValues.xy).r;
 
 	if(depth != 0) // A depth of absolute 0 is considered invalid.
 	{
+
+		// Calculate the offset from the ray start we'd like to use.
+		// This is done to help with precision errors the further away our surface is.
+		float rayStartDistance = lerp(0.0, 20.0, depth / 1000.0f);
 	
-		float3 flatNormal = normalize((flatNormalMap.SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
-		float3 normal = flatNormal; // TODO: have a new texture that uses this more complex normal.
+
+		float3 flatNormal = normalize((GetBindlessTexture4f(sceneConstants.flatNormalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
+		float3 normal = normalize((GetBindlessTexture4f(sceneConstants.normalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
 
 		{		
 			float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz + (k_minSurfaceDistance * flatNormal);
@@ -79,7 +78,7 @@ void RayGen() {
 
 				//float3 randValue = normalize(random3(lerpValues.xy + light.pad1) * 2.0 - 1.0); //TODO: Add a time value
 
-				//TODO: fix the scissor window. //if (IsInsideViewport(screenLocation.xy, light.scissor))
+				if (IsInsideViewport(screenLocation.xy, light.scissor))
 				{
 					float3 localDiffuse = float3(0.0, 0.0, 0.0); // We can average this value if we want to cast multiple rays for this light.
 					float3 lightPosition = light.center; // + (light.emmisiveRadius.xyz * randValue);
@@ -109,7 +108,7 @@ void RayGen() {
 							// We are inside the light radius.
 							// Define a ray, consisting of origin, direction, and the min-max distance values
 							RayDesc ray;
-							ray.TMin = 1.0;
+							ray.TMin = rayStartDistance;
 							ray.TMax = payload.maxDistance;
 							ray.Origin = worldPosition;
 							ray.Direction = lightVector;

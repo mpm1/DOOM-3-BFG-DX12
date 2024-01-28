@@ -73,9 +73,14 @@ struct RaytracedSceneConstants {
     RenderParameters rp;
 
     uint lightCount;
+    uint noiseTexureIndex;
+    uint diffuseTextureIndex;
+    uint specularTexureIndex;
+
+    uint depthTextureIndex;
+	uint flatNormalIndex;
+    uint normalIndex;
     uint pad1;
-    uint pad2;
-    uint pad3;
 
     SceneLight lights[MAX_SHADOW_LIGHTS];
 };

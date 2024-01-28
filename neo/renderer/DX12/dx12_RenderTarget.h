@@ -25,6 +25,7 @@ namespace DX12Rendering {
 
 		// GBuffer
 		Normal, // Normals in the world space. This can be used for Raytracing.
+		FlatNormal, // Normals before normal mapping is applied.
 		ViewDepth, // The depth in view space
 
 		// RayTracing
@@ -45,6 +46,7 @@ namespace DX12Rendering {
 	const std::vector<eRenderSurface> ViewRenderTarget =
 	{
 		eRenderSurface::Normal,
+		eRenderSurface::FlatNormal,
 		eRenderSurface::ViewDepth,
 
 		eRenderSurface::Diffuse,

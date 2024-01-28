@@ -1825,10 +1825,11 @@ RB_DrawGBuffer
 ==================
 */
 static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
-	const UINT surfaceCount = 2;
+	constexpr UINT surfaceCount = 3;
 	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
-		DX12Rendering::eRenderSurface::Normal,
-		DX12Rendering::eRenderSurface::ViewDepth
+		DX12Rendering::eRenderSurface::FlatNormal,
+		DX12Rendering::eRenderSurface::ViewDepth,
+		DX12Rendering::eRenderSurface::Normal
 	};
 
 	DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
@@ -2840,6 +2841,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		const DX12Rendering::eRenderSurface clearSurfaces[] = {
 			DX12Rendering::eRenderSurface::ViewDepth,
 			DX12Rendering::eRenderSurface::Normal,
+			DX12Rendering::eRenderSurface::FlatNormal,
 			DX12Rendering::eRenderSurface::RaytraceShadowMask,
 			DX12Rendering::eRenderSurface::Diffuse,
 			DX12Rendering::eRenderSurface::Specular
@@ -2986,6 +2988,11 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
 		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
 		viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
+
+		// Copy the flat normal map to a texture
+		auto normalFlatMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal);
+		DX12Rendering::TextureBuffer* normalFlatTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_FLAT_NORMALS);
+		normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager);
 
 		// Copy the normal map to a texture
 		auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);

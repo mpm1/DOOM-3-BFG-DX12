@@ -58,8 +58,6 @@ namespace DX12Rendering {
 		UAV_ShadowMap = 0,
 		UAV_DiffuseMap,
 		SRV_TLAS,
-		SRV_DepthTexture,
-		SRV_NormalTexture,
 		CBV_CameraProperties,
 
 		SRV_TextureArray // Used as the starting point for all indexed entries in the descriptor heap
@@ -132,7 +130,6 @@ namespace DX12Rendering {
 		Fence() : 
 			m_value(0), m_fence(nullptr), m_fenceEvent(nullptr)
 		{
-
 		}
 
 		~Fence()
@@ -141,6 +138,11 @@ namespace DX12Rendering {
 			{
 				CloseHandle(m_fenceEvent);
 			}
+		}
+
+		void Increment()
+		{
+			++m_value;
 		}
 
 		void Invalidate()
@@ -172,7 +174,7 @@ namespace DX12Rendering {
 				}
 			}
 
-			++m_value;
+			Increment();
 			return commandQueue->Signal(m_fence.Get(), m_value);
 		}
 

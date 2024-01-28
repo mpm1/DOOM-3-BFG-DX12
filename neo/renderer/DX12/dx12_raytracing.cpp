@@ -167,10 +167,9 @@ namespace DX12Rendering {
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-		// Create a SRV/UAV/CBV descriptor heap. We need 6 entries + texture entries - 
+		// Create a SRV/UAV/CBV descriptor heap. We need 4 entries + texture entries - 
 		// 2 UAV for the raytracing output
-		// 1 SRV for the TLAS 
-		// 2 SRV for the Depth Texture, Normal Texture
+		// 1 SRV for the TLAS
 		// 1 CBV for the Camera properties
 		// 1024 SRV for textures.
 		m_generalUavHeaps = CreateDescriptorHeap(device, DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
@@ -179,16 +178,6 @@ namespace DX12Rendering {
 		// Add the output buffers
 		SetOutputTexture(eRenderSurface::RaytraceShadowMask, e_RaytracingHeapIndex::UAV_ShadowMap);
 		SetOutputTexture(eRenderSurface::Diffuse, e_RaytracingHeapIndex::UAV_DiffuseMap);
-
-		// Copy the reference to the depth texture.
-		CD3DX12_CPU_DESCRIPTOR_HANDLE depthTextureHandle(shadowHandle, DX12Rendering::e_RaytracingHeapIndex::SRV_DepthTexture, m_cbvHeapIncrementor);
-		DX12Rendering::TextureBuffer* depthTexture = textureManager.GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
-		device->CreateShaderResourceView(depthTexture->resource.Get(), &depthTexture->textureView, depthTextureHandle);
-
-		// Copy the reference to the normal texture.
-		CD3DX12_CPU_DESCRIPTOR_HANDLE normalTextureHandle(shadowHandle, DX12Rendering::e_RaytracingHeapIndex::SRV_NormalTexture, m_cbvHeapIncrementor);
-		DX12Rendering::TextureBuffer* normalTexture = textureManager.GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
-		device->CreateShaderResourceView(normalTexture->resource.Get(), &normalTexture->textureView, normalTextureHandle);
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
@@ -339,12 +328,11 @@ namespace DX12Rendering {
 		RenderSurface* outputSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceShadowMask);
 
 		//Update the resources
-		TextureBuffer* buffers[2] = {
-			textureManager->GetGlobalTexture(eGlobalTexture::DEPTH_TEXTURE),
-			textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)
-		};
+		m_constantBuffer.depthTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::VIEW_DEPTH));
+		m_constantBuffer.flatNormalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS));
+		m_constantBuffer.normalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS));
 
-		return CastRays(frameIndex, viewport, scissorRect, surfaces, surfaceCount, buffers, 2, textureManager);
+		return CastRays(frameIndex, viewport, scissorRect, surfaces, surfaceCount);
 	}
 
 	bool Raytracing::CastRays(
@@ -352,10 +340,7 @@ namespace DX12Rendering {
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
 		const DX12Rendering::eRenderSurface* renderTargetList, 
-		const UINT renderTargetCount,
-		TextureBuffer** buffers,
-		const UINT bufferCount,
-		DX12Rendering::TextureManager* textureManager
+		const UINT renderTargetCount
 	)
 	{
 		DX12Rendering::RenderPassBlock renderPass(
@@ -365,8 +350,6 @@ namespace DX12Rendering {
 			renderTargetCount
 		);
 		auto commandList = renderPass.GetCommandList();
-
-		//textureManager->SetTextureStates(buffers, 2, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, commandList);
 
 		// Copy the CBV data to the heap
 		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
@@ -413,8 +396,6 @@ namespace DX12Rendering {
 			commandList->SetPipelineState1(m_shadowStateObject.Get());
 			commandList->DispatchRays(&desc);
 		});
-
-		//textureManager->SetTextureStates(buffers, 2, D3D12_RESOURCE_STATE_COMMON, commandList);
 
 		return true;
 	}

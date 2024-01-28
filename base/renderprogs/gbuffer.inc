@@ -149,12 +149,15 @@ struct PS_IN {
 };
 
 struct PS_OUT {
-	half3 normal	: SV_TARGET0;
-	float viewDepth	: SV_TARGET1;
+	half3 flatNormal	: SV_TARGET0;
+	float viewDepth		: SV_TARGET1;
+	half3 normal		: SV_TARGET2;
 };
 
 void main( PS_IN fragment, out PS_OUT result ) {
 	result.viewDepth = length(fragment.viewPosition.xyz);// / fragment.viewPosition.w); // The depth going into the view space. Note, z will be negitive
+
+	result.flatNormal = fragment.normal;
 
 	half4 bumpMap =	samp0.Sample(baseSampler, fragment.texcoord0.xy );
 
@@ -164,9 +167,9 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	localNormal = normalize( localNormal );
 
 	result.normal = fragment.normal;
-	/*result.normal.x = dot3(fragment.tangent, localNormal);
+	result.normal.x = dot3(fragment.tangent, localNormal);
 	result.normal.y = dot3(fragment.binormal, localNormal);
-	result.normal.z = dot3(fragment.normal, localNormal);*/
+	result.normal.z = dot3(fragment.normal, localNormal);
 
 	result.normal = (normalize(result.normal) + 1.0) / 2.0f;
 }
