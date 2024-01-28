@@ -157,7 +157,7 @@ struct PS_OUT {
 void main( PS_IN fragment, out PS_OUT result ) {
 	result.viewDepth = length(fragment.viewPosition.xyz);// / fragment.viewPosition.w); // The depth going into the view space. Note, z will be negitive
 
-	result.flatNormal = fragment.normal;
+	result.flatNormal = (normalize(fragment.normal) + 1.0) / 2.0f;
 
 	half4 bumpMap =	samp0.Sample(baseSampler, fragment.texcoord0.xy );
 
@@ -166,10 +166,16 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	localNormal.z = sqrt( abs( dot( localNormal.xy, localNormal.xy ) - 0.25 ) );
 	localNormal = normalize( localNormal );
 
-	result.normal = fragment.normal;
-	result.normal.x = dot3(fragment.tangent, localNormal);
-	result.normal.y = dot3(fragment.binormal, localNormal);
-	result.normal.z = dot3(fragment.normal, localNormal);
+	float3x3 normalMatrix = {
+		fragment.tangent.x, fragment.binormal.x, fragment.normal.x,
+		fragment.tangent.y, fragment.binormal.y, fragment.normal.y,
+		fragment.tangent.z, fragment.binormal.z, fragment.normal.z
+	};
+	//result.normal = fragment.normal; MARK, these outputs are incorrect on some geometry and need to be addressed.
+	//result.normal.x = dot3(fragment.tangent, localNormal);
+	//result.normal.y = dot3(fragment.binormal, localNormal);
+	//result.normal.z = dot3(fragment.normal, localNormal);
+	result.normal = mul(normalMatrix, localNormal);
 
 	result.normal = (normalize(result.normal) + 1.0) / 2.0f;
 }
