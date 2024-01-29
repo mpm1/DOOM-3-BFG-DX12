@@ -34,7 +34,7 @@ struct SceneLight {
     uint    flags;
     uint    pad1;
     uint    pad2;
-    uint    pad3;
+    float   emissiveRadius;
 
     float4   color;
 
@@ -73,7 +73,7 @@ struct RaytracedSceneConstants {
     RenderParameters rp;
 
     uint lightCount;
-    uint noiseTexureIndex;
+    float noiseOffset;
     uint diffuseTextureIndex;
     uint specularTexureIndex;
 

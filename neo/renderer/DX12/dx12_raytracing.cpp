@@ -42,7 +42,8 @@ namespace DX12Rendering {
 		m_width(screenWidth),
 		m_height(screenHeight),
 		m_tlasManager(&m_blasManager),
-		m_nextDescriptorHeapIndex(0)
+		m_nextDescriptorHeapIndex(0),
+		m_constantBuffer({})
 		//m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
 		//m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
@@ -279,6 +280,8 @@ namespace DX12Rendering {
 		m_constantBuffer.lights[index].lightIndex = lightIndex;
 		m_constantBuffer.lights[index].shadowMask = shadowMask;
 
+		m_constantBuffer.lights[index].emissiveRadius = 3.0f;
+
 		m_constantBuffer.lights[index].center = location;
 
 		m_constantBuffer.lights[index].scissor = scissorWindow;
@@ -331,6 +334,13 @@ namespace DX12Rendering {
 		m_constantBuffer.depthTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::VIEW_DEPTH));
 		m_constantBuffer.flatNormalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS));
 		m_constantBuffer.normalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS));
+
+		// Update the noise offset
+		m_constantBuffer.noiseOffset += 0.01f;
+		if (m_constantBuffer.noiseOffset > 5.0f)
+		{
+			m_constantBuffer.noiseOffset = 0.0f;
+		}
 
 		return CastRays(frameIndex, viewport, scissorRect, surfaces, surfaceCount);
 	}

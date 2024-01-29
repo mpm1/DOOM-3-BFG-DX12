@@ -60,7 +60,7 @@ namespace DX12Rendering {
 		};
 		UINT pad1;
 		UINT pad2;
-		UINT pad3;
+		float emissiveRadius; // Radius used to calculate soft shadows.
 
 		XMFLOAT4 color;
 
@@ -80,7 +80,7 @@ namespace DX12Rendering {
 		XMFLOAT4 renderParameters[DX12Rendering::dxr_renderParm_t::COUNT];
 
 		UINT lightCount;
-		UINT noiseTexureIndex;
+		float noiseOffset;
 		UINT diffuseTextureIndex;
 		UINT specularTextureIndex;
 

@@ -60,12 +60,12 @@ float rand( float2 co ) {
     return frac( sin( dot( co.xy, float2( 12.9898, 78.233 ) ) ) * 43758.5453 );
 }
 
-#define _half2( x )		half2( x )
+#define _half2( x )		half2( x, x )
 #define _half3( x )		half3( x, x, x )
-#define _half4( x )		half4( x )
-#define _float2( x )	float2( x )
-#define _float3( x )	float3( x )
-#define _float4( x )	float4( x )
+#define _half4( x )		half4( x, x, x, x )
+#define _float2( x )	float2( x, x )
+#define _float3( x )	float3( x, x, x )
+#define _float4( x )	float4( x, x, x, x )
 
 static float4 idtex2Dproj( Texture2D<float4> samp, SamplerState samplerState, half4 texCoords ) { return samp.Sample( samplerState, texCoords.xy / texCoords.w); } //TODO: old data = texCoords.xyw ); }
 static float4 swizzleColor( float4 c ) { return c; }

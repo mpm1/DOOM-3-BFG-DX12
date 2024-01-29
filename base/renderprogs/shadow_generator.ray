@@ -76,12 +76,12 @@ void RayGen() {
 				SceneLight light = sceneConstants.lights[lightIndex];
 				uint shadowMask = light.shadowMask;
 
-				//float3 randValue = normalize(random3(lerpValues.xy + light.pad1) * 2.0 - 1.0); //TODO: Add a time value
-
 				if (IsInsideViewport(screenLocation.xy, light.scissor))
 				{
+					float3 emissiveOffset = light.emissiveRadius * (random3(screenLocation.xy + _float2(sceneConstants.noiseOffset)) * 2.0 - 1.0);
+
 					float3 localDiffuse = float3(0.0, 0.0, 0.0); // We can average this value if we want to cast multiple rays for this light.
-					float3 lightPosition = light.center; // + (light.emmisiveRadius.xyz * randValue);
+					float3 lightPosition = light.center + emissiveOffset;
 					float maxDistance = distance(lightPosition, worldPosition);
 
 					float3 lightVector = normalize(lightPosition - worldPosition);

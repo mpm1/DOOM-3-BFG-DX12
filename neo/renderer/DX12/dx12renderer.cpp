@@ -1086,10 +1086,12 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				DX12_BakeTectureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
 			}
 
+			const bool castsShadows = true ? true : vLight->castsShadows; //TODO: make a property where we can set all lights to cast shadows.
+
 			if (!m_raytracing->AddLight(vLight->sceneIndex, 
 				static_cast<const DX12Rendering::TextureBuffer*>(vLight->falloffImage->Bindless()), 
 				static_cast<const DX12Rendering::TextureBuffer*>(lightStage->texture.image->Bindless()), 
-				vLight->shadowMask, location, lightColor, lightProjection, scissor, true/*vLight->castsShadows*/))
+				vLight->shadowMask, location, lightColor, lightProjection, scissor, castsShadows))
 			{
 				// Could not add the raytraced light
 				shadowMask = 0;
