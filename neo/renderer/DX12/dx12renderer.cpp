@@ -697,6 +697,8 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Resize(width, height);
@@ -1146,7 +1148,7 @@ void DX12Renderer::EnforceRenderTargets(DX12Rendering::Commands::CommandList* co
 
 void DX12Renderer::SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count)
 {
-	assert(count < MAX_RENDER_TARGETS);
+	assert(count <= MAX_RENDER_TARGETS);
 	
 	m_activeRenderTargets = count;
 	for (int index = 0; index < count; ++index)

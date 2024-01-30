@@ -303,6 +303,8 @@ namespace DX12Rendering
 			m_surfaces.emplace_back(L"Normal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Normal, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"FlatNormal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::FlatNormal, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"ViewDepth", DXGI_FORMAT_R32_FLOAT, eRenderSurface::ViewDepth, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"Albedo", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Albedo, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"SpecularColor", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::SpecularColor, RENDER_SURFACE_FLAG_NONE, clearValue);
 
 			m_surfaces.emplace_back(L"RaytraceShadowMask", DXGI_FORMAT_R8G8B8A8_UINT, eRenderSurface::RaytraceShadowMask, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 

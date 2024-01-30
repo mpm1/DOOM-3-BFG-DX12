@@ -1825,11 +1825,13 @@ RB_DrawGBuffer
 ==================
 */
 static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
-	constexpr UINT surfaceCount = 3;
+	constexpr UINT surfaceCount = 5;
 	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 		DX12Rendering::eRenderSurface::FlatNormal,
 		DX12Rendering::eRenderSurface::ViewDepth,
-		DX12Rendering::eRenderSurface::Normal
+		DX12Rendering::eRenderSurface::Normal,
+		DX12Rendering::eRenderSurface::Albedo,
+		DX12Rendering::eRenderSurface::SpecularColor
 	};
 
 	DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
@@ -1907,20 +1909,32 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		const idMaterial* surfaceShader = surf->material;
 		if (surfaceShader->GetFastPathBumpImage() && !r_skipInteractionFastPath.GetBool()) {
 			// texture 0 will be the per-surface bump map
-			GL_SelectTexture(INTERACTION_TEXUNIT_BUMP);
+			GL_SelectTexture(0);
 			surfaceShader->GetFastPathBumpImage()->Bind();
+
+			// texture 3 is the per-surface diffuse map
+			GL_SelectTexture(1);
+			surfaceShader->GetFastPathDiffuseImage()->Bind();
+
+			// texture 4 is the per-surface specular map
+			GL_SelectTexture(2);
+			surfaceShader->GetFastPathSpecularImage()->Bind();
 
 			const idVec4 sMatrix(1, 0, 0, 0);
 			const idVec4 tMatrix(0, 1, 0, 0);
 
-			// bump matrix
 			SetVertexParm(RENDERPARM_BUMPMATRIX_S, sMatrix.ToFloatPtr());
 			SetVertexParm(RENDERPARM_BUMPMATRIX_T, tMatrix.ToFloatPtr());
+
+			SetVertexParm(RENDERPARM_DIFFUSEMATRIX_S, sMatrix.ToFloatPtr());
+			SetVertexParm(RENDERPARM_DIFFUSEMATRIX_T, tMatrix.ToFloatPtr());
+
+			SetVertexParm(RENDERPARM_SPECULARMATRIX_S, sMatrix.ToFloatPtr());
+			SetVertexParm(RENDERPARM_SPECULARMATRIX_T, tMatrix.ToFloatPtr());
 		}
 		else
 		{
 			const float* surfaceRegs = surf->shaderRegisters;
-			bool bumpMapFound = false;
 
 			for (int surfaceStageNum = 0; surfaceStageNum < surfaceShader->GetNumStages(); surfaceStageNum++) {
 				const shaderStage_t* surfaceStage = surfaceShader->GetStage(surfaceStageNum);
@@ -1941,12 +1955,10 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 						break;
 					}
 
-					bumpMapFound = true;
-
 					// texture 0 will be the per-surface bump map
-					GL_SelectTexture(INTERACTION_TEXUNIT_BUMP);
+					GL_SelectTexture(0);
 					surfaceStage->texture.image->Bind();
-					
+
 					idVec4 bumpMatrix[2];
 					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
 						bumpMatrix, NULL);
@@ -1958,16 +1970,45 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 					break;
 				}
 				case SL_DIFFUSE: {
-					// ignore
+					// ignore stage that fails the condition
+					if (!surfaceRegs[surfaceStage->conditionRegister]) {
+						break;
+					}
+
+					// texture 3 will be the diffuse map
+					GL_SelectTexture(1);
+					surfaceStage->texture.image->Bind();
+
+					idVec4 matrix[2];
+					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
+						matrix, NULL);
+
+					// bump matrix
+					SetVertexParm(RENDERPARM_DIFFUSEMATRIX_S, matrix[0].ToFloatPtr());
+					SetVertexParm(RENDERPARM_DIFFUSEMATRIX_T, matrix[1].ToFloatPtr());
+
+					break;
 				}
 				case SL_SPECULAR: {
-					// ignore
-				}
-				}
+					// ignore stage that fails the condition
+					if (!surfaceRegs[surfaceStage->conditionRegister]) {
+						break;
+					}
 
-				if (bumpMapFound)
-				{
-					//break;
+					// texture 3 will be the diffuse map
+					GL_SelectTexture(2);
+					surfaceStage->texture.image->Bind();
+
+					idVec4 matrix[2];
+					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
+						matrix, NULL);
+
+					// bump matrix
+					SetVertexParm(RENDERPARM_SPECULARMATRIX_S, matrix[0].ToFloatPtr());
+					SetVertexParm(RENDERPARM_SPECULARMATRIX_T, matrix[1].ToFloatPtr());
+
+					break;
+				}
 				}
 			}
 		}
@@ -2844,16 +2885,22 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			DX12Rendering::eRenderSurface::FlatNormal,
 			DX12Rendering::eRenderSurface::RaytraceShadowMask,
 			DX12Rendering::eRenderSurface::Diffuse,
-			DX12Rendering::eRenderSurface::Specular
+			DX12Rendering::eRenderSurface::Specular,
+			DX12Rendering::eRenderSurface::Albedo,
+			DX12Rendering::eRenderSurface::SpecularColor
 		};
 
 		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
 
 		for (DX12Rendering::eRenderSurface surface : clearSurfaces)
 		{
-			commandList->ClearRTV(
-				DX12Rendering::GetSurface(surface)->GetRtv(),
-				zeroClear);
+			auto renderSurface = DX12Rendering::GetSurface(surface);
+			if (!renderSurface->Exists())
+			{
+				commandList->ClearRTV(
+					renderSurface->GetRtv(),
+					zeroClear);
+			}
 		}
 	}
 
@@ -2979,15 +3026,26 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		RB_DrawGBuffer(drawSurfs, numDrawSurfs);
 
 		// Build our light list
-		dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix); //Mark, find out why lights keep changing location.
+		dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix);
 
 		// Copy the depth buffer to a texture
 		auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
 		viewDepth->fence.Wait();
 
+		// TODO: Make a system to perform multiple copies
 		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
 		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
 		viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
+
+		// Copy the albedo
+		auto albedo = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo);
+		DX12Rendering::TextureBuffer* albedoTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
+		albedo->CopySurfaceToTexture(albedoTexture, textureManager);
+
+		// Copy the specular
+		auto specular = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor);
+		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
+		specular->CopySurfaceToTexture(specularTexture, textureManager);
 
 		// Copy the flat normal map to a texture
 		auto normalFlatMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal);

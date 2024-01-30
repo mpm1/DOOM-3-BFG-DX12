@@ -58,6 +58,16 @@ namespace DX12Rendering
 				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 				break;
 
+			case eGlobalTexture::ALBEDO:
+				name = "albedo";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+
+			case eGlobalTexture::SPECULAR_COLOR:
+				name = "specular_color";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+
 			case eGlobalTexture::WORLD_FLAT_NORMALS:
 				name = "world_flat_normals";
 				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;

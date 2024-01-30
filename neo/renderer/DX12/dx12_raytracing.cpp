@@ -334,6 +334,8 @@ namespace DX12Rendering {
 		m_constantBuffer.depthTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::VIEW_DEPTH));
 		m_constantBuffer.flatNormalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS));
 		m_constantBuffer.normalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS));
+		m_constantBuffer.diffuseTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO));
+		m_constantBuffer.specularTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR));
 
 		// Update the noise offset
 		m_constantBuffer.noiseOffset += 0.01f;

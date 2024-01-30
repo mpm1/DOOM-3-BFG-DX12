@@ -66,6 +66,7 @@ void RayGen() {
 
 		float3 flatNormal = normalize((GetBindlessTexture4f(sceneConstants.flatNormalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
 		float3 normal = normalize((GetBindlessTexture4f(sceneConstants.normalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
+		float3 diffuse = GetBindlessTexture4f(sceneConstants.diffuseTextureIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz;
 
 		{		
 			float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz + (k_minSurfaceDistance * flatNormal);
@@ -129,7 +130,7 @@ void RayGen() {
 						{
 							resultMask += shadowMask;
 
-							localDiffuse += (light.color.rgb * lightColor); // TODO: Get real light and color from the light texture.
+							localDiffuse += (light.color.rgb * lightColor * diffuse);
 						}
 					}
 

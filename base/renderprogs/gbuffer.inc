@@ -18,11 +18,13 @@ struct VS_IN {
 
 struct VS_OUT {
 	float4 position		: SV_POSITION;
-	float4 texcoord0	: TEXCOORD0_centroid;
-	float3 normal		: TEXCOORD1_centroid;
-	float3 tangent		: TEXCOORD2_centroid;
-	float3 binormal		: TEXCOORD3_centroid;
-	float4 viewPosition	: TEXCOORD4;
+	float4 texcoord0	: TEXCOORD0_centroid; // Bump map
+	float4 texcoord1	: TEXCOORD1_centroid; // Diffuse map
+	float4 texcoord2	: TEXCOORD2_centroid; // Specular map
+	float3 normal		: TEXCOORD3_centroid;
+	float3 tangent		: TEXCOORD4_centroid;
+	float3 binormal		: TEXCOORD5_centroid;
+	float4 viewPosition	: TEXCOORD6;
 };
 
 float3 applyNormalTransform(float3 inVector)
@@ -132,26 +134,44 @@ void main( VS_IN vertex, out VS_OUT result ) {
 	result.texcoord0 = defaultTexCoord;
 	result.texcoord0.x = dot4( vertex.texcoord.xy, sceneConstants.rpBumpMatrixS );
 	result.texcoord0.y = dot4( vertex.texcoord.xy, sceneConstants.rpBumpMatrixT );
+
+	//# textures 1 takes the base coordinates by the texture matrix
+	result.texcoord1 = defaultTexCoord;
+	result.texcoord1.x = dot4( vertex.texcoord.xy, sceneConstants.rpDiffuseMatrixS );
+	result.texcoord1.y = dot4( vertex.texcoord.xy, sceneConstants.rpDiffuseMatrixT );
+
+	//# textures 2 takes the base coordinates by the texture matrix
+	result.texcoord2 = defaultTexCoord;
+	result.texcoord2.x = dot4( vertex.texcoord.xy, sceneConstants.rpSpecularMatrixS );
+	result.texcoord2.y = dot4( vertex.texcoord.xy, sceneConstants.rpSpecularMatrixT );
 }
 #endif // end VERTEX_SHADER
 
 #ifdef PIXEL_SHADER
 uniform Texture2D<float4>	samp0 : register(t0); // texture 1 is the per-surface bump map
+uniform Texture2D<float4>	samp1 : register(t1); // texture 2 is the per-surface diffuse map
+uniform Texture2D<float4>	samp2 : register(t2); // texture 3 is the per-surface specular map
 
 struct PS_IN {
 	half4 position	: SV_POSITION;
-	half4 texcoord0	: TEXCOORD0_centroid; // Bumpmap location
-	half3 normal	: TEXCOORD1_centroid; // Normal
-	half3 tangent	: TEXCOORD2_centroid; // Tangent
-	half3 binormal	: TEXCOORD3_centroid; // Binormal
 
-	float4 viewPosition : TEXCOORD4;
+	half4 texcoord0	: TEXCOORD0_centroid; // Bumpmap location
+	half4 texcoord1	: TEXCOORD1_centroid; // Diffuse location
+	half4 texcoord2 : TEXCOORD2_centroid; // Specular location
+	
+	half3 normal	: TEXCOORD3_centroid; // Normal
+	half3 tangent	: TEXCOORD4_centroid; // Tangent
+	half3 binormal	: TEXCOORD5_centroid; // Binormal
+
+	float4 viewPosition : TEXCOORD6;
 };
 
 struct PS_OUT {
 	half3 flatNormal	: SV_TARGET0;
 	float viewDepth		: SV_TARGET1;
 	half3 normal		: SV_TARGET2;
+	half3 albedo		: SV_TARGET3;
+	half4 specularColor	: SV_TARGET4;
 };
 
 void main( PS_IN fragment, out PS_OUT result ) {
@@ -160,6 +180,10 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	result.flatNormal = (normalize(fragment.normal) + 1.0) / 2.0f;
 
 	half4 bumpMap =	samp0.Sample(baseSampler, fragment.texcoord0.xy );
+	half4 YCoCG = samp1.Sample(baseSampler, fragment.texcoord1.xy );
+	
+	result.specularColor = samp2.Sample(baseSampler, fragment.texcoord2.xy );
+	result.albedo = ConvertYCoCgToRGB( YCoCG );
 
 	half3 localNormal;
 	localNormal.xy = bumpMap.wy - 0.5;
