@@ -67,7 +67,7 @@ DX12Rendering::RenderPassBlock* DX12Rendering::RenderPassBlock::GetCurrentRender
 
 void DX12Rendering::RenderPassBlock::UpdateRenderState(D3D12_RESOURCE_STATES renderState)
 {
-	m_commandList->AddCommandAction([renderTargetCount = this->renderTargetCount, surfaceList = this->m_renderSurfaces](ID3D12GraphicsCommandList4* commandList)
+	m_commandList->AddCommandAction([renderTargetCount = this->renderTargetCount, surfaceList = this->m_renderSurfaces, renderState](ID3D12GraphicsCommandList4* commandList)
 	{
 		std::vector<D3D12_RESOURCE_BARRIER> transitions;
 		transitions.reserve(renderTargetCount);
@@ -77,7 +77,7 @@ void DX12Rendering::RenderPassBlock::UpdateRenderState(D3D12_RESOURCE_STATES ren
 			DX12Rendering::RenderSurface* outputSurface = DX12Rendering::GetSurface(surfaceList[index]);
 
 			D3D12_RESOURCE_BARRIER transition;
-			if (outputSurface->TryTransition(D3D12_RESOURCE_STATE_COMMON, &transition))
+			if (outputSurface->TryTransition(renderState, &transition))
 			{
 				transitions.push_back(transition);
 			}

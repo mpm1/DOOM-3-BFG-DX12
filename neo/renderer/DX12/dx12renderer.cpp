@@ -456,7 +456,7 @@ void DX12Renderer::BeginDraw() {
 			commandList->CommandResourceBarrier(1, &transition);
 		}
 	}
-
+	
 	SetCommandListDefaults(false);
 }
 

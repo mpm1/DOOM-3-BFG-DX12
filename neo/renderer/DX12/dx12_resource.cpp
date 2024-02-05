@@ -27,6 +27,7 @@ namespace DX12Rendering {
 			resource->SetName(GetName());
 		}
 
+		m_resourceState = initState;
 		state = Ready;
 		return resource.Get();
 	}
@@ -38,6 +39,21 @@ namespace DX12Rendering {
 			resource = nullptr;
 			state = Unallocated;
 		}
+	}
+
+	bool Resource::TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier)
+	{
+		if (!Exists() || // No resource to tansition on.
+			m_resourceState == toTransition || // No state change to transition to.
+			resourceBarrier == nullptr) // No place to store the barrier.
+		{
+			return false;
+		}
+
+		*resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(resource.Get(), m_resourceState, toTransition);
+		m_resourceState = toTransition;
+
+		return true;
 	}
 
 #pragma region ScratchBuffer
@@ -56,7 +72,7 @@ namespace DX12Rendering {
 		description.SampleDesc.Quality = 0;
 		description.Width = m_size;
 
-		return Allocate(description, m_resourceState, m_heapProps);
+		return Allocate(description, m_defaultResourceState, m_heapProps);
 	}
 
 	bool ScratchBuffer::RequestSpace(DX12Rendering::Commands::CommandList* commandList, const UINT64 size, UINT64& offset, bool waitForSpace)

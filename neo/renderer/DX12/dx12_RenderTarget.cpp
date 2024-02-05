@@ -18,7 +18,6 @@ namespace DX12Rendering
 		surfaceId(surfaceId),
 		m_width(0),
 		m_height(0),
-		m_lastTransitionState(D3D12_RESOURCE_STATE_COPY_SOURCE),
 		m_format(format),
 		m_clearValue(clearValue),
 		m_flags(flags),
@@ -69,7 +68,11 @@ namespace DX12Rendering
 			return false;
 		}
 
+		// Hack to set ourselves in the appropriate resource state.
 		state = Ready;
+
+		D3D12_RESOURCE_BARRIER transition = {};
+		TryTransition(D3D12_RESOURCE_STATE_COPY_SOURCE, &transition);
 
 		return true;
 	}
@@ -134,8 +137,6 @@ namespace DX12Rendering
 
 			UpdateData(width, height);
 		}
-
-		m_lastTransitionState = D3D12_RESOURCE_STATE_COPY_SOURCE;
 
 		return resourceUpdated;
 	}
@@ -238,24 +239,6 @@ namespace DX12Rendering
 		textureManager->EndTextureWrite(texture);
 
 		return &this->fence;
-	}
-
-	bool RenderSurface::TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier)
-	{
-		if (m_lastTransitionState == toTransition)
-		{
-			return false;
-		}
-
-		if (resourceBarrier == nullptr)
-		{
-			return false;
-		}
-
-		*resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(resource.Get(), m_lastTransitionState, toTransition);
-		m_lastTransitionState = toTransition;
-
-		return true;
 	}
 
 	void GenerateRenderSurfaces()

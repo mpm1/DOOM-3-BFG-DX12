@@ -167,23 +167,27 @@ struct PS_IN {
 };
 
 struct PS_OUT {
+#ifdef WRITE_LOCATION_DATA
 	half3 flatNormal	: SV_TARGET0;
 	float viewDepth		: SV_TARGET1;
 	half3 normal		: SV_TARGET2;
-	half3 albedo		: SV_TARGET3;
+#endif
+	half4 albedo		: SV_TARGET3;
 	half4 specularColor	: SV_TARGET4;
 };
 
 void main( PS_IN fragment, out PS_OUT result ) {
-	result.viewDepth = length(fragment.viewPosition.xyz);// / fragment.viewPosition.w); // The depth going into the view space. Note, z will be negitive
-
-	result.flatNormal = (normalize(fragment.normal) + 1.0) / 2.0f;
-
 	half4 bumpMap =	samp0.Sample(baseSampler, fragment.texcoord0.xy );
 	half4 YCoCG = samp1.Sample(baseSampler, fragment.texcoord1.xy );
 	
 	result.specularColor = samp2.Sample(baseSampler, fragment.texcoord2.xy );
-	result.albedo = ConvertYCoCgToRGB( YCoCG );
+	
+	result.albedo.rgb = ConvertYCoCgToRGB( YCoCG ); //we need the diffuse modifier constant?
+
+#ifdef WRITE_LOCATION_DATA
+	result.viewDepth = length(fragment.viewPosition.xyz);// / fragment.viewPosition.w); // The depth going into the view space. Note, z will be negitive
+
+	result.flatNormal = (normalize(fragment.normal) + 1.0) / 2.0f;
 
 	half3 localNormal;
 	localNormal.xy = bumpMap.wy - 0.5;
@@ -198,5 +202,6 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	result.normal = mul(normalMatrix, localNormal);
 
 	result.normal = (normalize(result.normal) + 1.0) / 2.0f;
+#endif
 }
 #endif // end PIXEL_SHADER

@@ -478,8 +478,6 @@ namespace DX12Rendering {
 		UINT64 scratchLocation;
 		bool spaceResult = scratchBuffer->RequestSpace(commandList, scratchSizeInBytes, scratchLocation, false);
 
-		fence.Increment();
-
 		// Build the top level AS
 		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{

@@ -24,11 +24,9 @@ namespace DX12Rendering
 		friend class TextureManager;
 
 		D3D12_SHADER_RESOURCE_VIEW_DESC textureView;
-		D3D12_RESOURCE_STATES m_lastTransitionState;
 
 		TextureBuffer(const LPCWSTR name) : Resource(name),
-			textureView{},
-			m_lastTransitionState(D3D12_RESOURCE_STATE_COMMON)
+			textureView{}
 		{
 		}
 
@@ -52,10 +50,9 @@ namespace DX12Rendering
 		void Clear();
 
 		// State Control
-		bool SetTextureCopyState(TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
-		bool SetTexturePixelShaderState(TextureBuffer* buffer, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
-		bool SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
-		bool SetTextureStates(TextureBuffer** buffers, UINT bufferCount, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES) const;
+		bool SetTextureCopyState(TextureBuffer* buffer) const;
+		bool SetTexturePixelShaderState(TextureBuffer* buffer) const;
+		bool SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList) const;
 
 		// Data management
 		void StartTextureWrite(TextureBuffer* buffer);

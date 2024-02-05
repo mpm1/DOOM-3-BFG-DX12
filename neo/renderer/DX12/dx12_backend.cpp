@@ -1849,10 +1849,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		// TODO: Handle Sub Views
 	}
 
-	// draw all the opaque surfaces and build up a list of perforated surfaces that
-	// we will defer drawing until all opaque surfaces are done
-	GL_State(GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL | GLS_STENCIL_FUNC_ALWAYS);
-
 //TODO: Clear the buffers
 //TODO: Implement perforated serfaces
 //TODO: Move to it's own buffer to render and cast rays'
@@ -1863,15 +1859,44 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		const drawSurf_t* surf = drawSurfs[surfNum];
 		const idMaterial* shader = surf->material;
 
-		// translucent surfaces don't put anything in the depth buffer
-		if (shader->Coverage() == MC_TRANSLUCENT) {
-			continue;
-		}
-
 		if (!shader->ReceivesLighting())
 		{
 			// The GBuffer is only used to calculate light interactions. No point in adding these objects
 			continue;
+		}
+
+		// translucent surfaces should not write to the depth or normal maps
+		if (shader->Coverage() == MC_TRANSLUCENT)
+		{
+			if (shader->GetSort() != SS_DECAL)
+			{
+				// Only decals can be added onto objects.
+				continue;
+			}
+
+			//Materials are additive blended to their background.
+			GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHMASK | GLS_DEPTHFUNC_LESS | GLS_STENCIL_FUNC_ALWAYS);
+
+			if (surf->jointCache) {
+				renderProgManager.BindShader_GBufferTransparentSkinned();
+			}
+			else {
+				renderProgManager.BindShader_GBufferTransparent();
+			}
+		}
+		else
+		{
+			auto test = shader->GetDecalInfo();
+			// draw all the opaque surfaces and build up a list of perforated surfaces that
+			// we will defer drawing until all opaque surfaces are done
+			GL_State(GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL | GLS_STENCIL_FUNC_ALWAYS);
+
+			if (surf->jointCache) {
+				renderProgManager.BindShader_GBufferSkinned();
+			}
+			else {
+				renderProgManager.BindShader_GBuffer();
+			}
 		}
 
 
@@ -1935,6 +1960,9 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		else
 		{
 			const float* surfaceRegs = surf->shaderRegisters;
+			bool bumpMapFound = false;
+			bool diffuseMapFound = false;
+			bool specularMapFound = false;
 
 			for (int surfaceStageNum = 0; surfaceStageNum < surfaceShader->GetNumStages(); surfaceStageNum++) {
 				const shaderStage_t* surfaceStage = surfaceShader->GetStage(surfaceStageNum);
@@ -1954,6 +1982,13 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 					if (!surfaceRegs[surfaceStage->conditionRegister]) {
 						break;
 					}
+
+					if (bumpMapFound)
+					{
+						// Already loaded the texture, draw the surface.
+						RB_DrawElementsWithCounters(surf);
+					}
+					bumpMapFound = true;
 
 					// texture 0 will be the per-surface bump map
 					GL_SelectTexture(0);
@@ -1975,6 +2010,13 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 						break;
 					}
 
+					if (diffuseMapFound)
+					{
+						// Already loaded the texture, draw the surface.
+						RB_DrawElementsWithCounters(surf);
+					}
+					diffuseMapFound = true;
+
 					// texture 3 will be the diffuse map
 					GL_SelectTexture(1);
 					surfaceStage->texture.image->Bind();
@@ -1995,6 +2037,13 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 						break;
 					}
 
+					if (specularMapFound)
+					{
+						// Already loaded the texture, draw the surface.
+						RB_DrawElementsWithCounters(surf);
+					}
+					specularMapFound = true;
+
 					// texture 3 will be the diffuse map
 					GL_SelectTexture(2);
 					surfaceStage->texture.image->Bind();
@@ -2011,13 +2060,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 				}
 				}
 			}
-		}
-
-		if (surf->jointCache) {
-			renderProgManager.BindShader_GBufferSkinned();
-		}
-		else {
-			renderProgManager.BindShader_GBuffer();
 		}
 
 		// draw it solid
@@ -2902,6 +2944,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 					zeroClear);
 			}
 		}
+
+		commandList->Cycle();
 	}
 
 	// normal face culling

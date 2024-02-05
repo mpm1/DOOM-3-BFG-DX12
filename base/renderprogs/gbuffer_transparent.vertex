@@ -1,0 +1,6 @@
+/*
+Used for storing render data into a gbuffer which can be used later to calcuate what is needed for raytraced lighting.
+*/
+#define VERTEX_SHADER
+
+#include "gbuffer.inc"

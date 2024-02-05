@@ -34,12 +34,21 @@ namespace DX12Rendering {
 		bool Exists() { return state >= Ready && state < Removed; }
 		bool IsRemoved() { return state == Removed; }
 
+		/// <summary>
+		/// Uses the last known format state to define a Resource Barrier to the new state.
+		/// </summary>
+		/// <param name="toTransition">The transition to. If this is the same as the last know state, no barrier is made.</param>
+		/// <param name="resourceBarrier">The barrier to store the stransition information in.</params>
+		/// <returns>True if a transition was created.</returns>
+		bool TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier);
+
 	protected:
 		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps, const D3D12_CLEAR_VALUE* clearValue = nullptr);
 
 	private:
 		//TODO: define to only work with debug.
 		const std::wstring m_name;
+		D3D12_RESOURCE_STATES m_resourceState;
 	};
 
 	struct ScratchBuffer : public Resource
@@ -53,7 +62,7 @@ namespace DX12Rendering {
 			m_alignment(alignment),
 			m_heapProps(heapProps),
 			m_flags(flags),
-			m_resourceState(resourceState)
+			m_defaultResourceState(resourceState)
 		{}
 
 		ID3D12Resource* Build();
@@ -72,7 +81,7 @@ namespace DX12Rendering {
 		const UINT m_alignment;
 		const D3D12_HEAP_PROPERTIES m_heapProps;
 		const D3D12_RESOURCE_FLAGS m_flags;
-		const D3D12_RESOURCE_STATES m_resourceState;
+		const D3D12_RESOURCE_STATES m_defaultResourceState;
 	};
 }
 
