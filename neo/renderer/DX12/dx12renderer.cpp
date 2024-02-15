@@ -8,6 +8,7 @@
 #include <type_traits>
 
 idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
@@ -1088,7 +1089,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				DX12_BakeTectureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
 			}
 
-			const bool castsShadows = true ? true : vLight->castsShadows; //TODO: make a property where we can set all lights to cast shadows.
+			const bool castsShadows = r_allLightsCastShadows.GetBool() || vLight->castsShadows;
 
 			if (!m_raytracing->AddLight(vLight->sceneIndex, 
 				static_cast<const DX12Rendering::TextureBuffer*>(vLight->falloffImage->Bindless()), 

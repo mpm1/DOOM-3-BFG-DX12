@@ -39,6 +39,28 @@ float3 CalculateProjection(in SceneLight light, float4 worldPosition)
 	return projectionTexture.SampleLevel(projectionSampler, projection.xy, 0).rgb;
 }
 
+float3 GetValidLightLocation(in SceneLight light, in float centerNDotL, in Plane surfacePlane, in float3 randomOffset)
+{
+	float3 randVector = normalize(rand3(randomOffset.xyz) * 2.0 - 1.0);
+
+	if(centerNDotL >= 0)
+	{
+		// Find the farthest we can travel along the vector before we are outsize of the light radius or behind the point
+		float3 pointOnPlane = light.center - randVector * (PlaneDotPoint(surfacePlane,light.center) / PlaneDotVector(surfacePlane, randVector)); 
+		float maxRad = min(light.emissiveRadius, distance(pointOnPlane, light.center));
+
+		if(maxRad > 0)
+		{
+			float emissiveOffset = maxRad * rand(randomOffset.zxy);
+			float3 lightPosition = light.center + emissiveOffset;
+
+			return lightPosition;
+		}
+	}
+
+	return light.center;
+}
+
 [shader("raygeneration")]
 void RayGen() {
 	uint resultMask = 0x00000000;
@@ -72,6 +94,8 @@ void RayGen() {
 			float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz + (k_minSurfaceDistance * flatNormal);
 			float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
 
+			Plane surfacePlane = GeneratePlane(flatNormal, worldPosition);
+
 			for(uint lightIndex = 0; lightIndex < sceneConstants.lightCount; ++lightIndex)
 			{
 				SceneLight light = sceneConstants.lights[lightIndex];
@@ -79,62 +103,75 @@ void RayGen() {
 
 				if (IsInsideViewport(screenLocation.xy, light.scissor))
 				{
-					float3 emissiveOffset = light.emissiveRadius * (random3(screenLocation.xy + _float2(sceneConstants.noiseOffset)) * 2.0 - 1.0);
+					bool castsShadows = light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS;
+					uint lightRayCount = castsShadows ? sceneConstants.raysPerLight : 1; // Only one point is needed if we're not creating soft shadows.
+					float3 pointToCenter = normalize(light.center - worldPosition);
 
-					float3 localDiffuse = float3(0.0, 0.0, 0.0); // We can average this value if we want to cast multiple rays for this light.
-					float3 lightPosition = light.center + emissiveOffset;
-					float maxDistance = distance(lightPosition, worldPosition);
+					float3 localDiffuse = float3(0.0, 0.0, 0.0);
 
-					float3 lightVector = normalize(lightPosition - worldPosition);
-
-					float intensity = saturate(dot(normal, lightVector));
-					float3 lightColor = float3(intensity, intensity, intensity);
-
-					if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
+					for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
 					{
-						lightColor = lightColor * 
-							CalculateFalloff(light, float4(worldPosition, 1.0)) * 
-							CalculateProjection(light, float4(worldPosition, 1.0));
-					}
+						float3 lightPosition = castsShadows ?
+							GetValidLightLocation(
+								light, dot(flatNormal, pointToCenter), 
+								surfacePlane,
+								normalize(float3(lerpValues.xy + float2(lightIndex, rayIndex) + sceneConstants.noiseOffset, rayIndex + lightIndex))
+								)
+							: light.center;
 
-					if(intensity > 0 && length(lightColor) > 0)
-					{
-						// Initialize the ray payload
-						ShadowHitInfo payload;
-						payload.maxDistance = maxDistance;
-						payload.intensity = intensity;
+						float maxDistance = distance(lightPosition, worldPosition);
 
-						if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS)
+						float3 lightVector = normalize(lightPosition - worldPosition);
+
+						float intensity = saturate(dot(normal, lightVector));
+						float3 lightColor = float3(intensity, intensity, intensity);
+
+						if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
 						{
-							// We are inside the light radius.
-							// Define a ray, consisting of origin, direction, and the min-max distance values
-							RayDesc ray;
-							ray.TMin = rayStartDistance;
-							ray.TMax = payload.maxDistance;
-							ray.Origin = worldPosition;
-							ray.Direction = lightVector;
-
-							TraceRay(
-								SceneBVH,
-								RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-								INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
-								0,
-								0, // First Hit Shader
-								0, // Miss Shader
-								ray,
-								payload
-							);
+							lightColor = lightColor * 
+								CalculateFalloff(light, float4(worldPosition, 1.0)) * 
+								CalculateProjection(light, float4(worldPosition, 1.0));
 						}
 
-						if (payload.intensity > 0.0)
+						if(intensity > 0 && length(lightColor) > 0)
 						{
-							resultMask += shadowMask;
+							// Initialize the ray payload
+							ShadowHitInfo payload;
+							payload.maxDistance = maxDistance;
+							payload.intensity = intensity;
 
-							localDiffuse += (light.color.rgb * lightColor * diffuse);
+							if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS)
+							{
+								// We are inside the light radius.
+								// Define a ray, consisting of origin, direction, and the min-max distance values
+								RayDesc ray;
+								ray.TMin = rayStartDistance;
+								ray.TMax = payload.maxDistance;
+								ray.Origin = worldPosition;
+								ray.Direction = lightVector;
+
+								TraceRay(
+									SceneBVH,
+									RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+									INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
+									0,
+									0, // First Hit Shader
+									0, // Miss Shader
+									ray,
+									payload
+								);
+							}
+
+							if (payload.intensity > 0.0)
+							{
+								resultMask += shadowMask;
+
+								localDiffuse += (light.color.rgb * lightColor * diffuse);
+							}
 						}
 					}
 
-					resultDiffuse += saturate(localDiffuse); // TODO: Change this to a colour light space
+					resultDiffuse += saturate(localDiffuse / lightRayCount); // TODO: Change this to a colour light space
 				} 
 			}
 		}

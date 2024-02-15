@@ -3,9 +3,14 @@
 #include <stdexcept>
 #include <algorithm>
 
+#include "../tr_local.h"
+
 #include "./dx12_raytracing.h"
 #include "./dx12_DeviceManager.h"
 #include "./dx12_RenderPass.h"
+
+idCVar s_raysCastPerLight("s_raysCastPerLight", "20", CVAR_ARCHIVE | CVAR_INTEGER, "number of shadow rays per light per pixel.", 0, 100);
+idCVar s_lightEmissiveRadius("s_lightEmissiveRadius", "20.0", CVAR_ARCHIVE | CVAR_FLOAT, "the radius of a light. The larger the value, the softer shadows will be.", 0.0f, 100.0f);
 
 namespace DX12Rendering {
 	bool CheckRaytracingSupport() {
@@ -280,7 +285,7 @@ namespace DX12Rendering {
 		m_constantBuffer.lights[index].lightIndex = lightIndex;
 		m_constantBuffer.lights[index].shadowMask = shadowMask;
 
-		m_constantBuffer.lights[index].emissiveRadius = 3.0f;
+		m_constantBuffer.lights[index].emissiveRadius = s_lightEmissiveRadius.GetFloat();
 
 		m_constantBuffer.lights[index].center = location;
 
@@ -336,6 +341,8 @@ namespace DX12Rendering {
 		m_constantBuffer.normalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS));
 		m_constantBuffer.diffuseTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO));
 		m_constantBuffer.specularTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR));
+
+		m_constantBuffer.raysPerLight = s_raysCastPerLight.GetInteger();
 
 		// Update the noise offset
 		m_constantBuffer.noiseOffset += 0.01f;

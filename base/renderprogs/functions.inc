@@ -60,6 +60,19 @@ float rand( float2 co ) {
     return frac( sin( dot( co.xy, float2( 12.9898, 78.233 ) ) ) * 43758.5453 );
 }
 
+// Temp random function. found here: https://thebookofshaders.com/10/
+float rand1(float2 st, float2 dotDir) {
+    return frac(sin(dot(st.xy, dotDir)) * 43758.5453123);
+}
+
+float3 rand3(float3 st) {
+    return float3(
+		rand1(st.xy, float2(12.9898, 78.233)),
+		rand1(st.yz, float2(12.9898, 78.233)), //rand1(st, float2(39.346, 11.135)),
+		rand1(st.zx, float2(12.9898, 78.233)) //rand1(st, float2(73.156, 52.235))
+	);
+}
+
 #define _half2( x )		half2( x, x )
 #define _half3( x )		half3( x, x, x )
 #define _half4( x )		half4( x, x, x, x )

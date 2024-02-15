@@ -87,7 +87,7 @@ namespace DX12Rendering {
 		UINT depthTextureIndex;
 		UINT flatNormalIndex;
 		UINT normalIndex;
-		UINT pad;
+		UINT raysPerLight; // Number of shadow rays cast per light per pixel
 
 		dxr_lightData_t lights[MAX_SCENE_LIGHTS];
 	};
