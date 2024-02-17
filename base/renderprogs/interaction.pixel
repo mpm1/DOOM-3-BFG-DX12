@@ -61,7 +61,7 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	half4 specMap =			samp4.Sample(baseSampler, fragment.texcoord5.xy );
 
 	float2 screenTexCoord = vposToScreenPosTexCoord( fragment.position.xy );
-	float shadowIntensity = GetScreenspaceIntensity( samp5.Gather(pointSampler, screenTexCoord ));
+	float shadowIntensity = 1.0;//GetScreenspaceIntensity( samp5.Gather(pointSampler, screenTexCoord ));
 
 	half3 lightVector = normalize( fragment.texcoord0.xyz );
 	half3 diffuseMap = ConvertYCoCgToRGB( YCoCG );

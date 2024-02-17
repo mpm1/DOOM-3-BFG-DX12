@@ -1182,6 +1182,7 @@ public:
 			SYSTEM_FIELD_LODBIAS,
 			SYSTEM_FIELD_BRIGHTNESS,
 			SYSTEM_FIELD_VOLUME,
+
 			MAX_SYSTEM_FIELDS
 		};
 
@@ -1230,6 +1231,70 @@ private:
 	idMenuDataSource_SystemSettings	systemData;
 	idMenuWidget_Button	*		btnBack;
 	
+};
+
+//*
+//================================================	
+//idMenuScreen_Shell_RaytracingOptions
+//================================================
+//*/
+class idMenuScreen_Shell_RaytracingOptions : public idMenuScreen {
+public:
+
+	/*
+	================================================
+	idMenuDataSource_SystemSettings
+	================================================
+	*/
+	class idMenuDataSource_RaytracingSettings : public idMenuDataSource {
+	public:
+		enum raytracingSettingFields_t {
+			RAYTRACING_FIELD_ALL_LIGHTS,
+			RAYTRACING_FIELD_EMISSIVE_RAD,
+			RAYTRACING_FIELD_RAYS_PER_LIGHT,
+
+			MAX_RAYTRACING_FIELDS
+		};
+
+		idMenuDataSource_RaytracingSettings();
+
+		// loads data
+		virtual void				LoadData();
+
+		// submits data
+		virtual void				CommitData();
+
+		// says whether something changed with the data
+		virtual bool				IsDataChanged() const;
+
+		// retrieves a particular field for reading
+		virtual idSWFScriptVar		GetField(const int fieldIndex) const;
+
+		// updates a particular field value
+		virtual void				AdjustField(const int fieldIndex, const int adjustAmount);
+
+		bool						IsRestartRequired() const;
+
+	private:
+		bool	originalUseAllLights;
+		float	originalEmissiveRadius;
+		uint	originalRaysPerPixek;
+	};
+
+	idMenuScreen_Shell_RaytracingOptions() :
+		options(NULL),
+		btnBack(NULL) {
+	}
+	virtual void				Initialize(idMenuHandler* data);
+	virtual void				Update();
+	virtual void				ShowScreen(const mainMenuTransition_t transitionType);
+	virtual void				HideScreen(const mainMenuTransition_t transitionType);
+	virtual bool				HandleAction(idWidgetAction& action, const idWidgetEvent& event, idMenuWidget* widget, bool forceHandled = false);
+
+private:
+	idMenuWidget_DynamicList* options;
+	idMenuDataSource_RaytracingSettings	systemData;
+	idMenuWidget_Button* btnBack;
 };
 
 //*

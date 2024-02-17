@@ -2112,7 +2112,7 @@ static void RB_DrawInteractions() {
 			continue;
 		}
 
-		bool useRaytracedShadows = dxRenderer.SetActiveLight(vLight->sceneIndex).shadowMask > 0;
+		bool useRaytracedShadows = false;// dxRenderer.SetActiveLight(vLight->sceneIndex).shadowMask > 0;
 
 		// Set command list.
 		//dxRenderer.ExecuteCommandList();

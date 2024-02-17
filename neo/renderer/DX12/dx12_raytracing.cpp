@@ -9,7 +9,7 @@
 #include "./dx12_DeviceManager.h"
 #include "./dx12_RenderPass.h"
 
-idCVar s_raysCastPerLight("s_raysCastPerLight", "20", CVAR_ARCHIVE | CVAR_INTEGER, "number of shadow rays per light per pixel.", 0, 100);
+idCVar s_raysCastPerLight("s_raysCastPerLight", "20", CVAR_ARCHIVE | CVAR_INTEGER, "number of shadow rays per light per pixel.", 0, 1000);
 idCVar s_lightEmissiveRadius("s_lightEmissiveRadius", "20.0", CVAR_ARCHIVE | CVAR_FLOAT, "the radius of a light. The larger the value, the softer shadows will be.", 0.0f, 100.0f);
 
 namespace DX12Rendering {

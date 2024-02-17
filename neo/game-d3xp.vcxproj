@@ -257,6 +257,7 @@
     <ClCompile Include="d3xp\menus\MenuScreen_Shell_Pause.cpp" />
     <ClCompile Include="d3xp\menus\MenuScreen_Shell_Playstation.cpp" />
     <ClCompile Include="d3xp\menus\MenuScreen_Shell_PressStart.cpp" />
+    <ClCompile Include="d3xp\menus\MenuScreen_Shell_RaytracingOptions.cpp" />
     <ClCompile Include="d3xp\menus\MenuScreen_Shell_Resolution.cpp" />
     <ClCompile Include="d3xp\menus\MenuScreen_Shell_Root.cpp" />
     <ClCompile Include="d3xp\menus\MenuScreen_Shell_Save.cpp" />
