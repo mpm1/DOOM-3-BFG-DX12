@@ -2987,7 +2987,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		for (DX12Rendering::eRenderSurface surface : clearSurfaces)
 		{
 			auto renderSurface = DX12Rendering::GetSurface(surface);
-			if (!renderSurface->Exists())
+			if (renderSurface->Exists())
 			{
 				commandList->ClearRTV(
 					renderSurface->GetRtv(),
