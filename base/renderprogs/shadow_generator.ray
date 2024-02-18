@@ -40,6 +40,15 @@ float3 CalculateProjection(in SceneLight light, float4 worldPosition)
 	return projectionTexture.SampleLevel(projectionSampler, projection.xy, 0).rgb;
 }
 
+float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in Plane surfacePlane, in float3 pointToEye, in float3 pointToLight, in float3 specularColor, in float specMultiplier)
+{
+	const half specularPower = 10.0f;
+	half hDotN = PlaneDotVector(surfacePlane, normalize(pointToEye + pointToLight));
+	half3 specularContribution = _half3(pow( hDotN, specularPower ));
+
+	return specularColor.rgb * specularContribution * (light.color.rgb * specMultiplier) * lightFalloff.rgb;
+}
+
 float3 GetValidLightLocation(in SceneLight light, in float centerNDotL, in Plane surfacePlane, in float3 randomOffset)
 {
 	float3 randVector = normalize(rand3(randomOffset.xyz) * 2.0 - 1.0);
@@ -66,6 +75,7 @@ float3 GetValidLightLocation(in SceneLight light, in float centerNDotL, in Plane
 void RayGen() {
 	uint resultMask = 0x00000000;
 	float3 resultDiffuse = float3(0.0, 0.0, 0.0);
+	float3 resultSpecular = float3(0.0, 0.0, 0.0);
 
 	// Get the ray location on the screen
 	float2 lerpValues = ((float2)DispatchRaysIndex() + 0.5) / (float2)DispatchRaysDimensions();
@@ -90,6 +100,7 @@ void RayGen() {
 		float3 flatNormal = normalize((GetBindlessTexture4f(sceneConstants.flatNormalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
 		float3 normal = normalize((GetBindlessTexture4f(sceneConstants.normalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
 		float3 diffuse = GetBindlessTexture4f(sceneConstants.diffuseTextureIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz;
+		float3 specular = GetBindlessTexture4f(sceneConstants.specularTexureIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz;
 
 		{		
 			float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz + (k_minSurfaceDistance * flatNormal);
@@ -109,6 +120,7 @@ void RayGen() {
 					float3 pointToCenter = normalize(light.center - worldPosition);
 
 					float3 localDiffuse = float3(0.0, 0.0, 0.0);
+					float3 localSpecular = float3(0.0, 0.0, 0.0);
 
 					for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
 					{
@@ -168,11 +180,13 @@ void RayGen() {
 								resultMask += shadowMask;
 
 								localDiffuse += (light.color.rgb * lightColor * diffuse);
+								localSpecular += GetSpecularResult(light, lightColor, surfacePlane, pointToEye, lightVector, specular, 2.0 /* Keeping consistant original method */);
 							}
 						}
 					}
 
 					resultDiffuse += saturate(localDiffuse / lightRayCount); // TODO: Change this to a colour light space
+					resultSpecular += saturate(localSpecular / lightRayCount);
 				} 
 			}
 		}
@@ -180,5 +194,5 @@ void RayGen() {
 	
 	shadowMask[DispatchRaysIndex().xy] = ConvertShadowmapMaskToVector(resultMask);
 	diffuseResult[DispatchRaysIndex().xy] = float4(saturate(resultDiffuse.rgb), 1.0);
-	specularResult[DispatchRaysIndex().xy] = float4(0.0, 0.0, 0.0, 1.0);
+	specularResult[DispatchRaysIndex().xy] = float4(saturate(resultSpecular.rgb), 1.0);
 }
