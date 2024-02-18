@@ -1015,7 +1015,17 @@ bool DX12Renderer::DXR_CastRays()
 
 		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceShadowMask);
 
-		surface->CopySurfaceToTexture(lightTexture, textureManager)->Wait(); // Wait for the copy to complete.
+		surface->CopySurfaceToTexture(lightTexture, textureManager);
+
+		// Copy the diffuse data
+		auto diffuseMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Diffuse);
+		DX12Rendering::TextureBuffer* diffuseTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE);
+		diffuseMap->CopySurfaceToTexture(diffuseTexture, textureManager);
+
+		// Copy the specular data
+		auto specularMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular);
+		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
+		specularMap->CopySurfaceToTexture(specularTexture, textureManager)->Wait();
 	}
 
 	return result;
@@ -1110,11 +1120,6 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 }
 
 void DX12Renderer::DXR_DenoiseResult()
-{
-	// TODO
-}
-
-void DX12Renderer::DXR_GenerateResult()
 {
 	// TODO
 }

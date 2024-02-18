@@ -174,7 +174,7 @@ namespace DX12Rendering {
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Create a SRV/UAV/CBV descriptor heap. We need 4 entries + texture entries - 
-		// 2 UAV for the raytracing output
+		// 3 UAV for the raytracing output
 		// 1 SRV for the TLAS
 		// 1 CBV for the Camera properties
 		// 1024 SRV for textures.
@@ -182,8 +182,9 @@ namespace DX12Rendering {
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 
 		// Add the output buffers
-		SetOutputTexture(eRenderSurface::RaytraceShadowMask, e_RaytracingHeapIndex::UAV_ShadowMap);
+		SetOutputTexture(eRenderSurface::RaytraceShadowMask, e_RaytracingHeapIndex::UAV_ShadowMap); // TODO: Remove
 		SetOutputTexture(eRenderSurface::Diffuse, e_RaytracingHeapIndex::UAV_DiffuseMap);
+		SetOutputTexture(eRenderSurface::Specular, e_RaytracingHeapIndex::UAV_SpecularMap);
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
@@ -313,10 +314,11 @@ namespace DX12Rendering {
 		DX12Rendering::TextureManager* textureManager
 	)
 	{
-		const UINT surfaceCount = 2;
+		const UINT surfaceCount = 3;
 		const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 			DX12Rendering::eRenderSurface::RaytraceShadowMask,
-			DX12Rendering::eRenderSurface::Diffuse
+			DX12Rendering::eRenderSurface::Diffuse,
+			DX12Rendering::eRenderSurface::Specular
 		};
 
 		assert(textureManager);

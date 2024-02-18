@@ -47,8 +47,8 @@ namespace DX12Rendering {
 			// Shadow Mask Buffer
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_UAV /* UAV representing the output buffer*/,
-				2 /*2 descriptors */,
-				0 /*u0, u1*/,
+				3 /*3 descriptors */,
+				0 /*u0, u1, u2*/,
 				0 /*use the implicit register space 0*/,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
 				DX12Rendering::e_RaytracingHeapIndex::UAV_ShadowMap /*heap slot where the first UAV is defined*/

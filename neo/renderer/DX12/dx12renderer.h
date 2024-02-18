@@ -131,7 +131,6 @@ public:
 	void DXR_SetupLights(const viewLight_t* viewLights, const float* worldMatrix); // Adds all lights and orders them for rendering.
 
 	void DXR_DenoiseResult(); // Performs a Denoise pass on all rendering channels.
-	void DXR_GenerateResult(); // Collapses all channels into a single image.
 
 	// Render Targets
 	void SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count);

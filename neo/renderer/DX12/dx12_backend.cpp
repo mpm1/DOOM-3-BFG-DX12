@@ -1868,21 +1868,25 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		// translucent surfaces should not write to the depth or normal maps
 		if (shader->Coverage() == MC_TRANSLUCENT)
 		{
-			if (shader->GetSort() != SS_DECAL)
-			{
-				// Only decals can be added onto objects.
-				continue;
-			}
+			continue;
 
-			//Materials are additive blended to their background.
-			GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHMASK | GLS_DEPTHFUNC_LESS | GLS_STENCIL_FUNC_ALWAYS);
+			// Removing all transparent surfaces as they will be handled in the forward renderer.
 
-			if (surf->jointCache) {
-				renderProgManager.BindShader_GBufferTransparentSkinned();
-			}
-			else {
-				renderProgManager.BindShader_GBufferTransparent();
-			}
+			//if (shader->GetSort() != SS_DECAL)
+			//{
+			//	// Only decals can be added onto objects.
+			//	continue;
+			//}
+
+			////Materials are additive blended to their background.
+			//GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHMASK | GLS_DEPTHFUNC_LESS | GLS_STENCIL_FUNC_ALWAYS);
+
+			//if (surf->jointCache) {
+			//	renderProgManager.BindShader_GBufferTransparentSkinned();
+			//}
+			//else {
+			//	renderProgManager.BindShader_GBufferTransparent();
+			//}
 		}
 		else
 		{
@@ -2079,7 +2083,7 @@ DRAW INTERACTIONS
 RB_DrawInteractions
 ==================
 */
-static void RB_DrawInteractions() {
+static void RB_DrawInteractions(const bool useRaytracing) {
 	if (r_skipInteractions.GetBool()) {
 		return;
 	}
@@ -2111,8 +2115,6 @@ static void RB_DrawInteractions() {
 		if (vLight->localInteractions == NULL && vLight->globalInteractions == NULL && vLight->translucentInteractions == NULL) {
 			continue;
 		}
-
-		bool useRaytracedShadows = false;// dxRenderer.SetActiveLight(vLight->sceneIndex).shadowMask > 0;
 
 		// Set command list.
 		//dxRenderer.ExecuteCommandList();
@@ -2160,36 +2162,39 @@ static void RB_DrawInteractions() {
 			}
 		}
 
-		if (!useRaytracedShadows && vLight->globalShadows != NULL) {
-			DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Global Light Shadows");
+		if (!useRaytracing)
+		{
+			if (vLight->globalShadows != NULL) {
+				DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Global Light Shadows");
 
-			renderLog.OpenBlock("Global Light Shadows");
-			RB_StencilShadowPass(vLight->globalShadows, vLight);
-			renderLog.CloseBlock();
-		}
+				renderLog.OpenBlock("Global Light Shadows");
+				RB_StencilShadowPass(vLight->globalShadows, vLight);
+				renderLog.CloseBlock();
+			}
 
-		if (vLight->localInteractions != NULL) {
-			DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Local Light Interactions");
+			if (vLight->localInteractions != NULL) {
+				DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Local Light Interactions");
 
-			renderLog.OpenBlock("Local Light Interactions");
-			RB_RenderInteractions(vLight->localInteractions, vLight, GLS_DEPTHFUNC_EQUAL, performStencilTest, useLightDepthBounds);
-			renderLog.CloseBlock();
-		}
+				renderLog.OpenBlock("Local Light Interactions");
+				RB_RenderInteractions(vLight->localInteractions, vLight, GLS_DEPTHFUNC_EQUAL, performStencilTest, useLightDepthBounds);
+				renderLog.CloseBlock();
+			}
 
-		if (!useRaytracedShadows && vLight->localShadows != NULL) {
-			DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Local Light Shadow");
+			if (vLight->localShadows != NULL) {
+				DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Local Light Shadow");
 
-			renderLog.OpenBlock("Local Light Shadows");
-			RB_StencilShadowPass(vLight->localShadows, vLight);
-			renderLog.CloseBlock();
-		}
+				renderLog.OpenBlock("Local Light Shadows");
+				RB_StencilShadowPass(vLight->localShadows, vLight);
+				renderLog.CloseBlock();
+			}
 
-		if (vLight->globalInteractions != NULL) {
-			DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Global Light Interactions");
+			if (vLight->globalInteractions != NULL) {
+				DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Global Light Interactions");
 
-			renderLog.OpenBlock("Global Light Interactions");
-			RB_RenderInteractions(vLight->globalInteractions, vLight, GLS_DEPTHFUNC_EQUAL, performStencilTest, useLightDepthBounds);
-			renderLog.CloseBlock();
+				renderLog.OpenBlock("Global Light Interactions");
+				RB_RenderInteractions(vLight->globalInteractions, vLight, GLS_DEPTHFUNC_EQUAL, performStencilTest, useLightDepthBounds);
+				renderLog.CloseBlock();
+			}
 		}
 
 
@@ -2868,6 +2873,51 @@ static void RB_FogAllLights() {
 	renderLog.CloseMainBlock();
 }
 
+void RB_DrawCombinedGBufferResults()
+{
+	DX12Rendering::RenderPassBlock renderPassBlock("DXR_GenerateResult", DX12Rendering::Commands::DIRECT);
+	auto commandList = renderPassBlock.GetCommandList();
+
+	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+
+	
+	GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
+	GL_Cull(CT_TWO_SIDED);
+
+	int screenWidth = renderSystem->GetWidth();
+	int screenHeight = renderSystem->GetHeight();
+
+	// set the window clipping
+	GL_Viewport(0, 0, screenWidth, screenHeight);
+	GL_Scissor(0, 0, screenWidth, screenHeight);
+	renderProgManager.BindShader_GBufferCombinedResult();
+
+	// Prepare the textures
+	{
+		// Wait for any copy operations to finish
+		auto diffuse = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE);
+		auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
+
+		// Prepare the surfaces for rendering
+		diffuse->fence.Wait();
+		GL_SelectTexture(0);
+		dxRenderer.SetTexture(diffuse);
+
+		specular->fence.Wait();
+		GL_SelectTexture(1);
+		dxRenderer.SetTexture(specular);
+	}
+
+	// Draw
+	RB_DrawElementsWithCounters(&backEnd.unitSquareSurface);
+
+	{
+		// Once completed reset the states on the diffuse and specular textures
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR), D3D12_RESOURCE_STATE_COMMON, commandList);
+	}
+}
+
 void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	renderLog.OpenBlock("RB_DrawViewInternal");
 
@@ -3113,13 +3163,13 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		// Copy the raytraced buffer to view
 		//-------------------------------------------------
 		dxRenderer.DXR_DenoiseResult();
-		dxRenderer.DXR_GenerateResult();
+		RB_DrawCombinedGBufferResults();
 	}
 
 	//-------------------------------------------------
 	// main light renderer
 	//-------------------------------------------------
-	RB_DrawInteractions();
+	RB_DrawInteractions(raytraceUpdated);
 	//dxRenderer.ExecuteCommandList();
 	//dxRenderer.ResetCommandList();
 
@@ -3201,7 +3251,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 #ifdef _DEBUG
 	if (backEnd.viewDef->viewEntitys != NULL) {
-		dxRenderer.CopyDebugResultToDisplay();
+		//dxRenderer.CopyDebugResultToDisplay();
 	}
 #endif
 
@@ -3285,11 +3335,6 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 			break;
 
 		case RC_DRAW_VIEW_3D:
-			/*if (dxRenderer.IsRaytracingEnabled())
-			{
-				RB_PathTraceView(cmds);
-			}
-			else*/
 			{
 				RB_DrawView(cmds, 0);
 			}

@@ -1659,6 +1659,12 @@
     <FxCompile Include="..\base\renderprogs\gbuffer_transparent_skinned.vertex">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="..\base\renderprogs\combineGbuffer.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\combineGbuffer.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="renderer\DX12\debug\ImageViewer.natvis">

@@ -100,6 +100,7 @@ void idRenderProgManager::Init() {
 		{ BUILTIN_GBUFFER_SKINNED, "gbuffer_skinned" },
 		{ BUILTIN_GBUFFER_TRANSPARENT, "gbuffer_transparent" },
 		{ BUILTIN_GBUFFER_TRANSPARENT_SKINNED, "gbuffer_transparent_skinned" },
+		{ BUILTIN_GBUFFER_COMBINE, "combineGbuffer" },
 
 		{ BUILTIN_BLENDLIGHT, "blendlight" },
 		{ BUILTIN_FOG, "fog" },

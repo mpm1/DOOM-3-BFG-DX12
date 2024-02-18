@@ -57,6 +57,7 @@ namespace DX12Rendering {
 	{
 		UAV_ShadowMap = 0,
 		UAV_DiffuseMap,
+		UAV_SpecularMap,
 		SRV_TLAS,
 		CBV_CameraProperties,
 

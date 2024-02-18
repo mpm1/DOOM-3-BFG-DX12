@@ -2,7 +2,8 @@
 
 // Raytracing output to texture, accessed as UAV
 RWTexture2D<uint4> shadowMask :register(u0);
-RWTexture2D<float4> diffuseMask :register(u1);
+RWTexture2D<float4> diffuseResult :register(u1);
+RWTexture2D<float4> specularResult :register(u2);
 
 // Raytracing acceleration structure, accessed as a SRV
 RaytracingAccelerationStructure SceneBVH :register(t0);
@@ -178,5 +179,6 @@ void RayGen() {
 	}
 	
 	shadowMask[DispatchRaysIndex().xy] = ConvertShadowmapMaskToVector(resultMask);
-	diffuseMask[DispatchRaysIndex().xy] = float4(saturate(resultDiffuse.rgb), 1.0);
+	diffuseResult[DispatchRaysIndex().xy] = float4(saturate(resultDiffuse.rgb), 1.0);
+	specularResult[DispatchRaysIndex().xy] = float4(0.0, 0.0, 0.0, 1.0);
 }
