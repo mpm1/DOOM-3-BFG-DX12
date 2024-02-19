@@ -264,7 +264,7 @@ namespace DX12Rendering {
 		return index;
 	}
 
-	bool Raytracing::AddLight(const UINT lightIndex, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows)
+	bool Raytracing::AddLight(const UINT lightIndex, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows)
 	{
 		static UINT padValue = 0;
 		padValue = (padValue + 1) % 3459871;
@@ -282,6 +282,24 @@ namespace DX12Rendering {
 		m_constantBuffer.lights[index].flags = 0;
 
 		m_constantBuffer.lights[index].castsShadows = castsShadows;
+
+		{
+			// Calculate type properties
+			if (type & DXR_LIGHT_TYPE_AMBIENT > 0)
+			{
+				m_constantBuffer.lights[index].isAmbientLight = true;
+			}
+			else
+			{
+				// All lights that are not ambient are point lights
+				m_constantBuffer.lights[index].isPointLight = true;
+			}
+
+			if (type & DXR_LIGHT_TYPE_FOG > 0)
+			{
+				m_constantBuffer.lights[index].isFogLight = true;
+			}
+		}
 
 		m_constantBuffer.lights[index].lightIndex = lightIndex;
 		m_constantBuffer.lights[index].shadowMask = shadowMask;

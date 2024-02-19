@@ -16,6 +16,16 @@ using namespace DirectX;
 using namespace Microsoft::WRL;
 
 namespace DX12Rendering {
+	typedef
+		enum DXR_LIGHT_TYPE
+	{
+		DXR_LIGHT_TYPE_POINT = 0,
+		DXR_LIGHT_TYPE_AMBIENT = 1 << 0,
+		DXR_LIGHT_TYPE_FOG = 1 << 1
+	} 	DXR_LIGHT_TYPE;
+
+	DEFINE_ENUM_FLAG_OPERATORS(DXR_LIGHT_TYPE);
+
 	// Making these caches 256x more than their in frame size
 	const UINT VERTCACHE_INDEX_MEMORY = 31 * 1024 * 1024 * 256;
 	const UINT VERTCACHE_VERTEX_MEMORY = 31 * 1024 * 1024 * 256;
@@ -55,7 +65,10 @@ namespace DX12Rendering {
 			UINT flags;
 			struct {
 				bool castsShadows : 1;
-				bool flagPad[sizeof(UINT) - 1];
+				bool isPointLight : 1;
+				bool isAmbientLight : 1;
+				bool isFogLight : 1;
+				bool flagPad[sizeof(UINT) - 2];
 			};
 		};
 		UINT pad1;
@@ -97,6 +110,8 @@ namespace DX12Rendering {
 	class Raytracing;
 }
 
+
+
 class DX12Rendering::Raytracing {
 public:
 	const bool isRaytracingSupported;
@@ -112,7 +127,7 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	void ResetLightList();
-	bool AddLight(const UINT index, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows);
+	bool AddLight(const UINT index, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows);
 	UINT GetLightMask(const UINT index);
 
 	/// Adds an image to the descriptor heap and returns the associated index.

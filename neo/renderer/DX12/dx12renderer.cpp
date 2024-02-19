@@ -1045,10 +1045,17 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 		const idMaterial* lightShader = vLight->lightShader;
 		const float* lightRegs = vLight->shaderRegisters;
 
+		DX12Rendering::DXR_LIGHT_TYPE lightType = DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_POINT; // Default light type.
+
 		bool isAmbientLight = lightShader->IsAmbientLight(); // TODO: add as flag.
 		if (isAmbientLight)
 		{
-			continue; // For now we won't add any ambient light.
+			lightType |= DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_AMBIENT;
+		}
+
+		if (lightShader->IsFogLight())
+		{
+			lightType |= DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_FOG;
 		}
 
 		UINT shadowMask = vLight->shadowMask;
@@ -1101,7 +1108,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 
 			const bool castsShadows = r_allLightsCastShadows.GetBool() || vLight->castsShadows;
 
-			if (!m_raytracing->AddLight(vLight->sceneIndex, 
+			if (!m_raytracing->AddLight(vLight->sceneIndex, lightType,
 				static_cast<const DX12Rendering::TextureBuffer*>(vLight->falloffImage->Bindless()), 
 				static_cast<const DX12Rendering::TextureBuffer*>(lightStage->texture.image->Bindless()), 
 				vLight->shadowMask, location, lightColor, lightProjection, scissor, castsShadows))

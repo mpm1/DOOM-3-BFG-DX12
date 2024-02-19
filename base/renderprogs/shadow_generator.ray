@@ -71,6 +71,123 @@ float3 GetValidLightLocation(in SceneLight light, in float centerNDotL, in Plane
 	return light.center;
 }
 
+void HandleAmbientLight(
+	in uint lightIndex,
+	in SceneLight light, 
+	in float3 worldPosition,
+	in float3 normal,
+	in float3 pointToEye,
+	in float3 diffuseColor,
+	in float3 specularColor,
+	out float3 diffuseResult, 
+	out float3 specularResult)
+{
+	// Matching interactionAmbient.pixel shader
+	// TODO: Calculate Ambient Occlusion
+
+	const half3 ambientLightVector = half3( 0.5f, 9.5f - 0.385f, 0.8925f );
+	half3 lightVector = normalize( ambientLightVector );
+
+	float intensity = saturate(dot(normal, lightVector));
+	float3 lightColor = float3(intensity, intensity, intensity);
+
+	if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
+	{
+		lightColor = lightColor * 
+			CalculateFalloff(light, float4(worldPosition, 1.0)) * 
+			CalculateProjection(light, float4(worldPosition, 1.0));
+	}
+
+	diffuseResult = saturate(diffuseColor * light.color.rgb * lightColor.rgb);
+	specularResult = GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, specularColor, 2.0 /* Keeping consistant original method */);
+}
+
+void HandlePointLight(
+	in uint lightIndex,
+	in SceneLight light, 
+	in uint lightRayCount, 
+	in bool castsShadows, 
+	in Plane surfacePlane,
+	in float3 normal,
+	in float3 pointToEye,
+	in float3 worldPosition, 
+	in float2 screenUV,
+	in float rayStartDistance,
+	in float3 diffuseColor,
+	in float3 specularColor,
+	out float3 diffuseResult, 
+	out float3 specularResult)
+{
+	float3 localDiffuse = float3(0.0, 0.0, 0.0);
+	float3 localSpecular = float3(0.0, 0.0, 0.0);
+
+	float3 pointToCenter = normalize(light.center - worldPosition);
+
+	for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
+	{
+		float3 lightPosition = castsShadows ?
+			GetValidLightLocation(
+				light, PlaneDotPoint(surfacePlane, pointToCenter), 
+				surfacePlane,
+				normalize(float3(screenUV.xy + float2(lightIndex, rayIndex) + sceneConstants.noiseOffset, rayIndex + lightIndex))
+				)
+			: light.center;
+
+		float maxDistance = distance(lightPosition, worldPosition);
+
+		float3 lightVector = normalize(lightPosition - worldPosition);
+
+		float intensity = saturate(dot(normal, lightVector));
+		float3 lightColor = float3(intensity, intensity, intensity);
+
+		if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
+		{
+			lightColor = lightColor * 
+				CalculateFalloff(light, float4(worldPosition, 1.0)) * 
+				CalculateProjection(light, float4(worldPosition, 1.0));
+		}
+
+		if(intensity > 0 && length(lightColor) > 0)
+		{
+			// Initialize the ray payload
+			ShadowHitInfo payload;
+			payload.maxDistance = maxDistance;
+			payload.intensity = intensity;
+
+			if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS)
+			{
+				// We are inside the light radius.
+				// Define a ray, consisting of origin, direction, and the min-max distance values
+				RayDesc ray;
+				ray.TMin = rayStartDistance;
+				ray.TMax = payload.maxDistance;
+				ray.Origin = worldPosition;
+				ray.Direction = lightVector;
+
+				TraceRay(
+					SceneBVH,
+					RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+					INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
+					0,
+					0, // First Hit Shader
+					0, // Miss Shader
+					ray,
+					payload
+				);
+			}
+
+			if (payload.intensity > 0.0)
+			{
+				localDiffuse += (light.color.rgb * lightColor * diffuseColor);
+				localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, specularColor, 2.0 /* Keeping consistant original method */);
+			}
+		}
+	}
+
+	diffuseResult = saturate(localDiffuse / lightRayCount); // TODO: Change this to a colour light space
+	specularResult = saturate(localSpecular / lightRayCount);
+}
+
 [shader("raygeneration")]
 void RayGen() {
 	uint resultMask = 0x00000000;
@@ -91,11 +208,9 @@ void RayGen() {
 
 	if(depth != 0) // A depth of absolute 0 is considered invalid.
 	{
-
 		// Calculate the offset from the ray start we'd like to use.
 		// This is done to help with precision errors the further away our surface is.
 		float rayStartDistance = lerp(0.0, 20.0, depth / 1000.0f);
-	
 
 		float3 flatNormal = normalize((GetBindlessTexture4f(sceneConstants.flatNormalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
 		float3 normal = normalize((GetBindlessTexture4f(sceneConstants.normalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
@@ -111,88 +226,42 @@ void RayGen() {
 			for(uint lightIndex = 0; lightIndex < sceneConstants.lightCount; ++lightIndex)
 			{
 				SceneLight light = sceneConstants.lights[lightIndex];
-				uint shadowMask = light.shadowMask;
 
 				if (IsInsideViewport(screenLocation.xy, light.scissor))
 				{
 					bool castsShadows = light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS;
 					uint lightRayCount = castsShadows ? sceneConstants.raysPerLight : 1; // Only one point is needed if we're not creating soft shadows.
-					float3 pointToCenter = normalize(light.center - worldPosition);
+					
 
 					float3 localDiffuse = float3(0.0, 0.0, 0.0);
 					float3 localSpecular = float3(0.0, 0.0, 0.0);
 
-					for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
+					if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_POINT_LIGHT)
 					{
-						float3 lightPosition = castsShadows ?
-							GetValidLightLocation(
-								light, dot(flatNormal, pointToCenter), 
-								surfacePlane,
-								normalize(float3(lerpValues.xy + float2(lightIndex, rayIndex) + sceneConstants.noiseOffset, rayIndex + lightIndex))
-								)
-							: light.center;
-
-						float maxDistance = distance(lightPosition, worldPosition);
-
-						float3 lightVector = normalize(lightPosition - worldPosition);
-
-						float intensity = saturate(dot(normal, lightVector));
-						float3 lightColor = float3(intensity, intensity, intensity);
-
-						if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
-						{
-							lightColor = lightColor * 
-								CalculateFalloff(light, float4(worldPosition, 1.0)) * 
-								CalculateProjection(light, float4(worldPosition, 1.0));
-						}
-
-						if(intensity > 0 && length(lightColor) > 0)
-						{
-							// Initialize the ray payload
-							ShadowHitInfo payload;
-							payload.maxDistance = maxDistance;
-							payload.intensity = intensity;
-
-							if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS)
-							{
-								// We are inside the light radius.
-								// Define a ray, consisting of origin, direction, and the min-max distance values
-								RayDesc ray;
-								ray.TMin = rayStartDistance;
-								ray.TMax = payload.maxDistance;
-								ray.Origin = worldPosition;
-								ray.Direction = lightVector;
-
-								TraceRay(
-									SceneBVH,
-									RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
-									INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
-									0,
-									0, // First Hit Shader
-									0, // Miss Shader
-									ray,
-									payload
-								);
-							}
-
-							if (payload.intensity > 0.0)
-							{
-								resultMask += shadowMask;
-
-								localDiffuse += (light.color.rgb * lightColor * diffuse);
-								localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, specular, 2.0 /* Keeping consistant original method */);
-							}
-						}
+						HandlePointLight(
+							lightIndex, light, lightRayCount, 
+							castsShadows, surfacePlane, normal,
+							pointToEye, worldPosition, lerpValues,
+							rayStartDistance, diffuse, specular,
+							localDiffuse, localSpecular);
 					}
-
-					resultDiffuse += saturate(localDiffuse / lightRayCount); // TODO: Change this to a colour light space
-					resultSpecular += saturate(localSpecular / lightRayCount);
+					else if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_AMBIENT_LIGHT)
+					{
+						HandleAmbientLight(
+							lightIndex, light, 
+							worldPosition, normal, pointToEye,
+							diffuse, specular,
+							localDiffuse, localSpecular);
+					}
+					
+					resultDiffuse += localDiffuse;
+					resultSpecular += localSpecular;
 				} 
 			}
 		}
 	}
 	
-	shadowMask[DispatchRaysIndex().xy] = ConvertShadowmapMaskToVector(resultMask);
+	shadowMask[DispatchRaysIndex().xy] = uint4(255, 0, 0, 255); //TODO: Remove completely from system.
 	diffuseResult[DispatchRaysIndex().xy] = float4(saturate(resultDiffuse.rgb), 1.0);
 	specularResult[DispatchRaysIndex().xy] = float4(saturate(resultSpecular.rgb), 1.0);
 }

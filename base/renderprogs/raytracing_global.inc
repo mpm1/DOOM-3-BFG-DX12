@@ -43,7 +43,10 @@ struct Attributes
   float4	location; // Location of the hit.
 };
 
-#define LIGHT_FLAG_CASTS_SHADOWS 0x00000001
+#define LIGHT_FLAG_CASTS_SHADOWS (0x01 << 0)
+#define LIGHT_FLAG_POINT_LIGHT   (0x01 << 1)
+#define LIGHT_FLAG_AMBIENT_LIGHT (0x01 << 2)
+#define LIGHT_FLAG_FOG_LIGHT     (0x01 << 3)
 
 #define INSTANCE_MASK_CAST_SHADOW 0x01
 #define INSTANCE_MASK_SKYBOX 0x02
