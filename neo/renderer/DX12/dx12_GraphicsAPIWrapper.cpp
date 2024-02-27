@@ -34,7 +34,12 @@ void GL_PolygonOffset(float scale, float bias) {
 }
 
 void GL_DepthBoundsTest(const float zmin, const float zmax) {
-	dxRenderer.UpdateDepthBounds(zmin, zmax);
+	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
+	
+	DX12Rendering::Commands::CommandManagerCycleBlock managerBlock(commandManager, "GL_DepthBoundsTest");
+	auto commandList = commandManager->RequestNewCommandList();
+
+	dxRenderer.UpdateDepthBounds(zmin, zmax, commandList)->Close();
 }
 
 void GL_StartDepthPass(const idScreenRect& rect) {
@@ -43,12 +48,15 @@ void GL_StartDepthPass(const idScreenRect& rect) {
 
 	if (surface->TryTransition(D3D12_RESOURCE_STATE_DEPTH_WRITE, &transition))
 	{
-		DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+		auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
+		auto commandList = commandManager->RequestNewCommandList();
 
 		commandList->AddCommandAction([transition](ID3D12GraphicsCommandList4* commandList)
 		{
 			commandList->ResourceBarrier(1, &transition);
 		});
+
+		commandList->Close();
 	}
 }
 
@@ -58,12 +66,15 @@ void GL_FinishDepthPass() {
 
 	if (surface->TryTransition(D3D12_RESOURCE_STATE_COMMON, &transition))
 	{
-		DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+		auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
+		auto commandList = commandManager->RequestNewCommandList();
 
 		commandList->AddCommandAction([transition](ID3D12GraphicsCommandList4* commandList)
 		{
 			commandList->ResourceBarrier(1, &transition);
 		});
+
+		commandList->Close();
 	}
 }
 
@@ -95,7 +106,13 @@ void GL_Clear(bool color, bool depth, bool stencil, byte stencilValue, float r, 
 	//common->DPrintf("GL_Clear: %d, %d, %d, %d, %f, %f, %f, %f\n", color, depth, stencil, stencilValue, r, g, b, a);
 
 	const float colorRGBA[4] = { r, g, b, a };
-	dxRenderer.Clear(color, depth, stencil, stencilValue, colorRGBA);
+
+	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
+	
+	DX12Rendering::Commands::CommandManagerCycleBlock managerBlock(commandManager, "GL_Clear");
+	auto commandList = commandManager->RequestNewCommandList();
+
+	dxRenderer.Clear(color, depth, stencil, stencilValue, colorRGBA, commandList)->Close();
 }
 
 void GL_SetDefaultState() {

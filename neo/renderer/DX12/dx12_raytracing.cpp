@@ -350,8 +350,8 @@ namespace DX12Rendering {
 
 		tlasManager->WaitForFence();
 
-		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
-		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RayTracing::CastShadowRays");
+		auto commandManager = DX12Rendering::Commands::GetCommandManager(Commands::COMPUTE);
+		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RayTracing::CastShadowRays");
 
 		RenderSurface* outputSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceShadowMask);
 
@@ -388,7 +388,7 @@ namespace DX12Rendering {
 			renderTargetList,
 			renderTargetCount
 		);
-		auto commandList = renderPass.GetCommandList();
+		auto commandList = renderPass.GetCommandManager()->RequestNewCommandList();
 
 		// Copy the CBV data to the heap
 		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
@@ -435,6 +435,8 @@ namespace DX12Rendering {
 			commandList->SetPipelineState1(m_shadowStateObject.Get());
 			commandList->DispatchRays(&desc);
 		});
+
+		commandList->Close();
 
 		return true;
 	}

@@ -35,8 +35,10 @@ namespace DX12Rendering
 		ImGui::EndFrame();
 
 		{
-			auto commandList = Commands::GetCommandList(Commands::DIRECT);
-			Commands::CommandListCycleBlock cycleBlock(commandList, "ImGui");
+			auto commandManager = Commands::GetCommandManager(Commands::DIRECT);
+			Commands::CommandManagerCycleBlock cycleBlock(commandManager, "ImGui");
+
+			auto commandList = commandManager->RequestNewCommandList();
 			commandList->AddCommandAction([cbv_srv_heap, renderTargets](ID3D12GraphicsCommandList4* commandList)
 			{
 				{
@@ -54,6 +56,7 @@ namespace DX12Rendering
 				
 				ImGui_ImplDX12_RenderDrawData(ImGui::GetDrawData(), commandList);
 			});
+			commandList->Close();
 		}
 	}
 }

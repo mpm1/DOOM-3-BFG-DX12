@@ -202,10 +202,12 @@ namespace DX12Rendering
 		UINT width = this->m_width;
 		UINT height = this->m_height;
 
+		auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
+		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RenderSurface::CopySurfaceToTexture");
+
 		textureManager->StartTextureWrite(texture);
 
-		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
-		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RenderSurface::CopySurfaceToTexture");
+		auto commandList = commandManager->RequestNewCommandList();
 
 		commandList->AddPreFenceWait(&this->fence); // Wait for all drawing to complete.
 		commandList->AddPostFenceSignal(&this->fence);
@@ -235,6 +237,8 @@ namespace DX12Rendering
 		});
 
 		textureManager->SetTextureState(texture, D3D12_RESOURCE_STATE_COMMON, commandList);
+
+		commandList->Close();
 
 		textureManager->EndTextureWrite(texture);
 

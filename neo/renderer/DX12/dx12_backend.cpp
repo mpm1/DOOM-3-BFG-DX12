@@ -18,20 +18,6 @@ extern idCVar stereoRender_swapEyes;
 
 backEndState_t	backEnd;
 
-// Debug funcitons for the renderer
-#ifdef _DEBUG_COMMAND_LIST
-void DebugCycleCommandList(std::string caller, std::string file, int line)
-{
-	common->DPrintf("Cycling CommandList for %s in %s:line %d\n", caller.c_str(), file.c_str(), line);
-
-	dxRenderer.CycleDirectCommandList();
-}
-
-#define CYCLE_COMMAND_LIST() DebugCycleCommandList(__FUNCTION__, __FILE__, __LINE__)
-#else
-#define CYCLE_COMMAND_LIST() dxRenderer.CycleDirectCommandList()
-#endif
-
 bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 {
 	// TODO: Implement
@@ -94,7 +80,7 @@ static const float negOne[4] = { -1, -1, -1, -1 };
 
 void RB_SetBuffer() {
 	// TODO: Implement
-	GL_Clear(true, false, false, STENCIL_SHADOW_MASK_VALUE, 0, 0, 0, 1.0f);
+	//GL_Clear(true, false, false, STENCIL_SHADOW_MASK_VALUE, 0, 0, 0, 1.0f);
 }
 
 /*
@@ -420,10 +406,10 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 }
 
 void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t vbHandle, const size_t vertexStride, const DX12Rendering::eSurfaceVariant variant) {
-	auto commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandList();
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawElementsWithCounters");
+	DX12Rendering::Commands::CommandList& commandList = *DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(&commandList, "RB_DrawElementsWithCounters");
 
-	dxRenderer.SetCommandListDefaults(false);
+	dxRenderer.SetCommandListDefaults(commandList, false);
 
 	// Connect to a new surfae renderer
 	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
@@ -482,13 +468,14 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		}
 		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
 
-		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset());
+		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), commandList);
 	}
 
 	const triIndex_t* test = (triIndex_t*)indexOffset;
 
-	if (dxRenderer.EndSurfaceSettings(variant)) {
+	if (dxRenderer.EndSurfaceSettings(variant, commandList)) {
 		dxRenderer.DrawModel(
+			commandList,
 			apiVertexBuffer,
 			vertOffset / ((vertexStride > 0) ? vertexStride : sizeof(idDrawVert)),
 			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
@@ -541,7 +528,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf) {
 RB_FillDepthBufferGeneric
 ==================
 */
-static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int numDrawSurfs, DX12Rendering::Commands::CommandList* commandList) {
+static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int numDrawSurfs) {
 	for (int i = 0; i < numDrawSurfs; i++) {
 		const drawSurf_t* drawSurf = drawSurfs[i];
 		const idMaterial* shader = drawSurf->material;
@@ -552,7 +539,8 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 			continue;
 		}
 
-		DX12Rendering::Commands::CommandListCycleBlock subCycleBlock(commandList, "Depth Buffer Surface");
+		auto commandManager = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager();
+		DX12Rendering::Commands::CommandManagerCycleBlock subCycleBlock(commandManager, "Depth Buffer Surface");
 
 		// get the expressions for conditionals / color / texcoords
 		const float* regs = drawSurf->shaderRegisters;
@@ -757,7 +745,6 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	renderLog.OpenBlock("RB_FillDepthBufferFast");
 
 	DX12Rendering::RenderPassBlock renderPassBlock("DepthPass", DX12Rendering::Commands::DIRECT);
-	DX12Rendering::Commands::CommandList* commandList = renderPassBlock.GetCommandList();
 
 	GL_StartDepthPass(backEnd.viewDef->scissor);
 
@@ -773,7 +760,7 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		if (drawSurfs[surfNum]->material->GetSort() != SS_SUBVIEW) {
 			break;
 		}
-		RB_FillDepthBufferGeneric(&drawSurfs[surfNum], 1, commandList);
+		RB_FillDepthBufferGeneric(&drawSurfs[surfNum], 1);
 	}
 
 	const drawSurf_t** perforatedSurfaces = (const drawSurf_t**)_alloca(numDrawSurfs * sizeof(drawSurf_t*));
@@ -827,15 +814,18 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 
 	// draw all perforated surfaces with the general code path
 	if (numPerforatedSurfaces > 0) {
-		DX12Rendering::Commands::CommandListCycleBlock subCycleBlock(commandList, "PerforatedSurfacs");
-
-		RB_FillDepthBufferGeneric(perforatedSurfaces, numPerforatedSurfaces, commandList);
+		RB_FillDepthBufferGeneric(perforatedSurfaces, numPerforatedSurfaces);
 	}
 
 	// Allow platform specific data to be collected after the depth pass.
 	GL_FinishDepthPass();
 
-	commandList->AddPostFenceSignal(&DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->fence);
+	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+		commandList->AddPostFenceSignal(&DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->fence);
+
+		commandList->Close();
+	}
 
 	renderLog.CloseBlock();
 	renderLog.CloseMainBlock();
@@ -1112,8 +1102,8 @@ static void RB_StencilShadowPass(const drawSurf_t* drawSurfs, const viewLight_t*
 		return;
 	}
 	
-	auto commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandList();
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_StencilShadowPass");
+	auto commandManager = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager();
+	DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_StencilShadowPass");
 
 	RENDERLOG_PRINTF("---------- RB_StencilShadowPass ----------\n");
 
@@ -1414,8 +1404,8 @@ static void RB_StencilSelectLight(const viewLight_t* vLight) {
 	// TODO: Implement
 	renderLog.OpenBlock("Stencil Select");
 
-	auto commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandList();
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_StencilSelectLight");
+	auto commandManager = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager();
+	DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_StencilSelectLight");
 
 	// enable the light scissor
 	if (!backEnd.currentScissor.Equals(vLight->scissorRect) && r_useScissor.GetBool()) {
@@ -2092,8 +2082,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 	renderLog.OpenBlock("RB_DrawInteractions");
 
 	DX12Rendering::RenderPassBlock renderPassBlock("DrawInteractions", DX12Rendering::Commands::DIRECT);
-	auto commandList = renderPassBlock.GetCommandList();
-
+	
 	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
 
 	GL_SelectTexture(0);
@@ -2141,8 +2130,6 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 				RB_StencilSelectLight(vLight);
 			}
 			else {
-				DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Clear Stencil");
-
 				// always clear whole S-Cull tiles
 				idScreenRect rect;
 				rect.x1 = (vLight->scissorRect.x1 + 0) & ~15;
@@ -2165,7 +2152,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 		if (!useRaytracing)
 		{
 			if (vLight->globalShadows != NULL) {
-				DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Global Light Shadows");
+				DX12Rendering::Commands::CommandManagerCycleBlock childBlock(renderPassBlock.GetCommandManager(), "Global Light Shadows");
 
 				renderLog.OpenBlock("Global Light Shadows");
 				RB_StencilShadowPass(vLight->globalShadows, vLight);
@@ -2173,7 +2160,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 			}
 
 			if (vLight->localInteractions != NULL) {
-				DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Local Light Interactions");
+				DX12Rendering::Commands::CommandManagerCycleBlock childBlock(renderPassBlock.GetCommandManager(), "Local Light Interactions");
 
 				renderLog.OpenBlock("Local Light Interactions");
 				RB_RenderInteractions(vLight->localInteractions, vLight, GLS_DEPTHFUNC_EQUAL, performStencilTest, useLightDepthBounds);
@@ -2181,7 +2168,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 			}
 
 			if (vLight->localShadows != NULL) {
-				DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Local Light Shadow");
+				DX12Rendering::Commands::CommandManagerCycleBlock childBlock(renderPassBlock.GetCommandManager(), "Local Light Shadow");
 
 				renderLog.OpenBlock("Local Light Shadows");
 				RB_StencilShadowPass(vLight->localShadows, vLight);
@@ -2189,7 +2176,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 			}
 
 			if (vLight->globalInteractions != NULL) {
-				DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Global Light Interactions");
+				DX12Rendering::Commands::CommandManagerCycleBlock childBlock(renderPassBlock.GetCommandManager(), "Global Light Interactions");
 
 				renderLog.OpenBlock("Global Light Interactions");
 				RB_RenderInteractions(vLight->globalInteractions, vLight, GLS_DEPTHFUNC_EQUAL, performStencilTest, useLightDepthBounds);
@@ -2199,7 +2186,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 
 
 		if (vLight->translucentInteractions != NULL && !r_skipTranslucent.GetBool()) {
-			DX12Rendering::Commands::CommandListCycleBlock childBlock(commandList, "Global Light Interactions");
+			DX12Rendering::Commands::CommandManagerCycleBlock childBlock(renderPassBlock.GetCommandManager(), "Global Light Interactions");
 
 			renderLog.OpenBlock("Translucent Interactions");
 
@@ -2241,8 +2228,14 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 	}
 
 	// Reset the shadowmap for the next frame
-	auto screenShadows = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP);
-	textureManager->SetTextureState(screenShadows, D3D12_RESOURCE_STATE_COMMON, commandList);
+	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+
+		auto screenShadows = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP);
+		textureManager->SetTextureState(screenShadows, D3D12_RESOURCE_STATE_COMMON, commandList);
+
+		commandList->Close();
+	}
 
 	renderLog.CloseBlock();
 	renderLog.CloseMainBlock();
@@ -2876,8 +2869,7 @@ static void RB_FogAllLights() {
 void RB_DrawCombinedGBufferResults()
 {
 	DX12Rendering::RenderPassBlock renderPassBlock("DXR_GenerateResult", DX12Rendering::Commands::DIRECT);
-	auto commandList = renderPassBlock.GetCommandList();
-
+	
 	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
 
 	
@@ -2912,9 +2904,13 @@ void RB_DrawCombinedGBufferResults()
 	RB_DrawElementsWithCounters(&backEnd.unitSquareSurface);
 
 	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+
 		// Once completed reset the states on the diffuse and specular textures
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE), D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR), D3D12_RESOURCE_STATE_COMMON, commandList);
+
+		commandList->Close();
 	}
 }
 
@@ -2982,7 +2978,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			DX12Rendering::eRenderSurface::SpecularColor
 		};
 
-		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+		auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
+		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "ClearSurfaces");
 
 		for (DX12Rendering::eRenderSurface surface : clearSurfaces)
 		{
@@ -2994,8 +2991,6 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 					zeroClear);
 			}
 		}
-
-		commandList->Cycle();
 	}
 
 	// normal face culling

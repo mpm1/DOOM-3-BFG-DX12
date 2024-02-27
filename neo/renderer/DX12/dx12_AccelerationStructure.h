@@ -203,8 +203,6 @@ public:
 
 	void AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, const ACCELLERATION_INSTANCE_MASK instanceMask);
 
-	void AddGPUWait(DX12Rendering::Commands::CommandList* commandList) { m_tlas.fence.GPUWait(commandList->GetCommandQueue()); }
-
 	const bool IsDirty(){ return m_isDirty; }
 	void MarkDirty() { m_isDirty = true; }
 

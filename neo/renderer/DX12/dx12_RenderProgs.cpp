@@ -280,7 +280,7 @@ void FillPolygonOffset(D3D12_GRAPHICS_PIPELINE_STATE_DESC& psoDesc, uint64 state
 	}
 }
 
-void LoadStagePipelineState(int parentState, const DX12Rendering::eSurfaceVariant variant, glstate_t state) {
+void LoadStagePipelineState(int parentState, const DX12Rendering::eSurfaceVariant variant, glstate_t state, DX12Rendering::Commands::CommandList& commandList) {
 	// Combine the glStateBits with teh faceCulling and parentState index values.
 	// We do not need the stecil ref value as this will be set through the command list. This gives us 8 useable bits.
 	int64 stateIndex = (state.glStateBits & STATE_TO_HASH_MASK) | (state.faceCulling << HASH_FACE_CULL_SHIFT);
@@ -336,19 +336,19 @@ void LoadStagePipelineState(int parentState, const DX12Rendering::eSurfaceVarian
 
 		pipelineStateMap->insert({ stateIndex, renderState });
 
-		dxRenderer.SetActivePipelineState(renderState);
+		dxRenderer.SetActivePipelineState(renderState, commandList);
 	}
 	else {
-		dxRenderer.SetActivePipelineState(result->second);
+		dxRenderer.SetActivePipelineState(result->second, commandList);
 	}
 }
 
-bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant) {
+bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, DX12Rendering::Commands::CommandList& commandList) {
 	if (activePipelineState < 0) {
 		return false;
 	}
 
-	LoadStagePipelineState(activePipelineState, variant, backEnd.glState);
+	LoadStagePipelineState(activePipelineState, variant, backEnd.glState, commandList);
 
 	return true;
 }

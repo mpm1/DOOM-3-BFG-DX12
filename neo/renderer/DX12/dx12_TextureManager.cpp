@@ -129,13 +129,11 @@ namespace DX12Rendering
 		return m_textures.at(textureIndex);
 	}
 
-	bool TextureManager::SetTextureCopyState(TextureBuffer* buffer) const{
-		auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
-		return SetTextureState(buffer, D3D12_RESOURCE_STATE_COPY_DEST, copyCommands);
+	bool TextureManager::SetTextureCopyState(TextureBuffer* buffer, DX12Rendering::Commands::CommandList* commandList) const{
+		return SetTextureState(buffer, D3D12_RESOURCE_STATE_COPY_DEST, commandList);
 	}
 
-	bool TextureManager::SetTexturePixelShaderState(TextureBuffer* buffer) const {
-		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	bool TextureManager::SetTexturePixelShaderState(TextureBuffer* buffer, DX12Rendering::Commands::CommandList* commandList) const {
 		return SetTextureState(buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, commandList);
 	}
 
@@ -158,22 +156,27 @@ namespace DX12Rendering
 	}
 
 	void TextureManager::StartTextureWrite(TextureBuffer* buffer) {
-		auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
-		copyCommands->Reset();
+		auto copyCommands = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
+		auto commandList = copyCommands->RequestNewCommandList();
 
-		SetTextureCopyState(buffer);
+		SetTextureCopyState(buffer, commandList);
 
-		DX12Rendering::CaptureEventStart(copyCommands, "StartTextureWrite");
+		DX12Rendering::CaptureEventStart(commandList, "StartTextureWrite");
+
+		commandList->Close();
 	}
 
 	void TextureManager::EndTextureWrite(TextureBuffer* buffer) {
-		auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
+		auto copyCommands = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
+		auto commandList = copyCommands->RequestNewCommandList();
 
-		copyCommands->AddPreFenceWait(&buffer->fence);
-		copyCommands->AddPostFenceSignal(&buffer->fence);
-		copyCommands->Cycle();
+		commandList->AddPreFenceWait(&buffer->fence);
+		commandList->AddPostFenceSignal(&buffer->fence);
 
-		DX12Rendering::CaptureEventEnd(copyCommands);
+		DX12Rendering::CaptureEventEnd(commandList);
+		commandList->Close();
+
+		copyCommands->Execute();
 
 		// Clean out the temp images
 		m_tempImages.clear();
@@ -226,17 +229,21 @@ namespace DX12Rendering
 	void TextureManager::SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image) {
 		if (buffer != nullptr && buffer->IsReady())
 		{
-			auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
-
-			SetTextureCopyState(buffer);
+			auto copyManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
+			auto copyCommands = copyManager->RequestNewCommandList();
+			
+			SetTextureCopyState(buffer, copyCommands);
 
 			ScratchBuffer& uploadHeap = m_textureUploadHeap;
 
 			UINT64 intermediateOffset;
 			if (!uploadHeap.RequestSpace(copyCommands, imageSize, intermediateOffset, true))
 			{
-				copyCommands->Cycle();
+				copyCommands->Close();
+				copyManager->Execute();
 				m_textureUploadHeap.fence.Wait(); // Since we are not streaming in textures, we'll forcfully wait for our upload.
+
+				copyCommands = copyManager->RequestNewCommandList();
 			}
 
 			copyCommands->AddCommandAction([image, bytesPerRow, imageSize, mipLevel, resourceIndex, intermediateOffset, &uploadHeap, &buffer](ID3D12GraphicsCommandList4* commandList)
@@ -250,6 +257,8 @@ namespace DX12Rendering
 
 				UpdateSubresources(commandList, buffer->resource.Get(), uploadHeap.resource.Get(), intermediateOffset, subresource, 1, &textureData);
 			});
+
+			copyCommands->Close();
 		}
 		else
 		{

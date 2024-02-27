@@ -2,6 +2,7 @@
 #define __DX12_TEXTURE_MANAGER__
 
 #include "./dx12_resource.h"
+#include <renderer/DX12/dx12_CommandList.h>
 
 namespace DX12Rendering
 {
@@ -53,8 +54,8 @@ namespace DX12Rendering
 		void Clear();
 
 		// State Control
-		bool SetTextureCopyState(TextureBuffer* buffer) const;
-		bool SetTexturePixelShaderState(TextureBuffer* buffer) const;
+		bool SetTextureCopyState(TextureBuffer* buffer, DX12Rendering::Commands::CommandList* commandList) const;
+		bool SetTexturePixelShaderState(TextureBuffer* buffer, DX12Rendering::Commands::CommandList* commandList) const;
 		bool SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList) const;
 
 		// Data management
