@@ -353,8 +353,6 @@ namespace DX12Rendering {
 		auto commandManager = DX12Rendering::Commands::GetCommandManager(Commands::COMPUTE);
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RayTracing::CastShadowRays");
 
-		RenderSurface* outputSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceShadowMask);
-
 		//Update the resources
 		m_constantBuffer.depthTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::VIEW_DEPTH));
 		m_constantBuffer.flatNormalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS));

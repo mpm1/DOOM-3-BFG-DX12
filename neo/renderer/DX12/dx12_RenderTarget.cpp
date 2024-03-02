@@ -208,7 +208,7 @@ namespace DX12Rendering
 		textureManager->StartTextureWrite(texture);
 
 		auto commandList = commandManager->RequestNewCommandList();
-
+		
 		commandList->AddPreFenceWait(&this->fence); // Wait for all drawing to complete.
 		commandList->AddPostFenceSignal(&this->fence);
 

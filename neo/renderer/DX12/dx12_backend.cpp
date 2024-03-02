@@ -406,8 +406,8 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 }
 
 void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t vbHandle, const size_t vertexStride, const DX12Rendering::eSurfaceVariant variant) {
-	DX12Rendering::Commands::CommandList& commandList = *DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(&commandList, "RB_DrawElementsWithCounters");
+	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawElementsWithCounters");
 
 	dxRenderer.SetCommandListDefaults(commandList, false);
 
@@ -468,14 +468,14 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		}
 		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
 
-		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), commandList);
+		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), *commandList);
 	}
 
 	const triIndex_t* test = (triIndex_t*)indexOffset;
 
-	if (dxRenderer.EndSurfaceSettings(variant, commandList)) {
+	if (dxRenderer.EndSurfaceSettings(variant, *commandList)) {
 		dxRenderer.DrawModel(
-			commandList,
+			*commandList,
 			apiVertexBuffer,
 			vertOffset / ((vertexStride > 0) ? vertexStride : sizeof(idDrawVert)),
 			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),

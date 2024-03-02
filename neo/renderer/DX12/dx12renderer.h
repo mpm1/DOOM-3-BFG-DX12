@@ -109,7 +109,7 @@ public:
 	DX12Rendering::Commands::CommandList* Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4], DX12Rendering::Commands::CommandList* commandList);
 	void EndDraw();
 	void PresentBackbuffer();
-	void SetCommandListDefaults(DX12Rendering::Commands::CommandList& commandList, const bool resetPipelineState = true);
+	void SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
 	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant, DX12Rendering::Commands::CommandList& commandList); // Records the the surface entry into the heap.
 	void DrawModel(DX12Rendering::Commands::CommandList& commandList, DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride /* 0 means no override */);

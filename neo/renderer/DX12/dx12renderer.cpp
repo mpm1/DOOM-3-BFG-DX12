@@ -362,31 +362,35 @@ void DX12Renderer::WaitForCopyToComplete() {
 	m_copyFence.Wait();
 }
 
-void DX12Renderer::SetCommandListDefaults(DX12Rendering::Commands::CommandList& commandList, const bool resetPipelineState) {
-	commandList.AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
+void DX12Renderer::SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue)
+{
+	if (!isComputeQueue)
 	{
-		auto rootSignature = m_rootSignature->GetRootSignature();
-		if (rootSignature != nullptr)
+		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{
-			commandList->SetGraphicsRootSignature(rootSignature);
-		}
+			auto rootSignature = isComputeQueue ? nullptr : m_rootSignature->GetRootSignature();
+			if (rootSignature != nullptr)
+			{
+				commandList->SetGraphicsRootSignature(rootSignature);
+			}
 
-		if (m_activePipelineState != nullptr) {
-			commandList->SetPipelineState(m_activePipelineState);
-		}
+			if (m_activePipelineState != nullptr) {
+				commandList->SetPipelineState(m_activePipelineState);
+			}
 
-		commandList->RSSetViewports(1, &m_viewport);
-		commandList->RSSetScissorRects(1, &m_scissorRect);
+			commandList->RSSetViewports(1, &m_viewport);
+			commandList->RSSetScissorRects(1, &m_scissorRect);
 
-		commandList->OMSetStencilRef(m_stencilRef);
-		// Setup the initial heap location
-		ID3D12DescriptorHeap* descriptorHeaps[1] = {
-			m_rootSignature->GetCBVHeap(),
-		};
-		commandList->SetDescriptorHeaps(1, descriptorHeaps);
-	});
+			commandList->OMSetStencilRef(m_stencilRef);
+			// Setup the initial heap location
+			ID3D12DescriptorHeap* descriptorHeaps[1] = {
+				m_rootSignature->GetCBVHeap(),
+			};
+			commandList->SetDescriptorHeaps(1, descriptorHeaps);
+		});
 
-	EnforceRenderTargets(&commandList);
+		EnforceRenderTargets(commandList);
+	}
 }
 
 void DX12Renderer::BeginDraw() {
@@ -400,6 +404,7 @@ void DX12Renderer::BeginDraw() {
 	DebugClearLights();
 #endif
 
+	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 	DX12Rendering::Commands::BeginFrame();
 
 	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
@@ -413,8 +418,6 @@ void DX12Renderer::BeginDraw() {
 			commandList->CommandResourceBarrier(1, &transition);
 		}
 	}
-
-	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
 	m_rootSignature->BeginFrame(m_frameIndex);
 	
@@ -446,7 +449,7 @@ void DX12Renderer::BeginDraw() {
 		}
 	}
 	
-	SetCommandListDefaults(*commandList, false);
+	SetCommandListDefaults(commandList, false);
 
 	commandList->Close();
 }
@@ -995,7 +998,7 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 bool DX12Renderer::DXR_CastRays()
 {
 	bool result = m_raytracing->CastShadowRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect, &m_textureManager);
-
+	
 	if (result)
 	{
 		// Copy the raytraced shadow data

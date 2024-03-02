@@ -100,7 +100,7 @@ public:
 	/// <summary>
 	/// Executes all loaded commands onto the command queue.
 	/// </summary>
-	bool Execute();
+	bool Execute(const bool signalFence = false);
 
 	/// <summary>
 	/// Resets the command allocator and all actions.
@@ -119,12 +119,15 @@ private:
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	ComPtr<ID3D12CommandAllocator> m_commandAllocator[DX12_FRAME_COUNT];
 
-	std::vector<DX12Rendering::Commands::CommandList> m_commandLists;
+	std::vector<DX12Rendering::Commands::CommandList> m_commandLists; // All command lists available
+	DX12Rendering::Commands::CommandList* m_commandListStart; // Current commandList starting point for execution
+	DX12Rendering::Commands::CommandList* m_commandListNext; // Next available command list
 	std::vector<QueuedAction> m_queuedAction;
+
+	DX12Rendering::Fence m_fence;
 
 #ifdef _DEBUG
 	const std::wstring m_name;
-	DX12Rendering::Commands::CommandList* m_activeCommandList;
 #endif
 
 	UINT8 GetCurrentFrameIndex() { return resetPerFrame ? DX12Rendering::GetCurrentFrameIndex() : 0; }
@@ -135,6 +138,8 @@ private:
 
 class DX12Rendering::Commands::CommandList
 {
+	friend class CommandManager;
+
 public:
 	CommandList(D3D12_COMMAND_LIST_TYPE type, ID3D12CommandAllocator* allocator, const LPCWSTR name);
 	~CommandList();
@@ -248,6 +253,8 @@ private:
 	ComPtr<ID3D12GraphicsCommandList4> m_commandList;
 
 	ID3D12CommandAllocator* m_commandAllocator;
+
+	CommandList* m_next;
 };
 
 struct DX12Rendering::Commands::CommandManagerCycleBlock

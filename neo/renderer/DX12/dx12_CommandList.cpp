@@ -36,7 +36,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
 
-				m_commandManagers.emplace_back(&queueDesc, true, L"Compute", 5);
+				m_commandManagers.emplace_back(&queueDesc, true, L"Compute", 10);
 			}
 		}
 
@@ -66,13 +66,14 @@ namespace DX12Rendering {
 
 #pragma region CommandManager
 		CommandManager::CommandManager(D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, const LPCWSTR name, const UINT commandListCount)
-			: resetPerFrame(resetPerFrame),
-			commandListCount(commandListCount),
+			: resetPerFrame(resetPerFrame)
+			, commandListCount(commandListCount)
 #ifdef _DEBUG
-			m_name(std::wstring(name)),
-			m_activeCommandList(nullptr)
+			, m_name(std::wstring(name))
 #endif
 		{
+			assert(commandListCount > 1); // Our functions need at least two command lists to work correctly
+
 			// Describe and create the command queue
 			ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
@@ -82,6 +83,8 @@ namespace DX12Rendering {
 
 			// Create the command allocators
 			const UINT frameCount = resetPerFrame ? DX12_FRAME_COUNT : 1;
+			m_commandLists.reserve(commandListCount * frameCount); // We need to keep our pointers
+
 			for (int frame = 0; frame < frameCount; ++frame) {
 				WCHAR nameDest[64];
 				wsprintfW(nameDest, L"%s Command Allocator %d", name, frame);
@@ -90,18 +93,39 @@ namespace DX12Rendering {
 				m_commandAllocator[frame]->SetName(nameDest);
 
 				// Create the command lists
+				CommandList* commandListStart = nullptr;
+
 				for (int index = 0; index < commandListCount; ++index) {
 					WCHAR listName[64];
 					wsprintfW(listName, L"%s Command List %d:%d", name, frame, index);
 
 					m_commandLists.emplace_back(queueDesc->Type, m_commandAllocator[frame].Get(), listName);
+
+					if (index == 0)
+					{
+						// Store the first command list to set the last command list to cycle.
+						commandListStart = &(m_commandLists.back());
+					}
+					else
+					{
+						// Set the next value of the previous command list.
+						m_commandLists.at(m_commandLists.size() - 2).m_next = &(m_commandLists.back());
+					}
 				}
+
+				// Set the last command list next
+				m_commandLists.back().m_next = commandListStart;
 			}
+
+			m_commandListStart = &m_commandLists.at(0);
+			m_commandListNext = m_commandListStart;
 		}
 
 		CommandManager::~CommandManager()
 		{
 			// Clear the command lists
+			m_commandListStart = nullptr;
+			m_commandListNext = nullptr;
 			m_commandLists.clear();
 
 			// Clear the command allocators
@@ -117,10 +141,7 @@ namespace DX12Rendering {
 		{
 			if (resetPerFrame)
 			{
-				if (!WarnIfFailed(m_commandAllocator[GetLastFrameIndex()]->Reset()))
-				{
-					return false;
-				}
+				Reset();
 			}
 
 			return true;
@@ -130,29 +151,44 @@ namespace DX12Rendering {
 		{
 			if (resetPerFrame)
 			{
-				return Reset();
-			}
+				if (!Execute())
+				{
+					return false;
+				}
+
+				// Verify we have no open command lists
+				CommandList* commandList = m_commandListStart;
+				do
+				{
+					if (commandList->Close())
+					{
+						commandList->Clear(); // Empty any remaining actions from the command list.
+					}
+
+					commandList = commandList->m_next;
+				} while (commandList != m_commandListStart);
+
+				m_commandListStart = m_commandListNext; // Reset the list;
+			} 
 
 			return true;
 		}
 
 		bool CommandManager::Reset()
 		{
-			if (Execute())
+			if (!Execute(true))
 			{
 				return false;
 			}
 
-			// Verify we have no open command lists
-			UINT commandListIndex = GetCommandListStartingPoint(GetCurrentFrameIndex());
-			for (int offset = 0; offset < commandListCount; ++offset)
-			{
-				if (m_commandLists[commandListIndex].Close())
-				{
-					m_commandLists[commandListIndex].Clear(); // Empty any remaining actions from the command list.
-				}
+			m_fence.Wait();
 
-				++commandListIndex;
+			m_commandListStart = &m_commandLists[GetCommandListStartingPoint(GetCurrentFrameIndex())];
+			m_commandListNext = m_commandListStart;
+
+			if (!WarnIfFailed(m_commandAllocator[GetCurrentFrameIndex()]->Reset()))
+			{
+				return false;
 			}
 
 			return true;
@@ -166,7 +202,11 @@ namespace DX12Rendering {
 		CommandList* CommandManager::RequestNewCommandList()
 		{
 #ifdef _DEBUG
-			assert(m_activeCommandList == nullptr || !m_activeCommandList->IsOpen());
+			// verify we have no open command lists
+			for (CommandList* commandList = m_commandListStart; commandList != m_commandListNext; commandList = commandList->m_next)
+			{
+				assert(!commandList->IsOpen());
+			}
 #endif
 
 			UINT attemptsRemaining = 3;
@@ -174,22 +214,17 @@ namespace DX12Rendering {
 			while (attemptsRemaining > 0)
 			{
 				--attemptsRemaining;
-				UINT commandListIndex = GetCommandListStartingPoint(GetCurrentFrameIndex());
 
-				for (int offset = 0; offset < commandListCount; ++offset)
+				if (m_commandListNext->m_next != m_commandListStart || m_commandListStart == m_commandListNext)
 				{
-					CommandList& commandList = m_commandLists[commandListIndex];
+					CommandList* commandList = m_commandListNext;
+					m_commandListNext = m_commandListNext->m_next;
 
-					if (commandList.IsAvailable())
-					{
-#ifdef _DEBUG
-						m_activeCommandList = &commandList;
-#endif
-						commandList.Reset();
-						return &commandList;
-					}
+					assert(commandList->IsAvailable());
 
-					++commandListIndex;
+					commandList->Reset();
+
+					return commandList;
 				}
 
 				Execute(); // Run command lists to prepare for a new set.
@@ -200,35 +235,32 @@ namespace DX12Rendering {
 			return nullptr;
 		}
 
-		bool CommandManager::Execute()
+		bool CommandManager::Execute(const bool signalFence)
 		{
 			std::vector<CommandList*> executingCommandLists = {};
 			executingCommandLists.reserve(commandListCount);
-
-			UINT commandListIndex = GetCommandListStartingPoint(GetCurrentFrameIndex());
 			
-			for (int offset = 0; offset < commandListCount; ++offset)
+			for (CommandList* commandList = m_commandListStart; commandList != m_commandListNext; commandList = commandList->m_next)
 			{
-				CommandList& commandList = m_commandLists[commandListIndex];
-				if (commandList.IsExecutable())
+				assert(!commandList->IsOpen());
+
+				if (commandList->IsExecutable())
 				{
 					// Add to the executing command lists for clearing
-					executingCommandLists.push_back(&commandList);
+					executingCommandLists.push_back(commandList);
 
 					// Add the pre qued functions then the pre queued transitions
-					commandList.GetAllPreExecuteActions(m_queuedAction);
+					commandList->GetAllPreExecuteActions(m_queuedAction);
 
 					// Add the command list to the queue
 					QueuedAction action = {};
 					action.type = dx12_queuedAction_t::COMMAND_LIST;
-					action.commandList = commandList.GetCommandList();
+					action.commandList = commandList->GetCommandList();
 					m_queuedAction.emplace_back(action);
 
 					// Add the post queued functions then the post queued transitions
-					commandList.GetAllPostExecuteActions(m_queuedAction);
+					commandList->GetAllPostExecuteActions(m_queuedAction);
 				}
-
-				++commandListIndex;
 			}
 
 			// Execute the command lists in order
@@ -270,6 +302,8 @@ namespace DX12Rendering {
 					action.queueFunction(m_commandQueue.Get());
 					break;
 				}
+
+				lastActionType = action.type;
 			}
 
 			// Execute any remaining actions
@@ -284,6 +318,13 @@ namespace DX12Rendering {
 				assert(false); // Note yet implemented
 			}
 
+			// If we need to know that the fence is closed. Signal
+			if (signalFence)
+			{
+				auto device = DX12Rendering::Device::GetDevice();
+				m_fence.Signal(device, m_commandQueue.Get());
+			}
+
 			// Clean up
 			m_queuedAction.clear();
 
@@ -292,6 +333,8 @@ namespace DX12Rendering {
 			{
 				commandList->Clear();
 			});
+
+			m_commandListStart = m_commandListNext;
 
 			return true;
 		}
@@ -324,6 +367,7 @@ namespace DX12Rendering {
 				Clear();
 			}
 
+			m_next = nullptr;
 			m_commandList = nullptr;
 		}
 
@@ -407,13 +451,10 @@ namespace DX12Rendering {
 
 		bool CommandList::Reset()
 		{
-			if (m_state < CLOSED)
+			if (!Clear())
 			{
 				return false;
 			}
-
-			m_preQueuedFunctions.clear();
-			m_postQueuedFunctions.clear();
 
 			bool result = WarnIfFailed(m_commandList->Reset(m_commandAllocator, NULL));
 			m_state = OPEN;
@@ -454,9 +495,11 @@ namespace DX12Rendering {
 				m_postQueuedResourceBarriers.clear();
 
 				m_commandCount = 0;
+
+				return true;
 			}
 
-			return true;
+			return false;
 		}
 
 		bool CommandList::HasRemainingActions() const { 
