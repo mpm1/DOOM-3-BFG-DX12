@@ -3145,6 +3145,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);
 		DX12Rendering::TextureBuffer* normalTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
 		normalMap->CopySurfaceToTexture(normalTexture, textureManager)->Wait();
+
+		// TODO: Find a better place to reset this.
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Reset();
 	}
 
 	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); 

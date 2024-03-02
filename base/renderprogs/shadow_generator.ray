@@ -164,7 +164,7 @@ void HandlePointLight(
 				ray.Origin = worldPosition;
 				ray.Direction = lightVector;
 
-				TraceRay(
+				TraceRay( //TODO: Modify this to have hit shaders for different light types and can cast multiple at onc.
 					SceneBVH,
 					RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
 					INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
