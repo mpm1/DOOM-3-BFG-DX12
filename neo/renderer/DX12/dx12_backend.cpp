@@ -2933,6 +2933,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	}
 
 	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
+	const bool useGBuffer = raytracedEnabled;
 
 	//-------------------------------------------------
 	// RB_BeginDrawingView
@@ -2965,6 +2966,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	GL_Clear(false, true, true, STENCIL_SHADOW_TEST_VALUE, 0.0f, 0.0f, 0.0f, 0.0f); //TODO: We need to properly implement this.
 
 	// Clear surfaces from the previous frame
+	if(useGBuffer)
 	{
 		const float zeroClear[4] = { 0, 0, 0, 0 };
 		const DX12Rendering::eRenderSurface clearSurfaces[] = {
@@ -3111,43 +3113,52 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		//-------------------------------------------------
 		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
 
-		// Fill the GBuffer
-		RB_DrawGBuffer(drawSurfs, numDrawSurfs);
+		if (useGBuffer)
+		{
+			// Fill the GBuffer
+			RB_DrawGBuffer(drawSurfs, numDrawSurfs);
+		}
 
-		// Build our light list
-		dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix);
+		if (raytracedEnabled)
+		{
+			// Build our light list
+			dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix);
+		}
 
-		// Copy the depth buffer to a texture
-		auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
-		viewDepth->fence.Wait();
+		if (useGBuffer)
+		{
+			// Copy the depth buffer to a texture
+			auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
+			viewDepth->fence.Wait();
 
-		// TODO: Make a system to perform multiple copies
-		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
-		DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
-		viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
+			// TODO: Make a system to perform multiple copies
+			DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+			DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
+			viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
 
-		// Copy the albedo
-		auto albedo = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo);
-		DX12Rendering::TextureBuffer* albedoTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
-		albedo->CopySurfaceToTexture(albedoTexture, textureManager);
+			// Copy the albedo
+			auto albedo = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo);
+			DX12Rendering::TextureBuffer* albedoTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
+			albedo->CopySurfaceToTexture(albedoTexture, textureManager);
 
-		// Copy the specular
-		auto specular = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor);
-		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
-		specular->CopySurfaceToTexture(specularTexture, textureManager);
+			// Copy the specular
+			auto specular = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor);
+			DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
+			specular->CopySurfaceToTexture(specularTexture, textureManager);
 
-		// Copy the flat normal map to a texture
-		auto normalFlatMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal);
-		DX12Rendering::TextureBuffer* normalFlatTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_FLAT_NORMALS);
-		normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager);
+			// Copy the flat normal map to a texture
+			auto normalFlatMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal);
+			DX12Rendering::TextureBuffer* normalFlatTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_FLAT_NORMALS);
+			normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager);
 
-		// Copy the normal map to a texture
-		auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);
-		DX12Rendering::TextureBuffer* normalTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
-		normalMap->CopySurfaceToTexture(normalTexture, textureManager)->Wait();
+			// Copy the normal map to a texture
+			auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);
+			DX12Rendering::TextureBuffer* normalTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
+			normalMap->CopySurfaceToTexture(normalTexture, textureManager);
 
-		// TODO: Find a better place to reset this.
-		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Reset();
+			// TODO: Find a better place to reset this.
+			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Reset();
+		}
 	}
 
 	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); 
@@ -3167,7 +3178,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	//-------------------------------------------------
 	// main light renderer
 	//-------------------------------------------------
-	RB_DrawInteractions(raytraceUpdated);
+	RB_DrawInteractions(raytracedEnabled);
 	//dxRenderer.ExecuteCommandList();
 	//dxRenderer.ResetCommandList();
 
@@ -3195,7 +3206,10 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	// fog and blend lights, drawn after emissive surfaces
 	// so they are properly dimmed down
 	//-------------------------------------------------
-	RB_FogAllLights();
+	if (!raytraceUpdated) // This will be run by the raytraced lighting
+	{
+		RB_FogAllLights();
+	}
 
 	//-------------------------------------------------
 		// capture the depth for the motion blur before rendering any post process surfaces that may contribute to the depth

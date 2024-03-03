@@ -1042,11 +1042,12 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 		bool isAmbientLight = lightShader->IsAmbientLight(); // TODO: add as flag.
 		if (isAmbientLight)
 		{
-			lightType |= DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_AMBIENT;
+			lightType = DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_AMBIENT;
 		}
 
 		if (lightShader->IsFogLight())
 		{
+			// Point and ambient can be fog lights.
 			lightType |= DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_FOG;
 		}
 

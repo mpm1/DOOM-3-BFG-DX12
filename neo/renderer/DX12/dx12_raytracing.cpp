@@ -285,7 +285,7 @@ namespace DX12Rendering {
 
 		{
 			// Calculate type properties
-			if (type & DXR_LIGHT_TYPE_AMBIENT > 0)
+			if ((type & DXR_LIGHT_TYPE_AMBIENT) > 0)
 			{
 				m_constantBuffer.lights[index].isAmbientLight = true;
 			}
@@ -295,7 +295,7 @@ namespace DX12Rendering {
 				m_constantBuffer.lights[index].isPointLight = true;
 			}
 
-			if (type & DXR_LIGHT_TYPE_FOG > 0)
+			if ((type & DXR_LIGHT_TYPE_FOG) > 0)
 			{
 				m_constantBuffer.lights[index].isFogLight = true;
 			}

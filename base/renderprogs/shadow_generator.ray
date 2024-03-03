@@ -49,26 +49,18 @@ float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 
 	return specularColor.rgb * specularContribution * (light.color.rgb * specMultiplier) * lightFalloff.rgb;
 }
 
-float3 GetValidLightLocation(in SceneLight light, in float centerNDotL, in Plane surfacePlane, in float3 randomOffset)
+float3 GetValidLightLocation(in SceneLight light, in Plane surfacePlane, in float3 randomOffset)
 {
 	float3 randVector = normalize(rand3(randomOffset.xyz) * 2.0 - 1.0);
 
-	if(centerNDotL >= 0)
-	{
-		// Find the farthest we can travel along the vector before we are outsize of the light radius or behind the point
-		float3 pointOnPlane = light.center - randVector * (PlaneDotPoint(surfacePlane,light.center) / PlaneDotVector(surfacePlane, randVector)); 
-		float maxRad = min(light.emissiveRadius, distance(pointOnPlane, light.center));
+	// Find the farthest we can travel along the vector before we are outsize of the light radius or behind the point
+	float3 pointOnPlane = light.center - randVector * (PlaneDotPoint(surfacePlane, light.center) / PlaneDotVector(surfacePlane, randVector)); 
+	float maxRad = min(light.emissiveRadius, distance(pointOnPlane, light.center));
 
-		if(maxRad > 0)
-		{
-			float emissiveOffset = maxRad * rand(randomOffset.zxy);
-			float3 lightPosition = light.center + emissiveOffset;
+	float3 emissiveOffset = randVector * maxRad * rand(randomOffset.zxy);
+	float3 lightPosition = light.center + emissiveOffset;
 
-			return lightPosition;
-		}
-	}
-
-	return light.center;
+	return lightPosition;
 }
 
 void HandleAmbientLight(
@@ -127,8 +119,7 @@ void HandlePointLight(
 	{
 		float3 lightPosition = castsShadows ?
 			GetValidLightLocation(
-				light, PlaneDotPoint(surfacePlane, pointToCenter), 
-				surfacePlane,
+				light, surfacePlane,
 				normalize(float3(screenUV.xy + float2(lightIndex, rayIndex) + sceneConstants.noiseOffset, rayIndex + lightIndex))
 				)
 			: light.center;
@@ -154,7 +145,7 @@ void HandlePointLight(
 			payload.maxDistance = maxDistance;
 			payload.intensity = intensity;
 
-			if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS)
+			if(castsShadows)
 			{
 				// We are inside the light radius.
 				// Define a ray, consisting of origin, direction, and the min-max distance values
@@ -229,28 +220,28 @@ void RayGen() {
 
 				if (IsInsideViewport(screenLocation.xy, light.scissor))
 				{
-					bool castsShadows = light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_CASTS_SHADOWS;
+					bool castsShadows = (light.flags & LIGHT_FLAG_CASTS_SHADOWS) > 0;
 					uint lightRayCount = castsShadows ? sceneConstants.raysPerLight : 1; // Only one point is needed if we're not creating soft shadows.
 					
 
 					float3 localDiffuse = float3(0.0, 0.0, 0.0);
 					float3 localSpecular = float3(0.0, 0.0, 0.0);
 
-					if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_POINT_LIGHT)
+					if((light.flags & LIGHT_FLAG_AMBIENT_LIGHT) > 0)
+					{
+						HandleAmbientLight(
+							lightIndex, light, 
+							worldPosition, normal, pointToEye,
+							diffuse, specular,
+							localDiffuse, localSpecular);
+					}
+					else if((light.flags & LIGHT_FLAG_POINT_LIGHT) > 0)
 					{
 						HandlePointLight(
 							lightIndex, light, lightRayCount, 
 							castsShadows, surfacePlane, normal,
 							pointToEye, worldPosition, lerpValues,
 							rayStartDistance, diffuse, specular,
-							localDiffuse, localSpecular);
-					}
-					else if(light.flags & LIGHT_FLAG_CASTS_SHADOWS == LIGHT_FLAG_AMBIENT_LIGHT)
-					{
-						HandleAmbientLight(
-							lightIndex, light, 
-							worldPosition, normal, pointToEye,
-							diffuse, specular,
 							localDiffuse, localSpecular);
 					}
 					
