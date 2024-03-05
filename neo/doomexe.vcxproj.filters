@@ -1499,8 +1499,10 @@
     <None Include="..\base\renderprogs\gbuffer.inc">
       <Filter>Shaders</Filter>
     </None>
-    <None Include="..\base\renderprogs\functions.inc" />
     <None Include="..\base\renderprogs\bindless_textures.inc">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\base\renderprogs\functions.inc">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>
@@ -1643,6 +1645,24 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\gbuffer_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\gbuffer_transparent.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\gbuffer_transparent.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\gbuffer_transparent_skinned.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\gbuffer_transparent_skinned.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\combineGbuffer.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\combineGbuffer.pixel">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

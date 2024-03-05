@@ -343,6 +343,9 @@
     <ClCompile Include="d3xp\menus\MenuScreen_Shell_Credits.cpp">
       <Filter>Menus</Filter>
     </ClCompile>
+    <ClCompile Include="d3xp\menus\MenuScreen_Shell_RaytracingOptions.cpp">
+      <Filter>Menus</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="d3xp\ai\AAS.h">

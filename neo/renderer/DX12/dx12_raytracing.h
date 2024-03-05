@@ -16,13 +16,23 @@ using namespace DirectX;
 using namespace Microsoft::WRL;
 
 namespace DX12Rendering {
+	typedef
+		enum DXR_LIGHT_TYPE
+	{
+		DXR_LIGHT_TYPE_POINT = 1 << 0,
+		DXR_LIGHT_TYPE_AMBIENT = 1 << 1,
+		DXR_LIGHT_TYPE_FOG = 1 << 2
+	} 	DXR_LIGHT_TYPE;
+
+	DEFINE_ENUM_FLAG_OPERATORS(DXR_LIGHT_TYPE);
+
 	// Making these caches 256x more than their in frame size
 	const UINT VERTCACHE_INDEX_MEMORY = 31 * 1024 * 1024 * 256;
 	const UINT VERTCACHE_VERTEX_MEMORY = 31 * 1024 * 1024 * 256;
 	const UINT VERTCACHE_JOINT_MEMORY= 256 * 1024 * 256;
 
 	const UINT DESCRIPTOR_TEXTURE_COUNT = 1024;
-	const UINT DESCRIPTOR_HEAP_SIZE = 6 /* basic entries */ + DESCRIPTOR_TEXTURE_COUNT /* texture space */;
+	const UINT DESCRIPTOR_HEAP_SIZE = 4 /* basic entries */ + DESCRIPTOR_TEXTURE_COUNT /* texture space */;
 
 	enum dxr_renderParm_t {
 		RENDERPARM_GLOBALEYEPOS = 0,
@@ -55,12 +65,15 @@ namespace DX12Rendering {
 			UINT flags;
 			struct {
 				bool castsShadows : 1;
-				bool flagPad[sizeof(UINT) - 1];
+				bool isPointLight : 1;
+				bool isAmbientLight : 1;
+				bool isFogLight : 1;
+				bool flagPad[sizeof(UINT) - 2];
 			};
 		};
 		UINT pad1;
 		UINT pad2;
-		UINT pad3;
+		float emissiveRadius; // Radius used to calculate soft shadows.
 
 		XMFLOAT4 color;
 
@@ -80,7 +93,14 @@ namespace DX12Rendering {
 		XMFLOAT4 renderParameters[DX12Rendering::dxr_renderParm_t::COUNT];
 
 		UINT lightCount;
-		UINT pad[3];
+		float noiseOffset;
+		UINT diffuseTextureIndex;
+		UINT specularTextureIndex;
+
+		UINT depthTextureIndex;
+		UINT flatNormalIndex;
+		UINT normalIndex;
+		UINT raysPerLight; // Number of shadow rays cast per light per pixel
 
 		dxr_lightData_t lights[MAX_SCENE_LIGHTS];
 	};
@@ -89,6 +109,8 @@ namespace DX12Rendering {
 
 	class Raytracing;
 }
+
+
 
 class DX12Rendering::Raytracing {
 public:
@@ -105,7 +127,7 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	void ResetLightList();
-	bool AddLight(const UINT index, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows);
+	bool AddLight(const UINT index, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows);
 	UINT GetLightMask(const UINT index);
 
 	/// Adds an image to the descriptor heap and returns the associated index.
@@ -137,10 +159,7 @@ public:
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
 		const DX12Rendering::eRenderSurface* renderTargetList,
-		const UINT renderTargetCount,
-		TextureBuffer** buffers,
-		const UINT bufferCount,
-		DX12Rendering::TextureManager* textureManager
+		const UINT renderTargetCount
 	);
 
 	/// <summary>

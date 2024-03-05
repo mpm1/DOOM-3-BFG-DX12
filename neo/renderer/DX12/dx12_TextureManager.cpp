@@ -15,7 +15,6 @@ namespace DX12Rendering
 
 		Allocate(textureDesc, resourceState, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT));
 
-		m_lastTransitionState = resourceState;
 		textureView = srcDesc;
 
 		return true;
@@ -55,6 +54,31 @@ namespace DX12Rendering
 
 			case eGlobalTexture::WORLD_NORMALS:
 				name = "world_normals";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+
+			case eGlobalTexture::ALBEDO:
+				name = "albedo";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+
+			case eGlobalTexture::SPECULAR_COLOR:
+				name = "specular_color";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+
+			case eGlobalTexture::RAYTRACED_DIFFUSE:
+				name = "raytraced_diffuse";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+
+			case eGlobalTexture::RAYTRACED_SPECULAR:
+				name = "raytraced_specular";
+				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+				break;
+
+			case eGlobalTexture::WORLD_FLAT_NORMALS:
+				name = "world_flat_normals";
 				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 				break;
 
@@ -105,75 +129,54 @@ namespace DX12Rendering
 		return m_textures.at(textureIndex);
 	}
 
-	bool TextureManager::SetTextureCopyState(TextureBuffer* buffer, const UINT mipLevel) const{
-		auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
-		return SetTextureState(buffer, D3D12_RESOURCE_STATE_COPY_DEST, copyCommands, mipLevel);
+	bool TextureManager::SetTextureCopyState(TextureBuffer* buffer, DX12Rendering::Commands::CommandList* commandList) const{
+		return SetTextureState(buffer, D3D12_RESOURCE_STATE_COPY_DEST, commandList);
 	}
 
-	bool TextureManager::SetTexturePixelShaderState(TextureBuffer* buffer, const UINT mipLevel) const {
-		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::DIRECT);
+	bool TextureManager::SetTexturePixelShaderState(TextureBuffer* buffer, DX12Rendering::Commands::CommandList* commandList) const {
 		return SetTextureState(buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, commandList);
 	}
 
-	bool TextureManager::SetTextureStates(TextureBuffer** buffers, UINT bufferCount, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel) const
-	{
-		if (buffers == nullptr)
-		{
-			return false;
-		}
-
-		/*std::vector<D3D12_RESOURCE_BARRIER> transitions = {};
-		transitions.reserve(bufferCount);*/
-
-		for (UINT index = 0; index < bufferCount; ++index)
-		{
-			if (buffers[index]->m_lastTransitionState != usageState) {
-				/*transitions.push_back(CD3DX12_RESOURCE_BARRIER::Transition(buffers[index]->resource.Get(), buffers[index]->m_lastTransitionState, usageState, mipLevel));
-				*/
-
-				commandList->CommandResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(buffers[index]->resource.Get(), buffers[index]->m_lastTransitionState, usageState, mipLevel));
-				buffers[index]->m_lastTransitionState = usageState;
-			}
-		}
-
-		/*if (transitions.size() > 0)
-		{
-			commandList->CommandResourceBarrier(transitions.size(), std::move(transitions.data()));
-		}*/
-
-		return true;
-	}
-
-	bool TextureManager::SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList, const UINT mipLevel) const {
+	bool TextureManager::SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList) const {
 		if (buffer == nullptr) {
 			return false;
 		}
 
-		if (buffer->m_lastTransitionState == usageState) {
+		// TODO: Check for valid state transitions.
+		D3D12_RESOURCE_BARRIER transition = {};
+		if (!buffer->TryTransition(usageState, &transition))
+		{
 			return false;
 		}
 
-		// TODO: Check for valid state transitions.
-		commandList->CommandResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(buffer->resource.Get(), buffer->m_lastTransitionState, usageState, mipLevel));
-		buffer->m_lastTransitionState = usageState;
+		// For now we transition the entire resource.
+		commandList->CommandResourceBarrier(1, &transition);
 
 		return true; // State has changed.
 	}
 
 	void TextureManager::StartTextureWrite(TextureBuffer* buffer) {
-		auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
-		copyCommands->Reset();
+		auto copyCommands = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
+		auto commandList = copyCommands->RequestNewCommandList();
 
-		DX12Rendering::CaptureEventStart(copyCommands, "StartTextureWrite");
+		SetTextureCopyState(buffer, commandList);
+
+		DX12Rendering::CaptureEventStart(commandList, "StartTextureWrite");
+
+		commandList->Close();
 	}
 
 	void TextureManager::EndTextureWrite(TextureBuffer* buffer) {
-		auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
-		copyCommands->AddPreFenceWait(&buffer->fence);
-		copyCommands->AddPostFenceSignal(&buffer->fence);
-		copyCommands->Cycle();
+		auto copyCommands = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
+		auto commandList = copyCommands->RequestNewCommandList();
 
-		DX12Rendering::CaptureEventEnd(copyCommands);
+		commandList->AddPreFenceWait(&buffer->fence);
+		commandList->AddPostFenceSignal(&buffer->fence);
+
+		DX12Rendering::CaptureEventEnd(commandList);
+		commandList->Close();
+
+		copyCommands->Execute();
 
 		// Clean out the temp images
 		m_tempImages.clear();
@@ -226,17 +229,21 @@ namespace DX12Rendering
 	void TextureManager::SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image) {
 		if (buffer != nullptr && buffer->IsReady())
 		{
-			auto copyCommands = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
-
-			SetTextureCopyState(buffer, mipLevel);
+			auto copyManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
+			auto copyCommands = copyManager->RequestNewCommandList();
+			
+			SetTextureCopyState(buffer, copyCommands);
 
 			ScratchBuffer& uploadHeap = m_textureUploadHeap;
 
 			UINT64 intermediateOffset;
 			if (!uploadHeap.RequestSpace(copyCommands, imageSize, intermediateOffset, true))
 			{
-				copyCommands->Cycle();
+				copyCommands->Close();
+				copyManager->Execute();
 				m_textureUploadHeap.fence.Wait(); // Since we are not streaming in textures, we'll forcfully wait for our upload.
+
+				copyCommands = copyManager->RequestNewCommandList();
 			}
 
 			copyCommands->AddCommandAction([image, bytesPerRow, imageSize, mipLevel, resourceIndex, intermediateOffset, &uploadHeap, &buffer](ID3D12GraphicsCommandList4* commandList)
@@ -250,6 +257,8 @@ namespace DX12Rendering
 
 				UpdateSubresources(commandList, buffer->resource.Get(), uploadHeap.resource.Get(), intermediateOffset, subresource, 1, &textureData);
 			});
+
+			copyCommands->Close();
 		}
 		else
 		{

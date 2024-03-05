@@ -27,14 +27,14 @@ struct DX12Rendering::RenderPassBlock
 	RenderPassBlock(const std::string name, const DX12Rendering::Commands::dx12_commandList_t commandListType, const DX12Rendering::eRenderSurface* renderTargetList = nullptr, const UINT renderTargetCount = 0);
 	~RenderPassBlock();
 
-	DX12Rendering::Commands::CommandList* GetCommandList() { return m_commandList; }
+	DX12Rendering::Commands::CommandManager* GetCommandManager() { return m_commandManager; }
 	static RenderPassBlock* GetCurrentRenderPass();
 
 private:
 	DX12Rendering::eRenderSurface m_renderSurfaces[MAX_RENDER_TARGETS];
-	DX12Rendering::Commands::CommandList* m_commandList;
+	DX12Rendering::Commands::CommandManager* m_commandManager;
 
-	void UpdateRenderState(D3D12_RESOURCE_STATES renderState);
+	void UpdateRenderState(DX12Rendering::Commands::CommandList* commandList, D3D12_RESOURCE_STATES renderState);
 };
 
 #endif // __DX12_RENDER_PASS_H__

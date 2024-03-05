@@ -25,7 +25,10 @@ namespace DX12Rendering {
 
 		// GBuffer
 		Normal, // Normals in the world space. This can be used for Raytracing.
+		FlatNormal, // Normals before normal mapping is applied.
 		ViewDepth, // The depth in view space
+		Albedo, // Albedo texture used for lighting
+		SpecularColor, // Specular color used for lighting.
 
 		// RayTracing
 		RaytraceShadowMask, // Each bit is a light mask
@@ -45,7 +48,10 @@ namespace DX12Rendering {
 	const std::vector<eRenderSurface> ViewRenderTarget =
 	{
 		eRenderSurface::Normal,
+		eRenderSurface::FlatNormal,
 		eRenderSurface::ViewDepth,
+		eRenderSurface::Albedo,
+		eRenderSurface::SpecularColor,
 
 		eRenderSurface::Diffuse,
 		eRenderSurface::Specular,
@@ -67,14 +73,6 @@ namespace DX12Rendering {
 		// Re-assigns the resource to the one passed in.
 		bool AttachSwapchain(UINT index, IDXGISwapChain3& swapChain);
 
-		/// <summary>
-		/// Uses the last known format state to define a Resource Barrier to the new state.
-		/// </summary>
-		/// <param name="toTransition">The transition to. If this is the same as the last know state, no barrier is made.</param>
-		/// <param name="resourceBarrier">The barrier to store the stransition information in.</params>
-		/// <returns>True if a transition was created.</returns>
-		bool TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier);
-
 		const D3D12_CPU_DESCRIPTOR_HANDLE& GetRtv() const { return m_rtv; }
 		const D3D12_CPU_DESCRIPTOR_HANDLE& GetDsv() const { return m_dsv; }
 
@@ -89,7 +87,6 @@ namespace DX12Rendering {
 		const RENDER_SURFACE_FLAGS m_flags;
 		UINT m_width;
 		UINT m_height;
-		D3D12_RESOURCE_STATES m_lastTransitionState;
 		D3D12_CLEAR_VALUE m_clearValue;
 
 		D3D12_CPU_DESCRIPTOR_HANDLE m_dsv;

@@ -18,7 +18,6 @@ namespace DX12Rendering
 		surfaceId(surfaceId),
 		m_width(0),
 		m_height(0),
-		m_lastTransitionState(D3D12_RESOURCE_STATE_COPY_SOURCE),
 		m_format(format),
 		m_clearValue(clearValue),
 		m_flags(flags),
@@ -69,7 +68,11 @@ namespace DX12Rendering
 			return false;
 		}
 
+		// Hack to set ourselves in the appropriate resource state.
 		state = Ready;
+
+		D3D12_RESOURCE_BARRIER transition = {};
+		TryTransition(D3D12_RESOURCE_STATE_COPY_SOURCE, &transition);
 
 		return true;
 	}
@@ -135,8 +138,6 @@ namespace DX12Rendering
 			UpdateData(width, height);
 		}
 
-		m_lastTransitionState = D3D12_RESOURCE_STATE_COPY_SOURCE;
-
 		return resourceUpdated;
 	}
 
@@ -201,11 +202,13 @@ namespace DX12Rendering
 		UINT width = this->m_width;
 		UINT height = this->m_height;
 
+		auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
+		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RenderSurface::CopySurfaceToTexture");
+
 		textureManager->StartTextureWrite(texture);
 
-		auto commandList = DX12Rendering::Commands::GetCommandList(DX12Rendering::Commands::COPY);
-		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RenderSurface::CopySurfaceToTexture");
-
+		auto commandList = commandManager->RequestNewCommandList();
+		
 		commandList->AddPreFenceWait(&this->fence); // Wait for all drawing to complete.
 		commandList->AddPostFenceSignal(&this->fence);
 
@@ -235,27 +238,11 @@ namespace DX12Rendering
 
 		textureManager->SetTextureState(texture, D3D12_RESOURCE_STATE_COMMON, commandList);
 
+		commandList->Close();
+
 		textureManager->EndTextureWrite(texture);
 
 		return &this->fence;
-	}
-
-	bool RenderSurface::TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier)
-	{
-		if (m_lastTransitionState == toTransition)
-		{
-			return false;
-		}
-
-		if (resourceBarrier == nullptr)
-		{
-			return false;
-		}
-
-		*resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(resource.Get(), m_lastTransitionState, toTransition);
-		m_lastTransitionState = toTransition;
-
-		return true;
 	}
 
 	void GenerateRenderSurfaces()
@@ -301,7 +288,10 @@ namespace DX12Rendering
 			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 			
 			m_surfaces.emplace_back(L"Normal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Normal, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"FlatNormal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::FlatNormal, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"ViewDepth", DXGI_FORMAT_R32_FLOAT, eRenderSurface::ViewDepth, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"Albedo", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Albedo, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"SpecularColor", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::SpecularColor, RENDER_SURFACE_FLAG_NONE, clearValue);
 
 			m_surfaces.emplace_back(L"RaytraceShadowMask", DXGI_FORMAT_R8G8B8A8_UINT, eRenderSurface::RaytraceShadowMask, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 

@@ -3,9 +3,14 @@
 #include <stdexcept>
 #include <algorithm>
 
+#include "../tr_local.h"
+
 #include "./dx12_raytracing.h"
 #include "./dx12_DeviceManager.h"
 #include "./dx12_RenderPass.h"
+
+idCVar s_raysCastPerLight("s_raysCastPerLight", "20", CVAR_ARCHIVE | CVAR_INTEGER, "number of shadow rays per light per pixel.", 0, 1000);
+idCVar s_lightEmissiveRadius("s_lightEmissiveRadius", "20.0", CVAR_ARCHIVE | CVAR_FLOAT, "the radius of a light. The larger the value, the softer shadows will be.", 0.0f, 100.0f);
 
 namespace DX12Rendering {
 	bool CheckRaytracingSupport() {
@@ -42,7 +47,8 @@ namespace DX12Rendering {
 		m_width(screenWidth),
 		m_height(screenHeight),
 		m_tlasManager(&m_blasManager),
-		m_nextDescriptorHeapIndex(0)
+		m_nextDescriptorHeapIndex(0),
+		m_constantBuffer({})
 		//m_localVertexBuffer(VERTCACHE_VERTEX_MEMORY),
 		//m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
@@ -167,28 +173,18 @@ namespace DX12Rendering {
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-		// Create a SRV/UAV/CBV descriptor heap. We need 6 entries + texture entries - 
-		// 2 UAV for the raytracing output
-		// 1 SRV for the TLAS 
-		// 2 SRV for the Depth Texture, Normal Texture
+		// Create a SRV/UAV/CBV descriptor heap. We need 4 entries + texture entries - 
+		// 3 UAV for the raytracing output
+		// 1 SRV for the TLAS
 		// 1 CBV for the Camera properties
 		// 1024 SRV for textures.
 		m_generalUavHeaps = CreateDescriptorHeap(device, DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 
 		// Add the output buffers
-		SetOutputTexture(eRenderSurface::RaytraceShadowMask, e_RaytracingHeapIndex::UAV_ShadowMap);
+		SetOutputTexture(eRenderSurface::RaytraceShadowMask, e_RaytracingHeapIndex::UAV_ShadowMap); // TODO: Remove
 		SetOutputTexture(eRenderSurface::Diffuse, e_RaytracingHeapIndex::UAV_DiffuseMap);
-
-		// Copy the reference to the depth texture.
-		CD3DX12_CPU_DESCRIPTOR_HANDLE depthTextureHandle(shadowHandle, DX12Rendering::e_RaytracingHeapIndex::SRV_DepthTexture, m_cbvHeapIncrementor);
-		DX12Rendering::TextureBuffer* depthTexture = textureManager.GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
-		device->CreateShaderResourceView(depthTexture->resource.Get(), &depthTexture->textureView, depthTextureHandle);
-
-		// Copy the reference to the normal texture.
-		CD3DX12_CPU_DESCRIPTOR_HANDLE normalTextureHandle(shadowHandle, DX12Rendering::e_RaytracingHeapIndex::SRV_NormalTexture, m_cbvHeapIncrementor);
-		DX12Rendering::TextureBuffer* normalTexture = textureManager.GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
-		device->CreateShaderResourceView(normalTexture->resource.Get(), &normalTexture->textureView, normalTextureHandle);
+		SetOutputTexture(eRenderSurface::Specular, e_RaytracingHeapIndex::UAV_SpecularMap);
 	}
 
 	void Raytracing::CleanUpAccelerationStructure()
@@ -268,7 +264,7 @@ namespace DX12Rendering {
 		return index;
 	}
 
-	bool Raytracing::AddLight(const UINT lightIndex, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows)
+	bool Raytracing::AddLight(const UINT lightIndex, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows)
 	{
 		static UINT padValue = 0;
 		padValue = (padValue + 1) % 3459871;
@@ -287,8 +283,28 @@ namespace DX12Rendering {
 
 		m_constantBuffer.lights[index].castsShadows = castsShadows;
 
+		{
+			// Calculate type properties
+			if ((type & DXR_LIGHT_TYPE_AMBIENT) > 0)
+			{
+				m_constantBuffer.lights[index].isAmbientLight = true;
+			}
+			else
+			{
+				// All lights that are not ambient are point lights
+				m_constantBuffer.lights[index].isPointLight = true;
+			}
+
+			if ((type & DXR_LIGHT_TYPE_FOG) > 0)
+			{
+				m_constantBuffer.lights[index].isFogLight = true;
+			}
+		}
+
 		m_constantBuffer.lights[index].lightIndex = lightIndex;
 		m_constantBuffer.lights[index].shadowMask = shadowMask;
+
+		m_constantBuffer.lights[index].emissiveRadius = s_lightEmissiveRadius.GetFloat();
 
 		m_constantBuffer.lights[index].center = location;
 
@@ -316,10 +332,11 @@ namespace DX12Rendering {
 		DX12Rendering::TextureManager* textureManager
 	)
 	{
-		const UINT surfaceCount = 2;
+		const UINT surfaceCount = 3;
 		const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 			DX12Rendering::eRenderSurface::RaytraceShadowMask,
-			DX12Rendering::eRenderSurface::Diffuse
+			DX12Rendering::eRenderSurface::Diffuse,
+			DX12Rendering::eRenderSurface::Specular
 		};
 
 		assert(textureManager);
@@ -333,18 +350,26 @@ namespace DX12Rendering {
 
 		tlasManager->WaitForFence();
 
-		auto commandList = DX12Rendering::Commands::GetCommandList(Commands::COMPUTE);
-		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RayTracing::CastShadowRays");
-
-		RenderSurface* outputSurface = DX12Rendering::GetSurface(eRenderSurface::RaytraceShadowMask);
+		auto commandManager = DX12Rendering::Commands::GetCommandManager(Commands::COMPUTE);
+		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RayTracing::CastShadowRays");
 
 		//Update the resources
-		TextureBuffer* buffers[2] = {
-			textureManager->GetGlobalTexture(eGlobalTexture::DEPTH_TEXTURE),
-			textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)
-		};
+		m_constantBuffer.depthTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::VIEW_DEPTH));
+		m_constantBuffer.flatNormalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS));
+		m_constantBuffer.normalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS));
+		m_constantBuffer.diffuseTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO));
+		m_constantBuffer.specularTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR));
 
-		return CastRays(frameIndex, viewport, scissorRect, surfaces, surfaceCount, buffers, 2, textureManager);
+		m_constantBuffer.raysPerLight = s_raysCastPerLight.GetInteger();
+
+		// Update the noise offset
+		m_constantBuffer.noiseOffset += 0.01f;
+		if (m_constantBuffer.noiseOffset > 5.0f)
+		{
+			m_constantBuffer.noiseOffset = 0.0f;
+		}
+
+		return CastRays(frameIndex, viewport, scissorRect, surfaces, surfaceCount);
 	}
 
 	bool Raytracing::CastRays(
@@ -352,10 +377,7 @@ namespace DX12Rendering {
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
 		const DX12Rendering::eRenderSurface* renderTargetList, 
-		const UINT renderTargetCount,
-		TextureBuffer** buffers,
-		const UINT bufferCount,
-		DX12Rendering::TextureManager* textureManager
+		const UINT renderTargetCount
 	)
 	{
 		DX12Rendering::RenderPassBlock renderPass(
@@ -364,9 +386,7 @@ namespace DX12Rendering {
 			renderTargetList,
 			renderTargetCount
 		);
-		auto commandList = renderPass.GetCommandList();
-
-		//textureManager->SetTextureStates(buffers, 2, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, commandList);
+		auto commandList = renderPass.GetCommandManager()->RequestNewCommandList();
 
 		// Copy the CBV data to the heap
 		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
@@ -414,7 +434,7 @@ namespace DX12Rendering {
 			commandList->DispatchRays(&desc);
 		});
 
-		//textureManager->SetTextureStates(buffers, 2, D3D12_RESOURCE_STATE_COMMON, commandList);
+		commandList->Close();
 
 		return true;
 	}

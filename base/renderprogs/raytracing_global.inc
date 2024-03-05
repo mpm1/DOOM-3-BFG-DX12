@@ -2,7 +2,30 @@
 #include "bindless_textures.inc"
 
 // Minimum distance from the surface, based on the normal vector, where we begin to cast rays.
-static const float k_minSurfaceDistance = 0.1;
+static const float k_minSurfaceDistance = 0.01;
+
+// Plane used for ray calculations
+typedef float4 Plane; // xyz = normal, w = distance. Used to define a plane
+
+Plane GeneratePlane(in float3 normal, in float3 pointOnPlane)
+{
+    Plane plane;
+
+    plane.xyz = normalize(normal);
+    plane.w = -dot3(plane.xyz, pointOnPlane);
+
+    return plane;
+}
+
+float PlaneDotVector(in Plane f, in float3 v)
+{
+    return dot3(f.xyz, v.xyz);
+}
+
+float PlaneDotPoint(in Plane f, in float3 p)
+{
+    return dot3(f.xyz, p.xyz) + f.w;
+}
 
 // Ray payload. Contains:
 // Diffuse color
@@ -20,7 +43,10 @@ struct Attributes
   float4	location; // Location of the hit.
 };
 
-#define LIGHT_FLAG_CASTS_SHADOWS 0x00000001
+#define LIGHT_FLAG_CASTS_SHADOWS (0x01 << 0)
+#define LIGHT_FLAG_POINT_LIGHT   (0x01 << 1)
+#define LIGHT_FLAG_AMBIENT_LIGHT (0x01 << 2)
+#define LIGHT_FLAG_FOG_LIGHT     (0x01 << 3)
 
 #define INSTANCE_MASK_CAST_SHADOW 0x01
 #define INSTANCE_MASK_SKYBOX 0x02
@@ -34,7 +60,7 @@ struct SceneLight {
     uint    flags;
     uint    pad1;
     uint    pad2;
-    uint    pad3;
+    float   emissiveRadius;
 
     float4   color;
 
@@ -73,9 +99,14 @@ struct RaytracedSceneConstants {
     RenderParameters rp;
 
     uint lightCount;
-    uint pad1;
-    uint pad2;
-    uint pad3;
+    float noiseOffset;
+    uint diffuseTextureIndex;
+    uint specularTexureIndex;
+
+    uint depthTextureIndex;
+	uint flatNormalIndex;
+    uint normalIndex;
+    uint raysPerLight;
 
     SceneLight lights[MAX_SHADOW_LIGHTS];
 };
@@ -126,19 +157,6 @@ uint4 ConvertShadowmapMaskToVector(uint shadowMask)
 	result.r = shadowMask & 0xFF;
 
     return result;
-}
-
-// Temp random function. found here: https://thebookofshaders.com/10/
-float random1(float2 st, float2 dotDir) {
-    return frac(sin(dot(st.xy, dotDir)) * 43758.5453123);
-}
-
-float3 random3(float2 st) {
-    return float3(
-		random1(st, float2(12.9898, 78.233)),
-		random1(st, float2(39.346, 11.135)),
-		random1(st, float2(73.156, 52.235))
-	);
 }
 
 SamplerState    pointSampler : register(s0, space0); // Replace this with Sampler that will grab the exact point information from the shader.

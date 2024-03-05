@@ -98,6 +98,9 @@ void idRenderProgManager::Init() {
 
 		{ BUILTIN_GBUFFER, "gbuffer" },
 		{ BUILTIN_GBUFFER_SKINNED, "gbuffer_skinned" },
+		{ BUILTIN_GBUFFER_TRANSPARENT, "gbuffer_transparent" },
+		{ BUILTIN_GBUFFER_TRANSPARENT_SKINNED, "gbuffer_transparent_skinned" },
+		{ BUILTIN_GBUFFER_COMBINE, "combineGbuffer" },
 
 		{ BUILTIN_BLENDLIGHT, "blendlight" },
 		{ BUILTIN_FOG, "fog" },
@@ -149,6 +152,7 @@ void idRenderProgManager::Init() {
 	vertexShaders[builtinShaders[BUILTIN_SHADOW_DEBUG_SKINNED]].usesJoints = true;
 	vertexShaders[builtinShaders[BUILTIN_FOG_SKINNED]].usesJoints = true;
 	vertexShaders[builtinShaders[BUILTIN_GBUFFER_SKINNED]].usesJoints = true;
+	vertexShaders[builtinShaders[BUILTIN_GBUFFER_TRANSPARENT_SKINNED]].usesJoints = true;
 
 	cmdSystem->AddCommand( "reloadShaders", R_ReloadShaders, CMD_FL_RENDERER, "reloads shaders" );
 }

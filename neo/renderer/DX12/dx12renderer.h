@@ -59,7 +59,7 @@ namespace DX12Rendering {
 }
 
 //TODO: move everything into the correct namespace
-bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant);
+bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, DX12Rendering::Commands::CommandList& commandList);
 
 class DX12Renderer {
 public:
@@ -72,14 +72,14 @@ public:
 
 	void UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, const FLOAT width, const FLOAT height, const FLOAT minDepth = 0.0f, const FLOAT maxDepth = 1.0f); // Used to put us into right hand depth space.
 	void UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h);
-	void UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth);
+	DX12Rendering::Commands::CommandList* UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth, DX12Rendering::Commands::CommandList* commandList);
 	void UpdateStencilRef(UINT ref);
 
 	void ReadPixels(int x, int y, int width, int height, UINT readBuffer, byte* buffer);
 
 	// Shaders
 	void LoadPipelineState(D3D12_GRAPHICS_PIPELINE_STATE_DESC* psoDesc, ID3D12PipelineState** ppPipelineState);
-	void SetActivePipelineState(ID3D12PipelineState* pipelineState);
+	void SetActivePipelineState(ID3D12PipelineState* pipelineState, DX12Rendering::Commands::CommandList& commandList);
 
 	void Uniform4f(UINT index, const float* uniform);
 
@@ -92,7 +92,7 @@ public:
 
 	DX12Rendering::Geometry::JointBuffer* AllocJointBuffer(UINT numBytes);
 	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
-	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset);
+	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList& commandList);
 
 	// Lights
 	UINT SetLightData(const UINT sceneIndex, const UINT shadowMask);
@@ -106,14 +106,13 @@ public:
 
 	// Draw commands
 	void BeginDraw();
-	void Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4]);
+	DX12Rendering::Commands::CommandList* Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4], DX12Rendering::Commands::CommandList* commandList);
 	void EndDraw();
 	void PresentBackbuffer();
-	void SetCommandListDefaults(const bool resetPipelineState = true);
-	void CycleDirectCommandList();
+	void SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
-	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant); // Records the the surface entry into the heap.
-	void DrawModel(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride /* 0 means no override */);
+	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant, DX12Rendering::Commands::CommandList& commandList); // Records the the surface entry into the heap.
+	void DrawModel(DX12Rendering::Commands::CommandList& commandList, DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride /* 0 means no override */);
 
 #pragma region RayTracing
 	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.
@@ -131,7 +130,6 @@ public:
 	void DXR_SetupLights(const viewLight_t* viewLights, const float* worldMatrix); // Adds all lights and orders them for rendering.
 
 	void DXR_DenoiseResult(); // Performs a Denoise pass on all rendering channels.
-	void DXR_GenerateResult(); // Collapses all channels into a single image.
 
 	// Render Targets
 	void SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count);

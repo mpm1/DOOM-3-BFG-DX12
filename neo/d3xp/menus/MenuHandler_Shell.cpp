@@ -391,6 +391,7 @@ void idMenuHandler_Shell::Initialize( const char * swfFile, idSoundWorld * sw ) 
 		BIND_SHELL_SCREEN( SHELL_AREA_SETTINGS, idMenuScreen_Shell_Settings, this );
 		BIND_SHELL_SCREEN( SHELL_AREA_LOAD, idMenuScreen_Shell_Load, this );
 		BIND_SHELL_SCREEN( SHELL_AREA_SYSTEM_OPTIONS, idMenuScreen_Shell_SystemOptions, this );
+		BIND_SHELL_SCREEN( SHELL_AREA_RAYTRACING_OPTIONS, idMenuScreen_Shell_RaytracingOptions, this);
 		BIND_SHELL_SCREEN( SHELL_AREA_GAME_OPTIONS, idMenuScreen_Shell_GameOptions, this );
 		BIND_SHELL_SCREEN( SHELL_AREA_SAVE, idMenuScreen_Shell_Save, this );
 		BIND_SHELL_SCREEN( SHELL_AREA_STEREOSCOPICS, idMenuScreen_Shell_Stereoscopics, this );		
@@ -410,6 +411,7 @@ void idMenuHandler_Shell::Initialize( const char * swfFile, idSoundWorld * sw ) 
 		BIND_SHELL_SCREEN( SHELL_AREA_LOAD, idMenuScreen_Shell_Load, this );
 		BIND_SHELL_SCREEN( SHELL_AREA_NEW_GAME, idMenuScreen_Shell_NewGame, this );
 		BIND_SHELL_SCREEN( SHELL_AREA_SYSTEM_OPTIONS, idMenuScreen_Shell_SystemOptions, this );
+		BIND_SHELL_SCREEN( SHELL_AREA_RAYTRACING_OPTIONS, idMenuScreen_Shell_RaytracingOptions, this);
 		BIND_SHELL_SCREEN( SHELL_AREA_GAME_OPTIONS, idMenuScreen_Shell_GameOptions, this );
 		BIND_SHELL_SCREEN( SHELL_AREA_PARTY_LOBBY, idMenuScreen_Shell_PartyLobby, this );
 		BIND_SHELL_SCREEN( SHELL_AREA_GAME_LOBBY, idMenuScreen_Shell_GameLobby, this );
@@ -856,7 +858,7 @@ bool idMenuHandler_Shell::HandleAction( idWidgetAction & action, const idWidgetE
 			}
 
 			if ( cmd != SHELL_CMD_QUIT && ( nextScreen == SHELL_AREA_STEREOSCOPICS || nextScreen == SHELL_AREA_SYSTEM_OPTIONS || nextScreen == SHELL_AREA_GAME_OPTIONS || 
-				nextScreen == SHELL_AREA_GAMEPAD || nextScreen == SHELL_AREA_MATCH_SETTINGS ) ) {
+				nextScreen == SHELL_AREA_GAMEPAD || nextScreen == SHELL_AREA_MATCH_SETTINGS || nextScreen == SHELL_AREA_RAYTRACING_OPTIONS ) ) {
 				
 				cvarSystem->SetModifiedFlags( CVAR_ARCHIVE );
 			}
@@ -1050,7 +1052,7 @@ void idMenuHandler_Shell::UpdateBGState() {
 
 	if ( smallFrameShowing ) {
 		if ( nextScreen != SHELL_AREA_PLAYSTATION && nextScreen != SHELL_AREA_SETTINGS && nextScreen != SHELL_AREA_CAMPAIGN && nextScreen != SHELL_AREA_DEV ) {
-			if ( nextScreen != SHELL_AREA_RESOLUTION && nextScreen != SHELL_AREA_GAMEPAD && nextScreen != SHELL_AREA_DIFFICULTY && nextScreen != SHELL_AREA_SYSTEM_OPTIONS && nextScreen != SHELL_AREA_GAME_OPTIONS && nextScreen != SHELL_AREA_NEW_GAME && nextScreen != SHELL_AREA_STEREOSCOPICS &&
+			if ( nextScreen != SHELL_AREA_RESOLUTION && nextScreen != SHELL_AREA_GAMEPAD && nextScreen != SHELL_AREA_DIFFICULTY && nextScreen != SHELL_AREA_SYSTEM_OPTIONS && nextScreen != SHELL_AREA_RAYTRACING_OPTIONS && nextScreen != SHELL_AREA_GAME_OPTIONS && nextScreen != SHELL_AREA_NEW_GAME && nextScreen != SHELL_AREA_STEREOSCOPICS &&
 				nextScreen != SHELL_AREA_CONTROLS ) {
 				ShowSmallFrame( false );
 			}

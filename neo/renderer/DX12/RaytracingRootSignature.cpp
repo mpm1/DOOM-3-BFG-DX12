@@ -20,23 +20,18 @@ namespace DX12Rendering {
 				DX12Rendering::e_RaytracingHeapIndex::SRV_TLAS
 			));
 
-			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
-				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Depth Texture */,
-				2, /* Two descriptors: depth, normal */
-				1 /*t1*/,
-				0,
-				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				DX12Rendering::e_RaytracingHeapIndex::SRV_DepthTexture // Starting texture
-			));
-
-			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
-				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Texture Array */,
-				DESCRIPTOR_TEXTURE_COUNT, /* Total number of possible textures */
-				3 /*t3*/,
-				0, /* space0. We will define different spaces if we want to use more than texture 2D, but use the same data. */
-				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-				DX12Rendering::e_RaytracingHeapIndex::SRV_TextureArray // Starting texture
-			));
+			const uint textureSpaces = 2;
+			for (uint space = 0; space < textureSpaces; ++space)
+			{
+				descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
+					D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Texture Array */,
+					DESCRIPTOR_TEXTURE_COUNT, /* Total number of possible textures */
+					1 /*t1*/,
+					space, /* space0. We will define different spaces if we want to use more than texture 2D, but use the same data. */
+					D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+					DX12Rendering::e_RaytracingHeapIndex::SRV_TextureArray // Starting texture
+				));
+			}
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_CBV /*Camera constant buffer*/,
@@ -52,8 +47,8 @@ namespace DX12Rendering {
 			// Shadow Mask Buffer
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_UAV /* UAV representing the output buffer*/,
-				2 /*2 descriptors */,
-				0 /*u0, u1*/,
+				3 /*3 descriptors */,
+				0 /*u0, u1, u2*/,
 				0 /*use the implicit register space 0*/,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
 				DX12Rendering::e_RaytracingHeapIndex::UAV_ShadowMap /*heap slot where the first UAV is defined*/
