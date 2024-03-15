@@ -53,6 +53,9 @@ public:
 	virtual void				WriteBinaryModel( idFile * file, ID_TIME_T *_timeStamp = NULL ) const;
 	virtual bool				SupportsBinaryModel() { return true; }
 
+	virtual void				GenerateBLAS();
+	virtual void				DestroyBLAS();
+
 	virtual void				PartialInitFromFile( const char *fileName );
 	virtual void				PurgeModel();
 	virtual void				Reset() {};
@@ -201,6 +204,8 @@ public:
 	virtual int					NearestJoint( int surfaceNum, int a, int b, int c ) const;
 
 	virtual bool				SupportsBinaryModel() { return true; }
+
+	virtual void				GenerateBLAS();
 
 private:
 	idList<idMD5Joint, TAG_MODEL>	joints;

@@ -861,6 +861,33 @@ void idRenderModelMD5::WriteBinaryModel( idFile * file, ID_TIME_T *_timeStamp ) 
 	}
 }
 
+
+// Load the blas data
+void idRenderModelMD5::GenerateBLAS()
+{
+	std::vector<vertCacheHandle_t> vertecies = {};
+	std::vector<vertCacheHandle_t> indecies = {};
+	std::vector<vertCacheHandle_t> joints = {};
+	std::vector<UINT> indexCount = {};
+	std::vector<UINT> vertexCount = {};
+	vertecies.reserve(meshes.Num());
+	indecies.reserve(meshes.Num());
+	joints.reserve(meshes.Num());
+	indexCount.reserve(meshes.Num());
+	vertexCount.reserve(meshes.Num());
+
+	for (int i = 0; i < meshes.Num(); i++) 
+	{
+		vertecies.push_back(meshes[i].deformInfo->staticAmbientCache);
+		vertexCount.push_back(meshes[i].NumVerts());
+
+		indecies.push_back(meshes[i].deformInfo->staticIndexCache);
+		indexCount.push_back(meshes[i].deformInfo->numIndexes);
+	}
+
+	dxRenderer.DXR_UpdateDynamicModelInBLAS(this, meshes.Num(), vertecies.data(), vertexCount.data(), indecies.data(), indexCount.data());// , surfaces.data(), surfaces.size());
+}
+
 /*
 ====================
 idRenderModelMD5::LoadModel
@@ -969,6 +996,8 @@ void idRenderModelMD5::LoadModel() {
 	fileSystem->ReadFile( name, NULL, &timeStamp );
 
 	common->UpdateLevelLoadPacifier();
+
+	GenerateBLAS();
 }
 
 /*
@@ -1397,6 +1426,8 @@ which can regenerate the data with LoadModel()
 ===================
 */
 void idRenderModelMD5::PurgeModel() {
+	DestroyBLAS();
+
 	purged = true;
 	joints.Clear();
 	defaultPose.Clear();

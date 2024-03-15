@@ -200,6 +200,11 @@ namespace DX12Rendering {
 			return;
 		}
 
+		if (m_tlasManager.GetCurrent().state != Resource::eResourceState::Ready)
+		{
+			return;
+		}
+
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Write the acceleration structure to the view.

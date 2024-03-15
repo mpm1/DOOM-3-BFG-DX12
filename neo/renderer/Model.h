@@ -162,6 +162,10 @@ public:
 	virtual void				WriteBinaryModel( idFile * file, ID_TIME_T *_timeStamp = NULL ) const = 0;
 	virtual bool				SupportsBinaryModel() = 0;
 
+	// Raytracing Data
+	virtual void				GenerateBLAS() = 0;
+	virtual void				DestroyBLAS() = 0;
+
 	// renderBump uses this to load the very high poly count models, skipping the
 	// shadow and tangent generation, along with some surface cleanup to make it load faster
 	virtual void				PartialInitFromFile( const char *fileName ) = 0;

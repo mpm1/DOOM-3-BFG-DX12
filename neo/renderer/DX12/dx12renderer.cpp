@@ -3,6 +3,7 @@
 #include "../../idlib/precompiled.h"
 
 #include "../tr_local.h"
+#include "../Model_local.h"
 
 #include <comdef.h>
 #include <type_traits>
@@ -854,40 +855,139 @@ void DX12Renderer::DXR_UpdateAccelerationStructure()
 	m_raytracing->GenerateTLAS();
 }
 
-void DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
+void DX12Renderer::DXR_RemoveModelInBLAS(const idRenderModel* model)
+{
+	// TODO
+}
+
+DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateDynamicModelInBLAS(const idRenderModel* model, size_t surfaceCount, dxHandle_t* vertexHandles, UINT* vertCounts, dxHandle_t* indexHandles, UINT* indexCounts)
 {
 	if (!IsRaytracingEnabled() || model == nullptr) {
-		return;
+		return nullptr;
+	}
+	
+	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
+
+	DX12Rendering::BottomLevelAccelerationStructure* blas = DXR_UpdateModelInBLAS(model, true);
+
+	if (blas == nullptr)
+	{
+		return nullptr;
 	}
 
-	// TODO: Add support for joints.
-	if (model->GetJoints() != NULL) {
-		return;
+	for (UINT surfaceIndex = 0; surfaceIndex < surfaceCount; ++surfaceIndex)
+	{
+		DX12Rendering::Geometry::VertexBuffer* vertexBuffer = nullptr;
+		idIndexBuffer* indexBuffer = nullptr;
+
+
+		const vertCacheHandle_t& vbHandle = vertexHandles[surfaceIndex];
+		const vertCacheHandle_t& ibHandle = indexHandles[surfaceIndex];
+
+		int vertOffsetBytes;
+		int indexOffsetBytes;
+
+		// Get vertex buffer
+		if (vertexCache.CacheIsStatic(vbHandle))
+		{
+			vertexBuffer = reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
+			vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+
+			indexBuffer = &vertexCache.staticData.indexBuffer;
+			indexOffsetBytes = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+		}
+		else
+		{
+			continue;
+			//std::vector<triIndex_t> indecies;
+			//std::vector<triIndex_t>::iterator iIterator = indecies.begin();
+			//std::vector<idDrawVert> vertecies;
+
+			//for (int sIndex = 0; sIndex < model->NumSurfaces(); ++sIndex)
+			//{
+			//	// TODO: make separate for each material.
+			//	const modelSurface_t* surf = model->Surface(sIndex);
+
+			//	// Add all indecies
+			//	iIterator = indecies.insert(iIterator, surf->geometry->indexes, surf->geometry->indexes + surf->geometry->numIndexes);
+
+			//	// Add all vertecies
+			//	vertecies.reserve(vertecies.size() + surf->geometry->numVerts);
+			//	for (int vIndex = 0; vIndex < surf->geometry->numVerts; ++vIndex)
+			//	{
+			//		idDrawVert* vert = &surf->geometry->verts[vIndex];
+			//		vertecies.push_back(*vert);
+			//	}
+			//}
+
+			//m_raytracing->AddOrUpdateVertecies(device, modelHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
+			//return;
+		};
+
+		// Generate the joint handle
+		dxHandle_t jointHandle = 0;
+		/*if (!isStatic || surf.geometry->staticModelWithJoints != NULL)
+		{
+			// Code taken from tr_frontend_addmodels.cpp R_SetupDrawSurgJoints
+			idRenderModelStatic* model = surf.geometry->staticModelWithJoints;
+			assert(model->jointsInverted != NULL);
+
+			if (!vertexCache.CacheIsCurrent(model->jointsInvertedBuffer)) {
+				const int alignment = glConfig.uniformBufferOffsetAlignment;
+				model->jointsInvertedBuffer = vertexCache.AllocJoint(model->jointsInverted, ALIGN(model->numInvertedJoints * sizeof(idJointMat), alignment));
+			}
+			jointHandle = model->jointsInvertedBuffer;
+		}*/
+
+		blas->AddGeometry(
+			vertexBuffer,
+			vertOffsetBytes,
+			vertCounts[surfaceIndex],
+			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
+			indexOffsetBytes,
+			indexCounts[surfaceIndex],
+			jointHandle
+		);
+	}
+
+	return blas;
+}
+
+DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model, const bool ignoreSurfaceCount)
+{
+	if (!IsRaytracingEnabled() || model == nullptr) {
+		return nullptr;
 	}
 
 	// For now we are only supporting objects that can receive shadows.
 	if (!model->ModelHasShadowCastingSurfaces())
 	{
-		return;
+		return nullptr;
 	}
 
-	if (model->NumSurfaces() <= 0 || !model->ModelHasDrawingSurfaces()) {
-		return;
+	if ((model->NumSurfaces() <= 0 && !ignoreSurfaceCount) || !model->ModelHasDrawingSurfaces())
+	{
+		return nullptr;
+	}
+
+	bool isStatic = true;
+	if (model->GetJoints() != NULL) 
+	{
+		isStatic = false; // We will add the joints per surface.
 	}
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
 	const dxHandle_t index = GetHandle(model);
 	std::string blasName = std::string(model->Name());
-	DX12Rendering::BottomLevelAccelerationStructure& blas = *m_raytracing->GetBLASManager()->CreateBLAS(index, std::wstring(blasName.begin(), blasName.end()).c_str());
-	
+	DX12Rendering::BottomLevelAccelerationStructure& blas = *m_raytracing->GetBLASManager()->CreateBLAS(index, isStatic, true, std::wstring(blasName.begin(), blasName.end()).c_str());
+
 	for (UINT surfaceIndex = 0; surfaceIndex < model->NumSurfaces(); ++surfaceIndex)
 	{
 		DX12Rendering::Geometry::VertexBuffer* vertexBuffer = nullptr;
 		idIndexBuffer* indexBuffer = nullptr;
 
 		const modelSurface_t& surf = *model->Surface(surfaceIndex);
-
 		if (surf.shader->Coverage() == MC_TRANSLUCENT)
 		{
 			// We are not adding translucent surfaces to the trace.
@@ -949,15 +1049,33 @@ void DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
 			//return;
 		};
 
+		// Generate the joint handle
+		dxHandle_t jointHandle = 0;
+		if (!isStatic || surf.geometry->staticModelWithJoints != NULL)
+		{
+			// Code taken from tr_frontend_addmodels.cpp R_SetupDrawSurgJoints
+			idRenderModelStatic* model = surf.geometry->staticModelWithJoints;
+			assert(model->jointsInverted != NULL);
+
+			if (!vertexCache.CacheIsCurrent(model->jointsInvertedBuffer)) {
+				const int alignment = glConfig.uniformBufferOffsetAlignment;
+				model->jointsInvertedBuffer = vertexCache.AllocJoint(model->jointsInverted, ALIGN(model->numInvertedJoints * sizeof(idJointMat), alignment));
+			}
+			jointHandle = model->jointsInvertedBuffer;
+		}
+
 		blas.AddGeometry(
 			vertexBuffer,
 			vertOffsetBytes,
 			surf.geometry->numVerts,
 			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
 			indexOffsetBytes,
-			r_singleTriangle.GetBool() ? 3 : surf.geometry->numIndexes
+			r_singleTriangle.GetBool() ? 3 : surf.geometry->numIndexes,
+			jointHandle
 		);
 	}
+
+	return &blas;
 }
 
 void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)

@@ -95,13 +95,16 @@ namespace DX12Rendering
 	{
 		const dxHandle_t id;
 		std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry = {};
+		std::vector<dxHandle_t> joints = {};
 		const bool m_isStatic;
+		bool isBuilt; // We may need to build this structure later.
 
 		BottomLevelAccelerationStructure(const dxHandle_t id, bool isStatic, const LPCWSTR name) :
 			Resource(name),
 			id(id),
 			m_sizeInBytes(0),
-			m_isStatic(isStatic)
+			m_isStatic(isStatic),
+			isBuilt(false)
 		{}
 
 		~BottomLevelAccelerationStructure()
@@ -109,7 +112,7 @@ namespace DX12Rendering
 			geometry.clear();
 		}
 
-		void AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+		void AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, dxHandle_t jointsHandle);
 		void AddGeometry(D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc);
 
 		/// <summary>
@@ -119,6 +122,7 @@ namespace DX12Rendering
 
 	private:
 		UINT64 m_sizeInBytes;
+
 		void CalculateBufferSize(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS* desc);
 	};
 
@@ -162,11 +166,9 @@ public:
 	BLASManager();
 	~BLASManager();
 
-	BottomLevelAccelerationStructure* CreateBLAS(const dxHandle_t& key, const LPCWSTR name);
+	BottomLevelAccelerationStructure* CreateBLAS(const dxHandle_t& key, const bool isStatic, const bool isBuilt, const LPCWSTR name);
 	BottomLevelAccelerationStructure* GetBLAS(const dxHandle_t& key);
 	void RemoveBLAS(const dxHandle_t& key);
-
-	BottomLevelAccelerationStructure* ReserveBLASPlaceholder(const dxHandle_t& key);
 
 	void Reset();
 

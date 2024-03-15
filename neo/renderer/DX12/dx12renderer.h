@@ -118,7 +118,9 @@ public:
 	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.
 	void DXR_UpdateAccelerationStructure();
 
-	void DXR_UpdateModelInBLAS(const idRenderModel* model);
+	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateModelInBLAS(const idRenderModel* model, const bool ignoreSurfaceCount);
+	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateDynamicModelInBLAS(const idRenderModel* model, size_t surfaceCount, dxHandle_t* vertexHandles, UINT* vertCounts, dxHandle_t* indexHandles, UINT* indexCounts);
+	void DXR_RemoveModelInBLAS(const idRenderModel* model);
 
 	void DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
 

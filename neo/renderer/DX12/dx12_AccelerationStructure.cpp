@@ -86,7 +86,7 @@ namespace DX12Rendering {
 		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
 	}
 
-	void BottomLevelAccelerationStructure::AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount)
+	void BottomLevelAccelerationStructure::AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, dxHandle_t jointsHandle)
 	{
 		auto vertexDesc = vertexBuffer->GetView();
 		auto indexDesc = indexBuffer->GetView();
@@ -105,6 +105,12 @@ namespace DX12Rendering {
 		geometryDesc.Flags = true ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE
 			: D3D12_RAYTRACING_GEOMETRY_FLAG_NONE; //TODO: Eventually add support for opaque geometry.
 
+		// Only dynamic objects can have joints
+		if (!m_isStatic)
+		{
+			joints.emplace_back(jointsHandle);
+		}
+
 		AddGeometry(geometryDesc);
 	}
 
@@ -122,7 +128,7 @@ namespace DX12Rendering {
 	{
 		//TODO: Move the BLAS resource into BLASManager and control our own alocation.
 
-		if (state == Ready) {
+		if (state == Ready || !isBuilt) {
 			return false; // Nothing to update
 		}
 
@@ -231,15 +237,17 @@ namespace DX12Rendering {
 		Reset();
 	}
 
-	BottomLevelAccelerationStructure* BLASManager::CreateBLAS(const dxHandle_t& key, const LPCWSTR name)
+	BottomLevelAccelerationStructure* BLASManager::CreateBLAS(const dxHandle_t& key, const bool isStatic, const bool isBuilt, const LPCWSTR name)
 	{
 		BottomLevelAccelerationStructure* blas = GetBLAS(key);
 		if (blas)
 		{
+			blas->isBuilt = isBuilt;
 			return blas;
 		}
 
-		blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, true /* All blas are static for now */, name)).first->second;
+		blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, isStatic, name)).first->second;
+		blas->isBuilt = isBuilt;
 
 		return blas;
 	}
@@ -264,13 +272,6 @@ namespace DX12Rendering {
 		{
 			m_objectMap.erase(key);
 		}
-	}
-
-	BottomLevelAccelerationStructure* BLASManager::ReserveBLASPlaceholder(const dxHandle_t& key)
-	{
-		BottomLevelAccelerationStructure* blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, true /* All blas are static for now */, L"RESERVED")).first->second;
-
-		return blas;
 	}
 
 	void BLASManager::Reset()

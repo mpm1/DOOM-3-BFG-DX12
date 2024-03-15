@@ -310,6 +310,8 @@ void idRenderModelStatic::InitFromFile( const char *fileName ) {
 
 	// create the bounds for culling and dynamic surface creation
 	FinishSurfaces();
+
+	GenerateBLAS();
 }
 
 /*
@@ -624,6 +626,16 @@ void idRenderModelStatic::WriteBinaryModel( idFile * file, ID_TIME_T *_timeStamp
 	file->WriteBig( hasDrawingSurfaces );
 	file->WriteBig( hasInteractingSurfaces );
 	file->WriteBig( hasShadowCastingSurfaces );
+}
+
+void idRenderModelStatic::GenerateBLAS()
+{
+	dxRenderer.DXR_UpdateModelInBLAS(this, false);
+}
+
+void idRenderModelStatic::DestroyBLAS()
+{
+	dxRenderer.DXR_RemoveModelInBLAS(this);
 }
 
 /*
@@ -2269,6 +2281,8 @@ idRenderModelStatic::PurgeModel
 ================
 */
 void idRenderModelStatic::PurgeModel() {
+	DestroyBLAS();
+
 	for ( int i = 0; i < surfaces.Num(); i++ ) {
 		modelSurface_t * surf = &surfaces[i];
 

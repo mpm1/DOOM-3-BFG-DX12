@@ -291,6 +291,7 @@ idRenderModel *idRenderModelManagerLocal::GetModel( const char *_modelName, bool
 				model->TouchData();
 			}
 			model->SetLevelLoadReferenced( true );
+
 			return model;
 		}
 	}
@@ -674,7 +675,7 @@ void idRenderModelManagerLocal::EndLevelLoad() {
 			}
 
 			// Add the data to the blas structure.
-			dxRenderer.DXR_UpdateModelInBLAS(model);
+			model->GenerateBLAS();
 		}
 	}
 
