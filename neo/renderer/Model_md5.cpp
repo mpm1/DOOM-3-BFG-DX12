@@ -31,6 +31,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "tr_local.h"
 #include "Model_local.h"
+#include "DX12/dx12_AccelerationStructure.h"
 
 #ifdef ID_WIN_X86_SSE2_INTRIN
 
@@ -861,31 +862,52 @@ void idRenderModelMD5::WriteBinaryModel( idFile * file, ID_TIME_T *_timeStamp ) 
 	}
 }
 
-
 // Load the blas data
 void idRenderModelMD5::GenerateBLAS()
 {
-	std::vector<vertCacheHandle_t> vertecies = {};
-	std::vector<vertCacheHandle_t> indecies = {};
-	std::vector<vertCacheHandle_t> joints = {};
-	std::vector<UINT> indexCount = {};
-	std::vector<UINT> vertexCount = {};
-	vertecies.reserve(meshes.Num());
-	indecies.reserve(meshes.Num());
-	joints.reserve(meshes.Num());
-	indexCount.reserve(meshes.Num());
-	vertexCount.reserve(meshes.Num());
+	std::vector<DX12Rendering::RaytracingGeometryArgument> geometry = {};
+	geometry.reserve(meshes.Num());
 
 	for (int i = 0; i < meshes.Num(); i++) 
 	{
-		vertecies.push_back(meshes[i].deformInfo->staticAmbientCache);
-		vertexCount.push_back(meshes[i].NumVerts());
+		if (meshes[i].shader->Coverage() == MC_TRANSLUCENT)
+		{
+			// We are not adding translucent surfaces to the trace.
+			continue;
+		}
 
-		indecies.push_back(meshes[i].deformInfo->staticIndexCache);
-		indexCount.push_back(meshes[i].deformInfo->numIndexes);
+		if (!meshes[i].shader->LightCastsShadows())
+		{
+			// If we dont cast shadows, drop it.
+			continue;
+		}
+
+		DX12Rendering::RaytracingGeometryArgument geo = {};
+		geo.meshIndex = i;
+
+		geo.vertexHandle = meshes[i].deformInfo->staticAmbientCache;
+		geo.vertCounts = meshes[i].NumVerts();
+
+		geo.indexHandle = meshes[i].deformInfo->staticIndexCache;
+		geo.indexCounts = meshes[i].deformInfo->numIndexes;
+
+		geometry.emplace_back(geo);
 	}
 
-	dxRenderer.DXR_UpdateDynamicModelInBLAS(this, meshes.Num(), vertecies.data(), vertexCount.data(), indecies.data(), indexCount.data());// , surfaces.data(), surfaces.size());
+	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs
+	dxRenderer.DXR_UpdateBLAS(id, this->Name(), false, geometry.size(), geometry.data());
+}
+
+void idRenderModelMD5::DestroyBLAS()
+{
+	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs
+	dxRenderer.DXR_RemoveBLAS(id);
+}
+
+void idRenderModelMD5::UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
+{
+	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs
+	dxRenderer.DXR_AddBLASToTLAS(entityIndex, id, transform, typesMask, instanceMask);
 }
 
 /*

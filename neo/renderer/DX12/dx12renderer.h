@@ -118,11 +118,15 @@ public:
 	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.
 	void DXR_UpdateAccelerationStructure();
 
-	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateModelInBLAS(const idRenderModel* model, const bool ignoreSurfaceCount);
-	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateDynamicModelInBLAS(const idRenderModel* model, size_t surfaceCount, dxHandle_t* vertexHandles, UINT* vertCounts, dxHandle_t* indexHandles, UINT* indexCounts);
+	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateModelInBLAS(const idRenderModel* model);
+	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments);
+	
 	void DXR_RemoveModelInBLAS(const idRenderModel* model);
+	void DXR_RemoveBLAS(const dxHandle_t id);
 
-	void DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
+	void DXR_AddModelBLASToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
+	void DXR_AddBLASToTLAS(const uint entityIndex, const dxHandle_t id, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
+
 
 	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
 	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);

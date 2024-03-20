@@ -857,18 +857,26 @@ void DX12Renderer::DXR_UpdateAccelerationStructure()
 
 void DX12Renderer::DXR_RemoveModelInBLAS(const idRenderModel* model)
 {
+	const dxHandle_t index = GetHandle(model);
+	DXR_RemoveBLAS(index);
+}
+
+void DX12Renderer::DXR_RemoveBLAS(const dxHandle_t id)
+{
 	// TODO
 }
 
-DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateDynamicModelInBLAS(const idRenderModel* model, size_t surfaceCount, dxHandle_t* vertexHandles, UINT* vertCounts, dxHandle_t* indexHandles, UINT* indexCounts)
+DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments)
 {
-	if (!IsRaytracingEnabled() || model == nullptr) {
+	if (!IsRaytracingEnabled()) {
 		return nullptr;
 	}
 	
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	DX12Rendering::BottomLevelAccelerationStructure* blas = DXR_UpdateModelInBLAS(model, true);
+	std::string blasName = std::string(name);
+
+	DX12Rendering::BottomLevelAccelerationStructure* blas = m_raytracing->GetBLASManager()->CreateBLAS(id, isStatic, true, std::wstring(blasName.begin(), blasName.end()).c_str());
 
 	if (blas == nullptr)
 	{
@@ -880,9 +888,10 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateDynamic
 		DX12Rendering::Geometry::VertexBuffer* vertexBuffer = nullptr;
 		idIndexBuffer* indexBuffer = nullptr;
 
+		DX12Rendering::RaytracingGeometryArgument& geometry = arguments[surfaceIndex];
 
-		const vertCacheHandle_t& vbHandle = vertexHandles[surfaceIndex];
-		const vertCacheHandle_t& ibHandle = indexHandles[surfaceIndex];
+		const vertCacheHandle_t& vbHandle = geometry.vertexHandle;
+		const vertCacheHandle_t& ibHandle = geometry.indexHandle;
 
 		int vertOffsetBytes;
 		int indexOffsetBytes;
@@ -924,36 +933,21 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateDynamic
 			//return;
 		};
 
-		// Generate the joint handle
-		dxHandle_t jointHandle = 0;
-		/*if (!isStatic || surf.geometry->staticModelWithJoints != NULL)
-		{
-			// Code taken from tr_frontend_addmodels.cpp R_SetupDrawSurgJoints
-			idRenderModelStatic* model = surf.geometry->staticModelWithJoints;
-			assert(model->jointsInverted != NULL);
-
-			if (!vertexCache.CacheIsCurrent(model->jointsInvertedBuffer)) {
-				const int alignment = glConfig.uniformBufferOffsetAlignment;
-				model->jointsInvertedBuffer = vertexCache.AllocJoint(model->jointsInverted, ALIGN(model->numInvertedJoints * sizeof(idJointMat), alignment));
-			}
-			jointHandle = model->jointsInvertedBuffer;
-		}*/
-
 		blas->AddGeometry(
 			vertexBuffer,
 			vertOffsetBytes,
-			vertCounts[surfaceIndex],
+			geometry.vertCounts,
 			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
 			indexOffsetBytes,
-			indexCounts[surfaceIndex],
-			jointHandle
+			geometry.indexCounts,
+			geometry.jointsHandle
 		);
 	}
 
 	return blas;
 }
 
-DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model, const bool ignoreSurfaceCount)
+DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
 {
 	if (!IsRaytracingEnabled() || model == nullptr) {
 		return nullptr;
@@ -965,7 +959,7 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 		return nullptr;
 	}
 
-	if ((model->NumSurfaces() <= 0 && !ignoreSurfaceCount) || !model->ModelHasDrawingSurfaces())
+	if (model->NumSurfaces() <= 0 || !model->ModelHasDrawingSurfaces())
 	{
 		return nullptr;
 	}
@@ -979,14 +973,11 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
 	const dxHandle_t index = GetHandle(model);
-	std::string blasName = std::string(model->Name());
-	DX12Rendering::BottomLevelAccelerationStructure& blas = *m_raytracing->GetBLASManager()->CreateBLAS(index, isStatic, true, std::wstring(blasName.begin(), blasName.end()).c_str());
+	std::vector<DX12Rendering::RaytracingGeometryArgument> geometry = {};
+	geometry.reserve(model->NumSurfaces());
 
 	for (UINT surfaceIndex = 0; surfaceIndex < model->NumSurfaces(); ++surfaceIndex)
 	{
-		DX12Rendering::Geometry::VertexBuffer* vertexBuffer = nullptr;
-		idIndexBuffer* indexBuffer = nullptr;
-
 		const modelSurface_t& surf = *model->Surface(surfaceIndex);
 		if (surf.shader->Coverage() == MC_TRANSLUCENT)
 		{
@@ -1006,51 +997,18 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 			continue;
 		}
 
-		const vertCacheHandle_t& vbHandle = surf.geometry->ambientCache;
-		const vertCacheHandle_t& ibHandle = surf.geometry->indexCache;
+		DX12Rendering::RaytracingGeometryArgument geo = {};
+		geo.meshIndex = surfaceIndex;
+		geo.jointsHandle = 0;
 
-		int vertOffsetBytes;
-		int indexOffsetBytes;
+		geo.vertexHandle = surf.geometry->ambientCache;
+		geo.vertCounts = surf.geometry->numVerts;
 
-		// Get vertex buffer
-		if (vertexCache.CacheIsStatic(vbHandle))
-		{
-			vertexBuffer = reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
-			vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+		geo.indexHandle = surf.geometry->indexCache;
+		geo.indexCounts = surf.geometry->numIndexes;
 
-			indexBuffer = &vertexCache.staticData.indexBuffer;
-			indexOffsetBytes = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
-		}
-		else
-		{
-			continue;
-			//std::vector<triIndex_t> indecies;
-			//std::vector<triIndex_t>::iterator iIterator = indecies.begin();
-			//std::vector<idDrawVert> vertecies;
-
-			//for (int sIndex = 0; sIndex < model->NumSurfaces(); ++sIndex)
-			//{
-			//	// TODO: make separate for each material.
-			//	const modelSurface_t* surf = model->Surface(sIndex);
-
-			//	// Add all indecies
-			//	iIterator = indecies.insert(iIterator, surf->geometry->indexes, surf->geometry->indexes + surf->geometry->numIndexes);
-
-			//	// Add all vertecies
-			//	vertecies.reserve(vertecies.size() + surf->geometry->numVerts);
-			//	for (int vIndex = 0; vIndex < surf->geometry->numVerts; ++vIndex)
-			//	{
-			//		idDrawVert* vert = &surf->geometry->verts[vIndex];
-			//		vertecies.push_back(*vert);
-			//	}
-			//}
-
-			//m_raytracing->AddOrUpdateVertecies(device, modelHandle, reinterpret_cast<byte*>(&vertecies[0]), vertecies.size() * sizeof(idDrawVert));
-			//return;
-		};
 
 		// Generate the joint handle
-		dxHandle_t jointHandle = 0;
 		if (!isStatic || surf.geometry->staticModelWithJoints != NULL)
 		{
 			// Code taken from tr_frontend_addmodels.cpp R_SetupDrawSurgJoints
@@ -1061,33 +1019,31 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 				const int alignment = glConfig.uniformBufferOffsetAlignment;
 				model->jointsInvertedBuffer = vertexCache.AllocJoint(model->jointsInverted, ALIGN(model->numInvertedJoints * sizeof(idJointMat), alignment));
 			}
-			jointHandle = model->jointsInvertedBuffer;
+			geo.jointsHandle = model->jointsInvertedBuffer;
 		}
 
-		blas.AddGeometry(
-			vertexBuffer,
-			vertOffsetBytes,
-			surf.geometry->numVerts,
-			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
-			indexOffsetBytes,
-			r_singleTriangle.GetBool() ? 3 : surf.geometry->numIndexes,
-			jointHandle
-		);
+		geometry.emplace_back(geo);
 	}
 
-	return &blas;
+	return DXR_UpdateBLAS(index, model->Name(), isStatic, geometry.size(), geometry.data());
 }
 
-void DX12Renderer::DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
+void DX12Renderer::DXR_AddModelBLASToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
+{
+	dxHandle_t modelHandle = GetHandle(&model);
+
+	DXR_AddBLASToTLAS(entityIndex, modelHandle, transform, typesMask, instanceMask);
+}
+
+void DX12Renderer::DXR_AddBLASToTLAS(const uint entityIndex, const dxHandle_t id, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
 {
 	if (!IsRaytracingEnabled()) {
 		return;
 	}
 
-	dxHandle_t modelHandle = GetHandle(&model);
 	dxHandle_t instanceHandle = static_cast<dxHandle_t>(entityIndex);
 
-	m_raytracing->GetTLASManager()->AddInstance(instanceHandle, modelHandle, transform, typesMask, instanceMask);
+	m_raytracing->GetTLASManager()->AddInstance(instanceHandle, id, transform, typesMask, instanceMask);
 }
 
 void DX12Renderer::DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform)

@@ -55,6 +55,7 @@ public:
 
 	virtual void				GenerateBLAS();
 	virtual void				DestroyBLAS();
+	virtual void				UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
 
 	virtual void				PartialInitFromFile( const char *fileName );
 	virtual void				PurgeModel();
@@ -206,6 +207,8 @@ public:
 	virtual bool				SupportsBinaryModel() { return true; }
 
 	virtual void				GenerateBLAS();
+	virtual void				DestroyBLAS();
+	virtual void				UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
 
 private:
 	idList<idMD5Joint, TAG_MODEL>	joints;

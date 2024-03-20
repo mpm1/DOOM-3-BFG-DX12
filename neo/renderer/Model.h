@@ -165,6 +165,7 @@ public:
 	// Raytracing Data
 	virtual void				GenerateBLAS() = 0;
 	virtual void				DestroyBLAS() = 0;
+	virtual void				UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask) = 0;
 
 	// renderBump uses this to load the very high poly count models, skipping the
 	// shadow and tangent generation, along with some surface cleanup to make it load faster

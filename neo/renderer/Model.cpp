@@ -630,12 +630,17 @@ void idRenderModelStatic::WriteBinaryModel( idFile * file, ID_TIME_T *_timeStamp
 
 void idRenderModelStatic::GenerateBLAS()
 {
-	dxRenderer.DXR_UpdateModelInBLAS(this, false);
+	dxRenderer.DXR_UpdateModelInBLAS(this);
 }
 
 void idRenderModelStatic::DestroyBLAS()
 {
 	dxRenderer.DXR_RemoveModelInBLAS(this);
+}
+
+void idRenderModelStatic::UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
+{
+	dxRenderer.DXR_AddModelBLASToTLAS(entityIndex, *this, transform, typesMask, instanceMask);
 }
 
 /*

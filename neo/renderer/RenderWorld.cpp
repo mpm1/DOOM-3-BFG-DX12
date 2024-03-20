@@ -299,7 +299,7 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 
 					if (shouldAddTLAS)
 					{
-						dxRenderer.DXR_AddEntityToTLAS(entityHandle, *def->parms.hModel, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
+						def->parms.hModel->UseTLASInFrame(entityHandle, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
 					}
 
 					return;
@@ -347,7 +347,7 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 
 	if (shouldAddTLAS)
 	{
-		dxRenderer.DXR_AddEntityToTLAS(entityHandle, *def->parms.hModel, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
+		def->parms.hModel->UseTLASInFrame(entityHandle, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
 	}
 }
 

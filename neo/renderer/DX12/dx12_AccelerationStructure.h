@@ -48,6 +48,18 @@ namespace DX12Rendering
 
 	DEFINE_ENUM_FLAG_OPERATORS(ACCELERATION_INSTANCE_TYPE);
 
+	struct RaytracingGeometryArgument {
+		dxHandle_t meshIndex; // If we use multiple meshes, this is the index on the top model.
+		
+		dxHandle_t vertexHandle;
+		UINT vertCounts;
+		
+		dxHandle_t indexHandle;
+		UINT indexCounts;
+
+		dxHandle_t jointsHandle;
+	};
+
 	struct DX12AccelerationObject {
 		D3D12_RAYTRACING_GEOMETRY_DESC vertex_buffer;
 		UINT index;
