@@ -115,6 +115,8 @@ void HandlePointLight(
 
 	float3 pointToCenter = normalize(light.center - worldPosition);
 
+	RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
+
 	for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
 	{
 		float3 lightPosition = castsShadows ?
@@ -155,16 +157,18 @@ void HandlePointLight(
 				ray.Origin = worldPosition;
 				ray.Direction = lightVector;
 
-				TraceRay( //TODO: Modify this to have hit shaders for different light types and can cast multiple at onc.
+				inlineQuery.TraceRayInline(
 					SceneBVH,
-					RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+					RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
 					INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
-					0,
-					0, // First Hit Shader
-					0, // Miss Shader
-					ray,
-					payload
-				);
+					ray);
+
+				inlineQuery.Proceed(); // Run the tracer.
+				
+				if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+				{
+					payload.intensity = 0;
+				}
 			}
 
 			if (payload.intensity > 0.0)
