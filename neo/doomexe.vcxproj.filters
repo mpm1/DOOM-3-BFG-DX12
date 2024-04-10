@@ -1326,7 +1326,7 @@
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_RenderPass.cpp">
-      <Filter>Renderer</Filter>
+      <Filter>Renderer\DX12</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1503,6 +1503,9 @@
       <Filter>Shaders</Filter>
     </None>
     <None Include="..\base\renderprogs\functions.inc">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\base\renderprogs\joints.inc">
       <Filter>Shaders</Filter>
     </None>
   </ItemGroup>

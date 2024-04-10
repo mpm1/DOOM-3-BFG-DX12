@@ -119,7 +119,7 @@ ID3D12Resource* DX12Rendering::CreateBuffer(ID3D12Device5* device, uint64_t size
 ID3D12DescriptorHeap* DX12Rendering::CreateDescriptorHeap(ID3D12Device* device, uint32_t count, D3D12_DESCRIPTOR_HEAP_TYPE type, bool shaderVisible)
 {
 	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-	desc.NumDescriptors = count;
+	desc.NumDescriptors = count * DX12_FRAME_COUNT; // Have a full set of descriptors per frame.
 	desc.Type = type;
 	desc.Flags = shaderVisible ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 

@@ -186,9 +186,6 @@ private:
 	DX12Rendering::RaytracingRootSignature m_missSignature;
 	DX12Rendering::RaytracingRootSignature m_hitSignature;
 
-	ComPtr<ID3D12Resource> m_cbvUploadHeap[DX12_FRAME_COUNT];
-	UINT m_cbvHeapIncrementor;
-
 	ComPtr<ID3D12StateObject> m_shadowStateObject; // Raytracing pipeline state.
 	ComPtr<ID3D12StateObjectProperties> m_shadowStateObjectProps;
 
@@ -202,6 +199,7 @@ private:
 	ComPtr<ID3D12DescriptorHeap> m_generalUavHeaps;
 	ComPtr<ID3D12Resource> m_generalSBTData;
 	UINT m_nextDescriptorHeapIndex;
+	UINT m_cbvHeapIncrementor;
 
 	ShaderBindingTable m_generalSBTDesc;
 

@@ -468,7 +468,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		}
 		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
 
-		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), *commandList);
+		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), commandList);
 	}
 
 	const triIndex_t* test = (triIndex_t*)indexOffset;
@@ -2852,8 +2852,6 @@ static void RB_FogAllLights() {
 	backEnd.currentSpace = NULL;
 
 	for (viewLight_t* vLight = backEnd.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
-		dxRenderer.SetActiveLight(vLight->sceneIndex);
-
 		if (vLight->lightShader->IsFogLight()) {
 			RB_FogPass(vLight->globalInteractions, vLight->localInteractions, vLight);
 		}
@@ -2886,18 +2884,22 @@ void RB_DrawCombinedGBufferResults()
 
 	// Prepare the textures
 	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+
 		// Wait for any copy operations to finish
 		auto diffuse = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE);
 		auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
 
 		// Prepare the surfaces for rendering
-		diffuse->fence.Wait();
+		commandList->AddPreFenceWait(&diffuse->fence);
 		GL_SelectTexture(0);
 		dxRenderer.SetTexture(diffuse);
 
-		specular->fence.Wait();
+		commandList->AddPreFenceWait(&specular->fence);
 		GL_SelectTexture(1);
 		dxRenderer.SetTexture(specular);
+
+		commandList->Close();
 	}
 
 	// Draw
@@ -3129,7 +3131,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		{
 			// Copy the depth buffer to a texture
 			auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
-			viewDepth->fence.Wait();
+			//viewDepth->fence.Wait();
 
 			// TODO: Make a system to perform multiple copies
 			DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();

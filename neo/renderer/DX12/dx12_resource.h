@@ -23,7 +23,8 @@ namespace DX12Rendering {
 
 		Resource(const LPCWSTR name = nullptr) :
 			m_name(name == nullptr ? L"" : name),
-			state(eResourceState::Unallocated) 
+			state(eResourceState::Unallocated),
+			fence(name == nullptr ? nullptr : std::wstring(L"ResourceFence: ").append(name).c_str())
 		{
 			
 		}
@@ -83,6 +84,45 @@ namespace DX12Rendering {
 		const D3D12_RESOURCE_FLAGS m_flags;
 		const D3D12_RESOURCE_STATES m_defaultResourceState;
 	};
+
+	struct ConstantBuffer
+	{
+		size_t offset;
+		size_t size;
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC bufferLocation;
+	};
+
+	class ResourceManager;
+
+	ResourceManager* GetResourceManager();
+	void DestroyResourceManager();
 }
 
+class DX12Rendering::ResourceManager
+{
+public:
+	ResourceManager(const DX12Rendering::ResourceManager&) = delete;
+
+	static const size_t MAX_CONSTANT_BUFFER_SIZE = 4096;
+
+	ResourceManager();
+	~ResourceManager();
+
+	void Initialize();
+
+	/// <summary>
+	/// Constant buffer that is garunteed for the current frame.
+	/// </summary>
+	/// <param name="size">Size in bytes of the requested buffer.</param>
+	/// <returns></returns>
+	const ConstantBuffer RequestTemporyConstantBuffer(size_t size);
+	void FillConstantBuffer(const ConstantBuffer& buffer, const void* data);
+
+private:
+	const size_t m_maxCBVHeapSize;
+
+	ComPtr<ID3D12Resource> m_cbvUploadHeap;
+	UINT m_nextConstantBufferOffset;
+};
 #endif

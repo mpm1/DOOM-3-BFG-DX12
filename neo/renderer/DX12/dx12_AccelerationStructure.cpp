@@ -556,7 +556,7 @@ namespace DX12Rendering {
 		m_blasManager(blasManager),
 		m_isDirty(false),
 		m_scratch(DEFAULT_TLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"TLAS Scratch Buffer"),
-		m_tlas{ TopLevelAccelerationStructure(L"TLAS") }
+		m_tlas{ TopLevelAccelerationStructure(L"TLAS_0"), TopLevelAccelerationStructure(L"TLAS_1") }
 	{
 		Reset(INSTANCE_TYPE_STATIC | INSTANCE_TYPE_DYNAMIC);
 	}

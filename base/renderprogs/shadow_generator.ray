@@ -142,18 +142,13 @@ void HandlePointLight(
 
 		if(intensity > 0 && length(lightColor) > 0)
 		{
-			// Initialize the ray payload
-			ShadowHitInfo payload;
-			payload.maxDistance = maxDistance;
-			payload.intensity = intensity;
-
 			if(castsShadows)
 			{
 				// We are inside the light radius.
 				// Define a ray, consisting of origin, direction, and the min-max distance values
 				RayDesc ray;
 				ray.TMin = rayStartDistance;
-				ray.TMax = payload.maxDistance;
+				ray.TMax = maxDistance;
 				ray.Origin = worldPosition;
 				ray.Direction = lightVector;
 
@@ -167,11 +162,11 @@ void HandlePointLight(
 				
 				if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
 				{
-					payload.intensity = 0;
+					continue; // We hit a shadow so we should not add any data to the colors
 				}
 			}
 
-			if (payload.intensity > 0.0)
+			if (intensity > 0.0)
 			{
 				localDiffuse += (light.color.rgb * lightColor * diffuseColor);
 				localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, specularColor, 2.0 /* Keeping consistant original method */);

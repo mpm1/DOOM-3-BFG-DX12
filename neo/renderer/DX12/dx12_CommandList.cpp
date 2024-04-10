@@ -70,6 +70,7 @@ namespace DX12Rendering {
 			, commandListCount(commandListCount)
 #ifdef _DEBUG
 			, m_name(std::wstring(name))
+			, m_fence(std::wstring(L"CommandFence: ").append(name).c_str())
 #endif
 		{
 			assert(commandListCount > 1); // Our functions need at least two command lists to work correctly

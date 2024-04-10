@@ -92,12 +92,7 @@ public:
 
 	DX12Rendering::Geometry::JointBuffer* AllocJointBuffer(UINT numBytes);
 	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
-	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList& commandList);
-
-	// Lights
-	UINT SetLightData(const UINT sceneIndex, const UINT shadowMask);
-	void MoveLightsToHeap();
-	const DX12Rendering::ShaderLightData SetActiveLight(const UINT lightIndex);
+	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
 
 	// Textures
 	DX12Rendering::TextureManager* GetTextureManager() { return &m_textureManager; }
@@ -177,10 +172,7 @@ private:
 	CD3DX12_VIEWPORT m_viewport;
 	CD3DX12_RECT m_scissorRect;
 	ComPtr<IDXGISwapChain3> m_swapChain;
-	DX12RootSignature* m_rootSignature;
-
-	DX12Rendering::ShaderLightData m_lights[MAX_SCENE_LIGHTS]; // All lights being rendered into the scene.
-	UINT m_activeLight = 0;
+	DX12Rendering::DX12RootSignature* m_rootSignature;
 
 	XMFLOAT4 m_constantBuffer[57/* RENDERPARM_TOTAL */];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];

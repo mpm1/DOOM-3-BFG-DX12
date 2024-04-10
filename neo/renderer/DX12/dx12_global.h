@@ -37,10 +37,11 @@
 
 #define DX12_FRAME_COUNT 2
 
+#define CBV_REGISTER_COUNT 2
 #define TEXTURE_REGISTER_COUNT 6
-#define MAX_DESCRIPTOR_COUNT 7 // 2 CBV and 5 Shader Resource View
-#define MAX_OBJECT_COUNT 10000
-#define MAX_HEAP_INDEX_COUNT 70000
+#define MAX_DESCRIPTOR_COUNT (CBV_REGISTER_COUNT + TEXTURE_REGISTER_COUNT)
+#define MAX_OBJECT_COUNT 5000
+#define MAX_HEAP_INDEX_COUNT (MAX_OBJECT_COUNT * MAX_DESCRIPTOR_COUNT)
 
 #define MAX_SCENE_LIGHTS 128 // Total lights allowed in a scene.
 #define MAX_DXR_LIGHTS 32 // We use each light as a mask position.
@@ -128,8 +129,11 @@ namespace DX12Rendering {
 	class Fence
 	{
 	public:
-		Fence() : 
-			m_value(0), m_fence(nullptr), m_fenceEvent(nullptr)
+		Fence(const LPCWSTR name = nullptr) :
+			m_value(0), 
+			m_fence(nullptr), 
+			m_fenceEvent(nullptr),
+			m_name(name == nullptr ? L"" : name)
 		{
 		}
 
@@ -155,6 +159,13 @@ namespace DX12Rendering {
 		{
 			HRESULT result = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence));
 			m_value = 1;
+
+#if defined(_DEBUG)
+			if (!m_name.empty())
+			{
+				m_fence->SetName(m_name.c_str());
+			}
+#endif
 
 			m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 
@@ -226,18 +237,12 @@ namespace DX12Rendering {
 			}
 		}
 	private:
+		//TODO: define to only work with debug.
+		const std::wstring m_name;
+
 		UINT16 m_value;
 		ComPtr<ID3D12Fence> m_fence;
 		HANDLE m_fenceEvent;
-	};
-
-	// Light data being sent to the shaders. This must be 256 byte aligned to be properly referenced.
-	__declspec(align(256)) struct ShaderLightData
-	{
-		UINT shadowMask;
-		UINT pad0;
-		UINT pad1;
-		UINT pad2;
 	};
 }
 

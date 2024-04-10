@@ -906,6 +906,7 @@ void idRenderModelMD5::DestroyBLAS()
 
 void idRenderModelMD5::UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
 {
+	//Mark start here. We need to add the blas per mesh item then call only what's visible here.
 	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs
 	dxRenderer.DXR_AddBLASToTLAS(entityIndex, id, transform, typesMask, instanceMask);
 }

@@ -213,7 +213,7 @@ public:
 	const bool IsReady() noexcept { return GetCurrent().Exists(); }
 	const void WaitForFence() { return GetCurrent().fence.Wait(); }
 
-	TopLevelAccelerationStructure& GetCurrent() { return m_tlas; }
+	TopLevelAccelerationStructure& GetCurrent() { return m_tlas[GetCurrentFrameIndex()]; }
 
 	void AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, const ACCELLERATION_INSTANCE_MASK instanceMask);
 
@@ -228,7 +228,7 @@ private:
 	DX12Rendering::dx12_lock m_instanceLock;
 	std::vector<DX12Rendering::Instance> m_staticInstances;
 	std::vector<DX12Rendering::Instance> m_dynamicInstances;
-	TopLevelAccelerationStructure m_tlas;
+	TopLevelAccelerationStructure m_tlas[DX12_FRAME_COUNT];
 	ScratchBuffer m_scratch;
 	bool m_isDirty;
 
