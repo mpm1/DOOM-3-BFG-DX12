@@ -60,9 +60,7 @@ namespace DX12Rendering {
 		UAV_DiffuseMap,
 		UAV_SpecularMap,
 		SRV_TLAS,
-		CBV_CameraProperties,
-
-		SRV_TextureArray // Used as the starting point for all indexed entries in the descriptor heap
+		CBV_CameraProperties
 	};
 
 	namespace Commands

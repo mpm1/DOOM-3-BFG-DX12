@@ -95,7 +95,6 @@ public:
 	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
 
 	// Textures
-	DX12Rendering::TextureManager* GetTextureManager() { return &m_textureManager; }
 	void SetActiveTextureRegister(UINT8 index);
 	void SetTexture(DX12Rendering::TextureBuffer* buffer);
 
@@ -191,7 +190,6 @@ private:
 	DX12Rendering::Fence m_copyFence;
 
 	// Textures
-	DX12Rendering::TextureManager m_textureManager;
 	UINT8 m_activeTextureRegister;
 	DX12Rendering::TextureBuffer* m_activeTextures[TEXTURE_REGISTER_COUNT];
 

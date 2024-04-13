@@ -110,7 +110,7 @@ void idImage::SubImageUpload(int mipLevel, int x, int y, int z, int width, int h
 
 	if (opts.format == FMT_RGB565) {
 
-		byte* data = dxRenderer.GetTextureManager()->CreateTemporaryImageStorage(imageSize);// std::make_unique<byte[]>(imageSize);
+		byte* data = DX12Rendering::GetTextureManager()->CreateTemporaryImageStorage(imageSize);// std::make_unique<byte[]>(imageSize);
 		RGB565SwapBytes(imageSize, static_cast<const byte*>(pic), data);
 
 #ifdef _DEBUG
@@ -124,10 +124,10 @@ void idImage::SubImageUpload(int mipLevel, int x, int y, int z, int width, int h
 		}
 #endif // _DEBUG
 
-		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, data);
+		DX12Rendering::GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, data);
 	}
 	else {
-		dxRenderer.GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, pic);
+		DX12Rendering::GetTextureManager()->SetTextureContent(static_cast<DX12Rendering::TextureBuffer*>(textureResource), z, mipLevel, bytePitch, imageSize, pic);
 	}
 
 	//TODO: Implement
@@ -177,7 +177,7 @@ idImage::SetPixel
 */
 void idImage::SetPixel(int mipLevel, int x, int y, const void* data, int dataSize) {
 	// TODO: IS THIS EVEN USED ANYMORE? Current implementation will be very slow.
-	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 
 	textureManager->StartTextureWrite(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
 	SubImageUpload(mipLevel, x, y, 0, 1, 1, data);
@@ -584,7 +584,7 @@ void idImage::AllocImage() {
 	}
 
 	// Allocate the texture
-	textureResource = dxRenderer.GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc, shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COPY_DEST);
+	textureResource = DX12Rendering::GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc, shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COPY_DEST);
 
 	if (textureResource == nullptr) {
 		return;
@@ -605,7 +605,7 @@ idImage::PurgeImage
 */
 void idImage::PurgeImage() {
 	if (IsLoaded()) {
-		dxRenderer.GetTextureManager()->FreeTextureBuffer(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
+		DX12Rendering::GetTextureManager()->FreeTextureBuffer(static_cast<DX12Rendering::TextureBuffer*>(textureResource));
 		textureResource = nullptr;
 	}
 

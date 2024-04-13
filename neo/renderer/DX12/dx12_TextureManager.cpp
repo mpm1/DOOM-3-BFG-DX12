@@ -21,9 +21,22 @@ namespace DX12Rendering
 	}
 
 	TextureManager::TextureManager() :
-		m_textureUploadHeap(3840*2160*4*16, D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap")
+		m_textureUploadHeap(3840*2160*4*16, D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap"),
+		m_cbvHeapIncrementor(0)
 	{
+		m_textures.reserve(BINDLESS_TEXTURE_COUNT);
 
+		for (uint space = 0; space < TEXTURE_SPACE_COUNT; ++space)
+		{
+			m_descriptorRanges[space] = CD3DX12_DESCRIPTOR_RANGE1(
+				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Texture Array */,
+				BINDLESS_TEXTURE_COUNT, /* Total number of possible textures */
+				0 /*t0*/,
+				space + 1, /* space1. We will define different spaces if we want to use more than texture 2D, but use the same data. */
+				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+				0 // Starting index of the heap
+			);
+		}
 	}
 
 	TextureManager::~TextureManager() {
@@ -31,6 +44,15 @@ namespace DX12Rendering
 	}
 
 	void TextureManager::Initialize(uint screenWidth, uint screenHeight) {
+		if (m_cbvHeapIncrementor == 0)
+		{
+			auto device = DX12Rendering::Device::GetDevice();
+
+			// We haven't initialized the CBV heap yet.
+			m_textureUavHeaps = CreateDescriptorHeap(device, BINDLESS_TEXTURE_COUNT, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
+			m_cbvHeapIncrementor = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+		}
+
 		// Create the basic entries for the global textures
 		for (int i = 0; i < eGlobalTexture::TEXTURE_COUNT; ++i)
 		{
@@ -93,16 +115,10 @@ namespace DX12Rendering
 				break;
 			}
 
-			TextureBuffer* globalTexture = dxRenderer.GetTextureManager()->AllocTextureBuffer(&idStr(name), textureDesc, shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON);
-			
-			if(m_textures.size() <= i)
-			{ 
-				m_textures.push_back(globalTexture);
-			}
-			else
-			{
-				// TODO: replace
-			}
+			TextureBuffer* globalTexture = AllocTextureBuffer(
+				&idStr(name), textureDesc, 
+				shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
+				m_textures.size() <= i ? -1 : i);
 		}
 	}
 
@@ -127,6 +143,28 @@ namespace DX12Rendering
 		}
 
 		return m_textures.at(textureIndex);
+	}
+
+#pragma region TextureManager
+	TextureManager* m_textureManager = nullptr;
+
+	TextureManager* GetTextureManager()
+	{
+		if (m_textureManager == nullptr)
+		{
+			m_textureManager = new TextureManager();
+		}
+
+		return m_textureManager;
+	}
+
+	void DestroyTextureManager()
+	{
+		if (m_textureManager != nullptr)
+		{
+			delete m_textureManager;
+			m_textureManager = nullptr;
+		}
 	}
 
 	bool TextureManager::SetTextureCopyState(TextureBuffer* buffer, DX12Rendering::Commands::CommandList* commandList) const{
@@ -192,7 +230,7 @@ namespace DX12Rendering
 		return m_tempImages.back().get();
 	}
 
-	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState) 
+	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index) 
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
@@ -212,6 +250,40 @@ namespace DX12Rendering
 
 		if (buffer->Build(textureDesc, srvDesc, resourceState))
 		{
+			// Setup the heap index data
+			assert(index < (int)m_textures.size());
+
+			if (index < 0)
+			{
+				// Find the first free index. If none exists keep the index at -1
+				for (int i = 0; i < m_textures.size(); ++i)
+				{
+					if (m_textures[i] == nullptr)
+					{
+						index = i;
+						break;
+					}
+				}
+			}
+
+			if (index < 0)
+			{
+				m_textures.push_back(buffer);
+				index = m_textures.size() - 1;
+			}
+			else
+			{
+				m_textures[index] = buffer;
+			}
+
+			buffer->m_heapIndex = index;
+			
+			if (index < BINDLESS_TEXTURE_COUNT)
+			{
+				CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_textureUavHeaps->GetCPUDescriptorHandleForHeapStart(), index, m_cbvHeapIncrementor);
+				device->CreateShaderResourceView(buffer->resource.Get(), &buffer->textureView, textureHandle);
+			}
+
 			return buffer;
 		}
 
@@ -221,6 +293,8 @@ namespace DX12Rendering
 	void TextureManager::FreeTextureBuffer(TextureBuffer* buffer) {
 		if (buffer != nullptr) {
 			buffer->fence.Wait();
+
+			m_textures[buffer->m_heapIndex] = nullptr;
 
 			delete(buffer);
 		}
@@ -265,4 +339,5 @@ namespace DX12Rendering
 			// TODO: Fix on null buffer.
 		}
 	}
+#pragma engregion
 }

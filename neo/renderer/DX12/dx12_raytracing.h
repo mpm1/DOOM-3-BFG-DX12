@@ -31,8 +31,7 @@ namespace DX12Rendering {
 	const UINT VERTCACHE_VERTEX_MEMORY = 31 * 1024 * 1024 * 256;
 	const UINT VERTCACHE_JOINT_MEMORY= 256 * 1024 * 256;
 
-	const UINT DESCRIPTOR_TEXTURE_COUNT = 1024;
-	const UINT DESCRIPTOR_HEAP_SIZE = 4 /* basic entries */ + DESCRIPTOR_TEXTURE_COUNT /* texture space */;
+	const UINT DESCRIPTOR_HEAP_SIZE = 4 /* basic entries */;
 
 	enum dxr_renderParm_t {
 		RENDERPARM_GLOBALEYEPOS = 0,
@@ -119,7 +118,7 @@ public:
 	Raytracing(UINT screenWidth, UINT screenHeight);
 	~Raytracing();
 
-	void Resize(UINT width, UINT height, DX12Rendering::TextureManager &textureManager);
+	void Resize(UINT width, UINT height);
 
 	DX12Rendering::BLASManager* GetBLASManager() { return &m_blasManager; }
 	DX12Rendering::TLASManager* GetTLASManager() { return &m_tlasManager; }
@@ -129,9 +128,6 @@ public:
 	void ResetLightList();
 	bool AddLight(const UINT index, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows);
 	UINT GetLightMask(const UINT index);
-
-	/// Adds an image to the descriptor heap and returns the associated index.
-	UINT AddImageToDescriptorHeap(const DX12Rendering::TextureBuffer* texture);
 
 	void GenerateTLAS();
 
@@ -143,8 +139,7 @@ public:
 	bool CastShadowRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
-		const CD3DX12_RECT& scissorRect,
-		TextureManager* textureManager
+		const CD3DX12_RECT& scissorRect
 	);
 
 	/// <summary>
@@ -206,7 +201,7 @@ private:
 	// Pipeline
 	void CreateShadowPipeline();
 	void CreateOutputBuffers();
-	void CreateShaderResourceHeap(DX12Rendering::TextureManager& textureManager);
+	void CreateShaderResourceHeap();
 
 	void CreateShaderBindingTables();
 	void CreateShadowBindingTable();

@@ -959,7 +959,7 @@ static void RB_DrawSingleInteraction(drawInteraction_t* din) {
 
 	// texture 5 is the screenspace shadow texture.
 	GL_SelectTexture(INTERACTION_TEXUINIT_SHADOW);
-	dxRenderer.SetTexture(dxRenderer.GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
+	dxRenderer.SetTexture(DX12Rendering::GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
 
 	RB_DrawElementsWithCounters(din->surf);
 }
@@ -1703,7 +1703,7 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 
 				// texture 5 is the screenspace shadow texture.
 				GL_SelectTexture(INTERACTION_TEXUINIT_SHADOW);
-				dxRenderer.SetTexture(dxRenderer.GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
+				dxRenderer.SetTexture(DX12Rendering::GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
 
 				RB_DrawElementsWithCounters(surf);
 
@@ -2083,7 +2083,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 
 	DX12Rendering::RenderPassBlock renderPassBlock("DrawInteractions", DX12Rendering::Commands::DIRECT);
 	
-	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 
 	GL_SelectTexture(0);
 
@@ -2868,7 +2868,7 @@ void RB_DrawCombinedGBufferResults()
 {
 	DX12Rendering::RenderPassBlock renderPassBlock("DXR_GenerateResult", DX12Rendering::Commands::DIRECT);
 	
-	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 
 	
 	GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
@@ -3134,7 +3134,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			//viewDepth->fence.Wait();
 
 			// TODO: Make a system to perform multiple copies
-			DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 			DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
 			viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
 

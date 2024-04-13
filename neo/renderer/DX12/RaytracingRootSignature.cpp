@@ -5,10 +5,11 @@ namespace DX12Rendering {
 
 	RaytracingRootSignature::RaytracingRootSignature(UINT flags)
 	{
-		CD3DX12_ROOT_PARAMETER1 rootParameters[1];
+		CD3DX12_ROOT_PARAMETER1 rootParameters[2];
 
 		// Build the descriptor table.
 		std::vector<D3D12_DESCRIPTOR_RANGE1> descriptorRanges;
+		std::vector<D3D12_DESCRIPTOR_RANGE1> textureDescriptorRanges;
 
 		if (flags & READ_ENVIRONMENT > 0) {
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
@@ -20,17 +21,11 @@ namespace DX12Rendering {
 				DX12Rendering::e_RaytracingHeapIndex::SRV_TLAS
 			));
 
-			const uint textureSpaces = 2;
-			for (uint space = 0; space < textureSpaces; ++space)
+			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+			const D3D12_DESCRIPTOR_RANGE1* ranges = textureManager->GetDescriptorRanges();
+			for (uint space = 0; space < DX12Rendering::TextureManager::TEXTURE_SPACE_COUNT; ++space)
 			{
-				descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
-					D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Texture Array */,
-					DESCRIPTOR_TEXTURE_COUNT, /* Total number of possible textures */
-					1 /*t1*/,
-					space, /* space0. We will define different spaces if we want to use more than texture 2D, but use the same data. */
-					D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
-					DX12Rendering::e_RaytracingHeapIndex::SRV_TextureArray // Starting texture
-				));
+				textureDescriptorRanges.push_back(ranges[space]);
 			}
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
@@ -66,9 +61,16 @@ namespace DX12Rendering {
 		}
 		
 		if (descriptorRanges.size() > 0) {
+			int rootParameterCount = 1;
 			rootParameters[0].InitAsDescriptorTable(descriptorRanges.size(), (D3D12_DESCRIPTOR_RANGE1*)descriptorRanges.data());
 
-			CreateRootSignature(rootParameters, 1);
+			if (textureDescriptorRanges.size() > 0)
+			{
+				rootParameters[rootParameterCount].InitAsDescriptorTable(textureDescriptorRanges.size(), (D3D12_DESCRIPTOR_RANGE1*)textureDescriptorRanges.data());
+				++rootParameterCount;
+			}
+
+			CreateRootSignature(rootParameters, rootParameterCount);
 		}
 		else {
 			CreateRootSignature(nullptr, 0);

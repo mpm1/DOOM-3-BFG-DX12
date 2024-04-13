@@ -540,9 +540,10 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 
 	// Copy the Textures
 	DX12Rendering::TextureBuffer* currentTexture;
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 	UINT index;
 	for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
-		m_textureManager.SetTexturePixelShaderState(currentTexture, &commandList);
+		textureManager->SetTexturePixelShaderState(currentTexture, &commandList);
 		m_rootSignature->SetTextureRegisterIndex(m_objectIndex, index, currentTexture, &commandList);
 	}
 
@@ -711,10 +712,11 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			return false;
 		}*/
 
-		m_textureManager.Initialize(m_width, m_height);
+		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+		textureManager->Initialize(m_width, m_height);
 
 		if (m_raytracing != nullptr) {
-			m_raytracing->Resize(m_width, m_height, m_textureManager);
+			m_raytracing->Resize(m_width, m_height);
 		}
 
 		UpdateViewport(0.0f, 0.0f, width, height);
@@ -1059,12 +1061,12 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
-	bool result = m_raytracing->CastShadowRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect, &m_textureManager);
+	bool result = m_raytracing->CastShadowRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
 	
 	if (result)
 	{
 		// Copy the raytraced shadow data
-		DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 		DX12Rendering::TextureBuffer* lightTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP);
 
 		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceShadowMask);

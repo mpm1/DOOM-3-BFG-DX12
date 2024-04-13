@@ -188,7 +188,7 @@ void idImage::GenerateImage(const byte* pic, int width, int height, textureFilte
 
 	AllocImage();
 
-	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 	DX12Rendering::TextureBuffer* textureBuffer = static_cast<DX12Rendering::TextureBuffer*>(textureResource);
 
 	textureManager->StartTextureWrite(textureBuffer);
@@ -236,7 +236,7 @@ void idImage::GenerateCubeImage(const byte* pic[6], int size, textureFilter_t fi
 
 	AllocImage();
 
-	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 	DX12Rendering::TextureBuffer* textureBuffer = static_cast<DX12Rendering::TextureBuffer*>(textureResource);
 
 	textureManager->StartTextureWrite(textureBuffer);
@@ -356,7 +356,7 @@ void idImage::ActuallyLoadImage(bool fromBackEnd) {
 	}
 	const bimageFile_t& header = im.GetFileHeader();
 
-	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 
 	if ((fileSystem->InProductionMode() && binaryFileTime != FILE_NOT_FOUND_TIMESTAMP) || ((binaryFileTime != FILE_NOT_FOUND_TIMESTAMP)
 		&& (header.colorFormat == opts.colorFormat)
@@ -578,7 +578,7 @@ if rows = cols * 6, assume it is a cube map animation
 =============
 */
 void idImage::UploadScratch(const byte* data, int cols, int rows) {
-	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 	DX12Rendering::TextureBuffer* textureBuffer = static_cast<DX12Rendering::TextureBuffer*>(textureResource);
 
 	// if rows = cols * 6, assume it is a cube map animation
