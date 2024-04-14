@@ -516,7 +516,7 @@ UINT DX12Renderer::StartSurfaceSettings() {
 	return m_objectIndex;
 }
 
-bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState, DX12Rendering::Commands::CommandList& commandList) {
+bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState, void* surfaceConstants, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList) {
 	// TODO: Define separate CBV for location data and Textures
 	// TODO: add a check if we need to update tehCBV and Texture data.
 
@@ -527,15 +527,23 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 		return false;
 	}
 	
-	{
-		DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
+	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
 
+	{
 		// Set our constant buffer values.
 		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(m_constantBuffer));
 		resourceManager.FillConstantBuffer(buffer, m_constantBuffer);
 		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRootSignatureEntry::eModelCBV, buffer);
 
 		// TODO: split this up so we have an already existing camera buffer.
+	}
+
+	if (surfaceConstants != nullptr)
+	{
+		// Set our constant buffer values.
+		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(surfaceConstantsSize);
+		resourceManager.FillConstantBuffer(buffer, surfaceConstants);
+		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRootSignatureEntry::eSurfaceCBV, buffer);
 	}
 
 	// Copy the Textures

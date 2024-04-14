@@ -28,7 +28,6 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "global.inc"
 
-uniform Texture2D<float4> samp0 : register(t0);
 struct PS_OUT {
 	float4 color : SV_TARGET;
 };

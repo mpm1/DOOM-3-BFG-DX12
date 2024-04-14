@@ -23,7 +23,7 @@ namespace DX12Rendering {
 
 			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 			const D3D12_DESCRIPTOR_RANGE1* ranges = textureManager->GetDescriptorRanges();
-			for (uint space = 0; space < DX12Rendering::TextureManager::TEXTURE_SPACE_COUNT; ++space)
+			for (UINT space = 0; space < DX12Rendering::TextureManager::TEXTURE_SPACE_COUNT; ++space)
 			{
 				textureDescriptorRanges.push_back(ranges[space]);
 			}

@@ -18,6 +18,27 @@ extern idCVar stereoRender_swapEyes;
 
 backEndState_t	backEnd;
 
+struct GBufferSurfaceConstants
+{
+	UINT bumpMapIndex;
+	UINT albedoIndex;
+	UINT specularIndex;
+	UINT pad;
+};
+
+// Loads a texture into memory and provides the bindless index to that texture
+UINT LoadBindlessTexture(idImage* image)
+{
+	auto buffer = static_cast<const DX12Rendering::TextureBuffer*>(image->Bindless());
+
+	if (buffer == nullptr)
+	{
+		return 0;
+	}
+
+	return buffer->GetTextureIndex();
+}
+
 bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 {
 	// TODO: Implement
@@ -405,7 +426,7 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 	SetVertexParm(RENDERPARM_TEXGEN_0_ENABLED, useTexGenParm);
 }
 
-void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t vbHandle, const size_t vertexStride, const DX12Rendering::eSurfaceVariant variant) {
+void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t vbHandle, const size_t vertexStride, const DX12Rendering::eSurfaceVariant variant, void* surfaceConstants, size_t surfaceConstantsSize) {
 	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawElementsWithCounters");
 
@@ -473,7 +494,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 
 	const triIndex_t* test = (triIndex_t*)indexOffset;
 
-	if (dxRenderer.EndSurfaceSettings(variant, *commandList)) {
+	if (dxRenderer.EndSurfaceSettings(variant, surfaceConstants, surfaceConstantsSize, *commandList)) {
 		dxRenderer.DrawModel(
 			*commandList,
 			apiVertexBuffer,
@@ -519,8 +540,12 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		vertOffset / sizeof(idDrawVert));*/
 }
 
+void RB_DrawElementsWithCounters(const drawSurf_t* surf, void* surfaceConstants, size_t bufferSize) {
+	RB_DrawElementsWithCounters(surf, surf->ambientCache, 0 /* Keep the value in the view */, DX12Rendering::VARIANT_DEFAULT, surfaceConstants, bufferSize);
+}
+
 void RB_DrawElementsWithCounters(const drawSurf_t* surf) {
-	RB_DrawElementsWithCounters(surf, surf->ambientCache, 0 /* Keep the value in the view */, DX12Rendering::VARIANT_DEFAULT);
+	RB_DrawElementsWithCounters(surf, nullptr, 0);
 }
 
 /*
@@ -730,7 +755,7 @@ If there are no subview surfaces, we could clear to black and use fast-Z renderi
 on the 360.
 =====================
 */
-static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
+static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) { 
 	// TODO: Run this on it's own commandList so we can fill the rest while running.
 	if (numDrawSurfs == 0) {
 		return;
@@ -1253,13 +1278,13 @@ static void RB_StencilShadowPass(const drawSurf_t* drawSurfs, const viewLight_t*
 			backEnd.glState.vertexLayout = LAYOUT_DRAW_SHADOW_VERT;
 		}
 
-		RB_DrawElementsWithCounters(drawSurf, drawSurf->shadowCache, vertexSize, variant);
+		RB_DrawElementsWithCounters(drawSurf, drawSurf->shadowCache, vertexSize, variant, nullptr, 0);
 
 		if (!renderZPass && r_useStencilShadowPreload.GetBool())
 		{
 			variant = drawSurf->jointCache ? DX12Rendering::VARIANT_STENCIL_SHADOW_RENDER_ZPASS_SKINNED : DX12Rendering::VARIANT_STENCIL_SHADOW_RENDER_ZPASS;
 			// Render again with z-pass
-			RB_DrawElementsWithCounters(drawSurf, drawSurf->shadowCache, vertexSize, variant);
+			RB_DrawElementsWithCounters(drawSurf, drawSurf->shadowCache, vertexSize, variant, nullptr, 0);
 		}
 
 		//// get vertex buffer
@@ -1439,7 +1464,7 @@ static void RB_StencilSelectLight(const viewLight_t* vLight) {
 	//// two-sided stencil test
 	const DX12Rendering::eSurfaceVariant variant = DX12Rendering::VARIANT_STENCIL_TWOSIDED;
 
-	RB_DrawElementsWithCounters(&backEnd.zeroOneCubeSurface, backEnd.zeroOneCubeSurface.ambientCache, 0, variant);
+	RB_DrawElementsWithCounters(&backEnd.zeroOneCubeSurface, backEnd.zeroOneCubeSurface.ambientCache, 0, variant, nullptr, 0);
 
 	//// reset stencil state
 
@@ -1826,9 +1851,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 
 	DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
 
-	//Set this to write to the appropriate render surfaces
-	GL_SelectTexture(0);
-
 	//First fill in the sub view surfaces
 	int surfNum;
 	for (surfNum = 0; surfNum < numDrawSurfs; surfNum++)
@@ -1844,6 +1866,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 //TODO: Move to it's own buffer to render and cast rays'
 
 
+	GBufferSurfaceConstants surfaceConstants = {};
 	// continue checking past the subview surfaces
 	for (; surfNum < numDrawSurfs; surfNum++) {
 		const drawSurf_t* surf = drawSurfs[surfNum];
@@ -1928,16 +1951,13 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		const idMaterial* surfaceShader = surf->material;
 		if (surfaceShader->GetFastPathBumpImage() && !r_skipInteractionFastPath.GetBool()) {
 			// texture 0 will be the per-surface bump map
-			GL_SelectTexture(0);
-			surfaceShader->GetFastPathBumpImage()->Bind();
+			surfaceConstants.bumpMapIndex = LoadBindlessTexture(surfaceShader->GetFastPathBumpImage());
 
 			// texture 3 is the per-surface diffuse map
-			GL_SelectTexture(1);
-			surfaceShader->GetFastPathDiffuseImage()->Bind();
+			surfaceConstants.albedoIndex = LoadBindlessTexture(surfaceShader->GetFastPathDiffuseImage());
 
 			// texture 4 is the per-surface specular map
-			GL_SelectTexture(2);
-			surfaceShader->GetFastPathSpecularImage()->Bind();
+			surfaceConstants.specularIndex = LoadBindlessTexture(surfaceShader->GetFastPathSpecularImage());
 
 			const idVec4 sMatrix(1, 0, 0, 0);
 			const idVec4 tMatrix(0, 1, 0, 0);
@@ -1985,8 +2005,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 					bumpMapFound = true;
 
 					// texture 0 will be the per-surface bump map
-					GL_SelectTexture(0);
-					surfaceStage->texture.image->Bind();
+					surfaceConstants.bumpMapIndex = LoadBindlessTexture(surfaceStage->texture.image);
 
 					idVec4 bumpMatrix[2];
 					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
@@ -2012,8 +2031,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 					diffuseMapFound = true;
 
 					// texture 3 will be the diffuse map
-					GL_SelectTexture(1);
-					surfaceStage->texture.image->Bind();
+					surfaceConstants.albedoIndex = LoadBindlessTexture(surfaceStage->texture.image);
 
 					idVec4 matrix[2];
 					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
@@ -2039,8 +2057,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 					specularMapFound = true;
 
 					// texture 3 will be the diffuse map
-					GL_SelectTexture(2);
-					surfaceStage->texture.image->Bind();
+					surfaceConstants.specularIndex = LoadBindlessTexture(surfaceStage->texture.image);
 
 					idVec4 matrix[2];
 					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
@@ -2057,7 +2074,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		}
 
 		// draw it solid
-		RB_DrawElementsWithCounters(surf);
+		RB_DrawElementsWithCounters(surf, &surfaceConstants, sizeof(GBufferSurfaceConstants));
 	}
 }
 
