@@ -234,6 +234,16 @@ public:
 			commandList->ClearRenderTargetView(renderTargetHandle, rgbaColor, 0, nullptr);
 		});
 	}
+
+	/// <summary>
+	/// Generates a blank post queue command that will force this command list to be executed before all others.
+	/// </summary>
+	void AddPostCommandListDivider()
+	{
+		AddPostExecuteQueueAction([](ID3D12CommandQueue * commandQueue) {
+			// Blank function for placeholder
+		});
+	}
 #pragma endregion
 
 private:
@@ -300,12 +310,15 @@ struct DX12Rendering::Commands::CommandListCycleBlock
 		// Make sure we're starting fresh
 		assert(commandList != nullptr && commandList->IsOpen());
 
-		DX12Rendering::CaptureEventStart(commandList, message);
+		// Removed as this will prevent multiple command list execution.
+		//DX12Rendering::CaptureEventStart(commandList, message);
 	}
 
 	~CommandListCycleBlock()
 	{
-		DX12Rendering::CaptureEventEnd(m_commandList);
+		// Removed as this will prevent multiple command list execution.
+		//DX12Rendering::CaptureEventEnd(m_commandList, true);
+
 		m_commandList->Close();
 	}
 

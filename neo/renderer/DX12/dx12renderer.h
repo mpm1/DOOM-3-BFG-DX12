@@ -103,6 +103,7 @@ public:
 	DX12Rendering::Commands::CommandList* Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4], DX12Rendering::Commands::CommandList* commandList);
 	void EndDraw();
 	void PresentBackbuffer();
+	void SetPassDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
 	void SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
 	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant, void* surfaceConstants, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList); // Records the the surface entry into the heap.
@@ -176,6 +177,7 @@ private:
 	XMFLOAT4 m_constantBuffer[57/* RENDERPARM_TOTAL */];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
+	bool m_isPipelineStateNew = false; // When we set the active pipeline state, we will use this to define that the state has changed and we must set new properties.
 	UINT m_stencilRef = 0;
 
 	UINT m_objectIndex = 0;

@@ -38,7 +38,10 @@ DX12Rendering::RenderPassBlock::RenderPassBlock(const std::string name, const DX
 
 	dxRenderer.SetRenderTargets(m_renderSurfaces, this->renderTargetCount);
 	
-	dxRenderer.SetCommandListDefaults(commandList, commandListType == DX12Rendering::Commands::dx12_commandList_t::COMPUTE);
+	dxRenderer.SetPassDefaults(commandList, commandListType == DX12Rendering::Commands::dx12_commandList_t::COMPUTE);
+	
+	commandList->AddPostCommandListDivider();
+
 	commandList->Close();
 }
 

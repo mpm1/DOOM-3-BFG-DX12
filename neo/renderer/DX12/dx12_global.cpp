@@ -16,7 +16,7 @@ namespace
 	
 }
 
-void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, const std::string message) 
+void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, const std::string message)
 {
 	commandList->AddPreExecuteQueueAction([message](ID3D12CommandQueue* commandQueue)
 	{
@@ -24,7 +24,7 @@ void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, const 
 	});
 };
 
-void DX12Rendering::CaptureEventEnd(Commands::CommandList* commandList) { 
+void DX12Rendering::CaptureEventEnd(Commands::CommandList* commandList) {
 	commandList->AddPostExecuteQueueAction([](ID3D12CommandQueue* commandQueue)
 	{
 		PIXEndEvent(commandQueue);

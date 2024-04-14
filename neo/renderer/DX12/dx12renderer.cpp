@@ -263,6 +263,7 @@ void DX12Renderer::LoadPipelineState(D3D12_GRAPHICS_PIPELINE_STATE_DESC* psoDesc
 void DX12Renderer::SetActivePipelineState(ID3D12PipelineState* pPipelineState, DX12Rendering::Commands::CommandList& commandList) {
 	if (pPipelineState != NULL  && pPipelineState != m_activePipelineState) {
 		m_activePipelineState = pPipelineState;
+		m_isPipelineStateNew = true;
 
 		if (m_isDrawing) {
 			commandList.CommandSetPipelineState(pPipelineState);
@@ -358,7 +359,14 @@ void DX12Renderer::SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, 
 void DX12Renderer::SignalNextFrame() {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
-	m_frameFence.Signal(device, commandManager->GetCommandQueue());
+
+	auto commandList = commandManager->RequestNewCommandList();
+	commandList->AddPostFenceSignal(&m_frameFence);
+	commandList->Close();
+
+	commandManager->Execute();
+
+	DX12Rendering::IncrementFrameIndex();
 }
 
 void DX12Renderer::WaitForPreviousFrame() {
@@ -367,6 +375,33 @@ void DX12Renderer::WaitForPreviousFrame() {
 
 void DX12Renderer::WaitForCopyToComplete() {
 	m_copyFence.Wait();
+}
+
+void DX12Renderer::SetPassDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue)
+{
+	if (!isComputeQueue)
+	{
+		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
+		{
+			auto rootSignature = isComputeQueue ? nullptr : m_rootSignature->GetRootSignature();
+			if (rootSignature != nullptr)
+			{
+				commandList->SetGraphicsRootSignature(rootSignature);
+			}
+
+			if (m_activePipelineState != nullptr) {
+				commandList->SetPipelineState(m_activePipelineState);
+				m_isPipelineStateNew = false;
+			}
+
+			commandList->RSSetViewports(1, &m_viewport);
+			commandList->RSSetScissorRects(1, &m_scissorRect);
+
+			commandList->OMSetStencilRef(m_stencilRef);
+		});
+
+		EnforceRenderTargets(commandList);
+	}
 }
 
 void DX12Renderer::SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue)
@@ -383,12 +418,15 @@ void DX12Renderer::SetCommandListDefaults(DX12Rendering::Commands::CommandList* 
 
 			if (m_activePipelineState != nullptr) {
 				commandList->SetPipelineState(m_activePipelineState);
+				
+				m_isPipelineStateNew = false;
 			}
 
 			commandList->RSSetViewports(1, &m_viewport);
 			commandList->RSSetScissorRects(1, &m_scissorRect);
 
 			commandList->OMSetStencilRef(m_stencilRef);
+
 			// Setup the initial heap location
 			ID3D12DescriptorHeap* descriptorHeaps[1] = {
 				m_rootSignature->GetCBVHeap(),
@@ -405,7 +443,7 @@ void DX12Renderer::BeginDraw() {
 		return;
 	}
 
-	//WaitForPreviousFrame();
+	WaitForPreviousFrame();
 
 #ifdef _DEBUG
 	DebugClearLights();
@@ -456,7 +494,7 @@ void DX12Renderer::BeginDraw() {
 		}
 	}
 	
-	SetCommandListDefaults(commandList, false);
+	SetPassDefaults(commandList, false);
 
 	commandList->Close();
 }
@@ -497,8 +535,6 @@ void DX12Renderer::EndDraw() {
 
 	m_isDrawing = false;
 	
-	DX12Rendering::IncrementFrameIndex();
-
 	//After frame events
 	if (IsRaytracingEnabled())
 	{
@@ -546,13 +582,17 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRootSignatureEntry::eSurfaceCBV, buffer);
 	}
 
-	// Copy the Textures
-	DX12Rendering::TextureBuffer* currentTexture;
-	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
-	UINT index;
-	for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
-		textureManager->SetTexturePixelShaderState(currentTexture, &commandList);
-		m_rootSignature->SetTextureRegisterIndex(m_objectIndex, index, currentTexture, &commandList);
+	if (surfaceConstants == nullptr)
+	{
+		// TODO: Remove these textues all together. For now we assume that the surfaceConstants mean that were using a constant buffer to define our structures.
+		// Copy the Textures
+		DX12Rendering::TextureBuffer* currentTexture;
+		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+		UINT index;
+		for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
+			textureManager->SetTexturePixelShaderState(currentTexture, &commandList);
+			m_rootSignature->SetTextureRegisterIndex(m_objectIndex, index, currentTexture, &commandList);
+		}
 	}
 
 	m_rootSignature->SetRootDescriptorTable(m_objectIndex, &commandList);
@@ -565,11 +605,10 @@ bool DX12Renderer::IsScissorWindowValid() {
 }
 
 void DX12Renderer::PresentBackbuffer() {
-	SignalNextFrame();
-	WaitForPreviousFrame();
-
 	// Present the frame
 	DX12Rendering::ThrowIfFailed(m_swapChain->Present(1, 0));
+	SignalNextFrame();
+	WaitForPreviousFrame();
 }
 
 void DX12Renderer::DrawModel(DX12Rendering::Commands::CommandList& commandList, DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride) {

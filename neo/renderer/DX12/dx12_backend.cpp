@@ -564,8 +564,11 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 			continue;
 		}
 
-		auto commandManager = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager();
-		DX12Rendering::Commands::CommandManagerCycleBlock subCycleBlock(commandManager, "Depth Buffer Surface");
+		{
+			// Removed block as it slowed down rendering.
+			//auto commandManager = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager();
+			//DX12Rendering::Commands::CommandManagerCycleBlock subCycleBlock(commandManager, "Depth Buffer Surface");
+		}
 
 		// get the expressions for conditionals / color / texcoords
 		const float* regs = drawSurf->shaderRegisters;
@@ -755,7 +758,7 @@ If there are no subview surfaces, we could clear to black and use fast-Z renderi
 on the 360.
 =====================
 */
-static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) { 
+static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	// TODO: Run this on it's own commandList so we can fill the rest while running.
 	if (numDrawSurfs == 0) {
 		return;
