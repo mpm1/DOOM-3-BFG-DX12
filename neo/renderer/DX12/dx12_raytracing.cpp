@@ -164,11 +164,6 @@ namespace DX12Rendering {
 			return;
 		}
 
-		if (!m_tlasManager.IsDirty())
-		{
-			m_tlasManager.Reset(ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC | ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC);
-		}
-
 		if (m_tlasManager.GetCurrent().state != Resource::eResourceState::Ready)
 		{
 			return;

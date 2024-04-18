@@ -136,7 +136,7 @@ public:
 	void SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count);
 	void EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList);
 	void ResetRenderTargets();
-	DX12Rendering::eRenderSurface GetOutputSurface() { return (DX12Rendering::eRenderSurface)(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex); }
+	DX12Rendering::eRenderSurface GetOutputSurface() { return (DX12Rendering::eRenderSurface)(DX12Rendering::eRenderSurface::RenderTarget1 + DX12Rendering::GetCurrentFrameIndex()); }
 
 #pragma region Top Level Acceleration Structure
 	//TODO
@@ -187,7 +187,6 @@ private:
 	DX12Rendering::RenderSurface* m_renderTargets[MAX_RENDER_TARGETS];
 
 	// Synchronization
-	UINT m_frameIndex;
 	DX12Rendering::Fence m_frameFence;
 	DX12Rendering::Fence m_copyFence;
 

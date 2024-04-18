@@ -553,6 +553,7 @@ namespace DX12Rendering {
 
 #pragma region TLASManager
 	TLASManager::TLASManager(BLASManager* blasManager) :
+		m_accelerationCooldown(255),
 		m_blasManager(blasManager),
 		m_isDirty(false),
 		m_scratch(DEFAULT_TLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"TLAS Scratch Buffer"),
@@ -581,20 +582,23 @@ namespace DX12Rendering {
 		if ((typesMask & INSTANCE_TYPE_DYNAMIC) != 0)
 		{
 			m_dynamicInstances.clear();
-			m_dynamicInstances.reserve(DEFAULT_TLAS_COUNT);
+			m_staticInstances.reserve(DEFAULT_TLAS_COUNT);
 		}
 	}
 
 	bool TLASManager::Generate()
 	{
-		if (!IsDirty())
 		{
-			// The TLAS has not changed, so there's no need to rebuild.
-			return true;
+			DX12Rendering::ReadLock instanceLock(m_instanceLock);
+
+			if (!IsDirty())
+			{
+				// The TLAS has not changed, so there's no need to rebuild.
+				return true;
+			}
 		}
 
 		bool result = false;
-		//CaptureGPUBegin();
 		{
 			DX12Rendering::WriteLock instanceLock(m_instanceLock);
 
@@ -607,54 +611,67 @@ namespace DX12Rendering {
 			}
 
 			result = GetCurrent().UpdateResources(*m_blasManager, m_staticInstances, m_dynamicInstances, &m_scratch);
-		}
-		//CaptureGPUEnd(FALSE);
 
-		if (result)
-		{
-			m_isDirty = false;
-		}
+			if (result)
+			{
+				m_isDirty = false;
+
+				ACCELERATION_INSTANCE_TYPE clearFlags = ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC;
+
+				if ((--m_accelerationCooldown) == 0)
+				{
+					m_accelerationCooldown = 255;
+					clearFlags |= ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC;
+				}
+
+
+				Reset(ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC);
+			}
+		}	
 
 		return result;
 	}
 
 	void TLASManager::AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, ACCELLERATION_INSTANCE_MASK instanceMask)
 	{
-		DX12Rendering::WriteLock instanceLock(m_instanceLock);
 		const BottomLevelAccelerationStructure* blas = m_blasManager->GetBLAS(blasId);
 		if (blas == nullptr)
 		{
 			return;
 		}
 
-		MarkDirty();
-
-		DX12Rendering::Instance* instance;
-		if (TryGetWriteInstance(entityId, instanceTypes, &instance))
 		{
-			instance->blasId = blasId;
-			instance->mask = instanceMask;
+			DX12Rendering::WriteLock instanceLock(m_instanceLock);
 
-			memcpy(instance->transformation, transform, sizeof(float[3][4]));
-			return;
-		}
+			MarkDirty();
 
-		UINT hitShaderIndex = 0; /* TODO: Find the hit group index containing the normal map of the surface. */
-		if ((instanceTypes && INSTANCE_TYPE_STATIC) != 0)
-		{
-			m_staticInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask);
-		}
-		else if ((instanceTypes && INSTANCE_TYPE_DYNAMIC) != 0)
-		{
-			m_dynamicInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask);
+			DX12Rendering::Instance* instance;
+			if (TryGetWriteInstance(entityId, instanceTypes, &instance))
+			{
+				instance->blasId = blasId;
+				instance->mask = instanceMask;
+
+				memcpy(instance->transformation, transform, sizeof(float[3][4]));
+				return;
+			}
+
+			UINT hitShaderIndex = 0; /* TODO: Find the hit group index containing the normal map of the surface. */
+			if ((instanceTypes & INSTANCE_TYPE_STATIC) != 0)
+			{
+				m_staticInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask);
+			}
+			else if ((instanceTypes & INSTANCE_TYPE_DYNAMIC) != 0)
+			{
+				m_dynamicInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask);
+			}
 		}
 	}
 
 	const bool TLASManager::TryGetWriteInstance(const dxHandle_t& index, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance)
 	{
-		if ((typesMask && INSTANCE_TYPE_STATIC) != 0)
+		if ((typesMask & INSTANCE_TYPE_STATIC) != 0)
 		{
-			for (auto instance : m_staticInstances) {
+			for (DX12Rendering::Instance& instance : m_staticInstances) {
 				if (instance.instanceId == index)
 				{
 					*outInstance = &instance;
@@ -663,7 +680,7 @@ namespace DX12Rendering {
 			}
 		}
 
-		if ((typesMask && INSTANCE_TYPE_DYNAMIC) != 0)
+		if ((typesMask & INSTANCE_TYPE_DYNAMIC) != 0)
 		{
 			for (auto instance : m_dynamicInstances) {
 				if (instance.instanceId == index)

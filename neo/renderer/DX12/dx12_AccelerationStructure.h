@@ -209,13 +209,14 @@ public:
 
 	bool Generate();
 
-	void Reset(const ACCELERATION_INSTANCE_TYPE typesMask);
 	const bool IsReady() noexcept { return GetCurrent().Exists(); }
 	const void WaitForFence() { return GetCurrent().fence.Wait(); }
 
 	TopLevelAccelerationStructure& GetCurrent() { return m_tlas[GetCurrentFrameIndex()]; }
 
 	void AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, const ACCELLERATION_INSTANCE_MASK instanceMask);
+
+	void Reset(const ACCELERATION_INSTANCE_TYPE typesMask);
 
 	const bool IsDirty(){ return m_isDirty; }
 	void MarkDirty() { m_isDirty = true; }
@@ -231,6 +232,7 @@ private:
 	TopLevelAccelerationStructure m_tlas[DX12_FRAME_COUNT];
 	ScratchBuffer m_scratch;
 	bool m_isDirty;
+	byte m_accelerationCooldown;
 
 	const bool TryGetWriteInstance(const dxHandle_t& instanceId, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance);
 };

@@ -117,7 +117,7 @@ namespace DX12Rendering {
 	// FrameIndexing
 	const UINT8 GetCurrentFrameIndex();
 	const UINT8 GetLastFrameIndex();
-	const UINT8 IncrementFrameIndex();
+	const UINT8 UpdateFrameIndex(IDXGISwapChain3* swapChain);
 
 	// Locking
 	typedef std::shared_mutex dx12_lock;
@@ -159,7 +159,7 @@ namespace DX12Rendering {
 			m_value = 1;
 
 #if defined(_DEBUG)
-			if (!m_name.empty())
+			if (m_fence && !m_name.empty())
 			{
 				m_fence->SetName(m_name.c_str());
 			}

@@ -89,7 +89,6 @@ namespace
 
 
 DX12Renderer::DX12Renderer() :
-	m_frameIndex(0),
 	m_width(2),
 	m_height(2),
 	m_fullScreen(0),
@@ -207,8 +206,6 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 
 	// Remove ALT+ENTER functionality.
 	DX12Rendering::ThrowIfFailed(factory->MakeWindowAssociation(hWnd, DXGI_MWA_NO_ALT_ENTER));
-
-	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 
 	if (!CreateBackBuffer()) {
 		common->FatalError("Could not initailze backbuffer.");
@@ -365,8 +362,6 @@ void DX12Renderer::SignalNextFrame() {
 	commandList->Close();
 
 	commandManager->Execute();
-
-	DX12Rendering::IncrementFrameIndex();
 }
 
 void DX12Renderer::WaitForPreviousFrame() {
@@ -449,7 +444,6 @@ void DX12Renderer::BeginDraw() {
 	DebugClearLights();
 #endif
 
-	m_frameIndex = m_swapChain->GetCurrentBackBufferIndex();
 	DX12Rendering::Commands::BeginFrame();
 
 	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
@@ -464,7 +458,7 @@ void DX12Renderer::BeginDraw() {
 		}
 	}
 
-	m_rootSignature->BeginFrame(m_frameIndex);
+	m_rootSignature->BeginFrame(DX12Rendering::GetCurrentFrameIndex());
 	
 	m_objectIndex = 0;
 	m_isDrawing = true;
@@ -542,6 +536,7 @@ void DX12Renderer::EndDraw() {
 		m_raytracing->EndFrame();
 	}
 
+	SignalNextFrame();
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
 }
 
@@ -606,9 +601,12 @@ bool DX12Renderer::IsScissorWindowValid() {
 
 void DX12Renderer::PresentBackbuffer() {
 	// Present the frame
-	DX12Rendering::ThrowIfFailed(m_swapChain->Present(1, 0));
-	SignalNextFrame();
 	WaitForPreviousFrame();
+	DX12Rendering::ThrowIfFailed(m_swapChain->Present(1, 0));
+	DX12Rendering::UpdateFrameIndex(m_swapChain.Get());
+
+	//SignalNextFrame();
+	//WaitForPreviousFrame(); It looks like it's the vertex buffer. We should have a render one between frames. Mark figure out why we need this here.Our buffers are being corupted way too soon.
 }
 
 void DX12Renderer::DrawModel(DX12Rendering::Commands::CommandList& commandList, DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride) {
@@ -753,8 +751,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Resize(width, height);
 		}
-
-		m_frameIndex = 0;
+		
 		/*if (!CreateBackBuffer()) {
 			return false;
 		}*/
