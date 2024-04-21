@@ -8,6 +8,8 @@
 #include <comdef.h>
 #include <type_traits>
 
+extern idCVar r_swapInterval; // Used for VSync
+
 idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
 
@@ -197,6 +199,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	swapChainDesc.OutputWindow = hWnd;
 	swapChainDesc.SampleDesc.Count = 1;
+	swapChainDesc.Flags = 0; // Todo enable when in fullscreen DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 	swapChainDesc.Windowed = TRUE; //TODO: Change to option
 
 	ComPtr<IDXGISwapChain> swapChain;
@@ -438,6 +441,8 @@ void DX12Renderer::BeginDraw() {
 		return;
 	}
 
+	DX12Rendering::UpdateFrameIndex(m_swapChain.Get());
+
 	WaitForPreviousFrame();
 
 #ifdef _DEBUG
@@ -602,8 +607,25 @@ bool DX12Renderer::IsScissorWindowValid() {
 void DX12Renderer::PresentBackbuffer() {
 	// Present the frame
 	WaitForPreviousFrame();
-	DX12Rendering::ThrowIfFailed(m_swapChain->Present(1, 0));
-	DX12Rendering::UpdateFrameIndex(m_swapChain.Get());
+
+	UINT presentProperties = 0;
+	UINT syncInterval = 1;
+	
+	bool inWindow = false; // TODO: Implement
+	if (inWindow)
+	{
+		if (r_swapInterval.GetInteger() == 0)
+		{
+			presentProperties |= DXGI_PRESENT_ALLOW_TEARING;
+			syncInterval = 0;
+		}
+		else if (r_swapInterval.GetInteger() == 1)
+		{
+			syncInterval = 0;
+		}
+	}
+
+	DX12Rendering::ThrowIfFailed(m_swapChain->Present(syncInterval, presentProperties));
 
 	//SignalNextFrame();
 	//WaitForPreviousFrame(); It looks like it's the vertex buffer. We should have a render one between frames. Mark figure out why we need this here.Our buffers are being corupted way too soon.
@@ -870,7 +892,7 @@ void DX12Renderer::DXR_ResetAccelerationStructure()
 
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 	
-	m_raytracing->GetTLASManager()->Reset(DX12Rendering::INSTANCE_TYPE_STATIC | DX12Rendering::INSTANCE_TYPE_DYNAMIC);
+	//m_raytracing->GetTLASManager()->Reset(DX12Rendering::INSTANCE_TYPE_STATIC | DX12Rendering::INSTANCE_TYPE_DYNAMIC);
 	m_raytracing->GetBLASManager()->Reset();
 
 	// TODO: what else do we need to reset.

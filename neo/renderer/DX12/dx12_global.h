@@ -117,6 +117,7 @@ namespace DX12Rendering {
 	// FrameIndexing
 	const UINT8 GetCurrentFrameIndex();
 	const UINT8 GetLastFrameIndex();
+	const UINT8 GetNextFrameIndex();
 	const UINT8 UpdateFrameIndex(IDXGISwapChain3* swapChain);
 
 	// Locking

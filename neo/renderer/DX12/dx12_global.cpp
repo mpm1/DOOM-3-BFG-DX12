@@ -132,6 +132,7 @@ ID3D12DescriptorHeap* DX12Rendering::CreateDescriptorHeap(ID3D12Device* device, 
 UINT8 g_frameIndex = 0;
 const UINT8 DX12Rendering::GetCurrentFrameIndex() { return g_frameIndex; }
 const UINT8 DX12Rendering::GetLastFrameIndex() { return g_frameIndex == 0 ? DX12_FRAME_COUNT - 1 : g_frameIndex - 1; }
+const UINT8 DX12Rendering::GetNextFrameIndex() { return g_frameIndex == DX12_FRAME_COUNT - 1 ? 0 : g_frameIndex + 1; }
 const UINT8 DX12Rendering::UpdateFrameIndex(IDXGISwapChain3* swapChain) // This should only be used by dxRenderer
 {
 	g_frameIndex = swapChain->GetCurrentBackBufferIndex();

@@ -70,18 +70,22 @@ namespace DX12Rendering
 	};
 
 	struct Instance {
+		ACCELERATION_INSTANCE_TYPE blasType; // Dynamic instances will need to have their BLAS updated.
+
 		float				transformation[3][4];
 		const dxHandle_t	instanceId;
 		dxHandle_t			blasId;
 		UINT				hitGroupIndex; // TODO: We will change this to point to the hitGroup in the stack that contains the normal map for the surface.
 		UINT				mask; // ACCELLERATION_INSTANCE_MASK
+
 										   //TODO: Add support for bone information.
 
-		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId, UINT hitGroupIndex, ACCELLERATION_INSTANCE_MASK mask) :
+		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId, UINT hitGroupIndex, ACCELLERATION_INSTANCE_MASK mask, ACCELERATION_INSTANCE_TYPE accelerationType) :
 			instanceId(id),
 			blasId(blasId),
 			hitGroupIndex(hitGroupIndex),
 			mask(mask),
+			blasType(accelerationType),
 			transformation{}
 		{
 			std::memcpy(transformation, srcTransformation, sizeof(float[3][4]));
@@ -156,7 +160,7 @@ namespace DX12Rendering
 		/// <param name="instanceCount">The total instances in the TLAS.</param>
 		/// <param name="scratchBuffer">The scratch buffer used to create the TLAS.</param>
 		/// <returns>True if the resource buffer was updated. False otherwise.</returns>
-		bool UpdateResources(BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& staticInstances, const std::vector<DX12Rendering::Instance>& dynamicInstances, ScratchBuffer* scratchBuffer);
+		bool UpdateResources(BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& instances, ScratchBuffer* scratchBuffer);
 
 		ID3D12Resource* GetResult() { return resource.Get(); }
 
@@ -216,7 +220,7 @@ public:
 
 	void AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, const ACCELLERATION_INSTANCE_MASK instanceMask);
 
-	void Reset(const ACCELERATION_INSTANCE_TYPE typesMask);
+	void Reset();
 
 	const bool IsDirty(){ return m_isDirty; }
 	void MarkDirty() { m_isDirty = true; }
@@ -227,13 +231,13 @@ public:
 private:
 	BLASManager* m_blasManager;
 	DX12Rendering::dx12_lock m_instanceLock;
-	std::vector<DX12Rendering::Instance> m_staticInstances;
-	std::vector<DX12Rendering::Instance> m_dynamicInstances;
+	std::vector<DX12Rendering::Instance> m_instances[DX12_FRAME_COUNT];
+
 	TopLevelAccelerationStructure m_tlas[DX12_FRAME_COUNT];
 	ScratchBuffer m_scratch;
 	bool m_isDirty;
 	byte m_accelerationCooldown;
 
-	const bool TryGetWriteInstance(const dxHandle_t& instanceId, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance);
+	const bool TryGetWriteInstance(const UINT frameIndex, const dxHandle_t& instanceId, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance);
 };
 #endif

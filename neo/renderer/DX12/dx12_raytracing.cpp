@@ -82,7 +82,6 @@ namespace DX12Rendering {
 
 	void Raytracing::EndFrame()
 	{
-		
 	}
 
 	void Raytracing::CreateCBVHeap(const size_t constantBufferSize)

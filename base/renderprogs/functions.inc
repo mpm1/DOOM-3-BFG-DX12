@@ -55,14 +55,14 @@ static float2 Rotate2D( float2 inTC, float2 cs ) {
 	return finalTC;
 }
 
-// better noise function available at https://github.com/ashima/webgl-noise
-float rand( float2 co ) {
-    return frac( sin( dot( co.xy, float2( 12.9898, 78.233 ) ) ) * 43758.5453 );
-}
-
 // Temp random function. found here: https://thebookofshaders.com/10/
 float rand1(float2 st, float2 dotDir) {
     return frac(sin(dot(st.xy, dotDir)) * 43758.5453123);
+}
+
+// better noise function available at https://github.com/ashima/webgl-noise
+float rand( float2 co ) {
+    return rand1( co.xy, float2( 12.9898, 78.233 ) );
 }
 
 float3 rand3(float3 st) {
