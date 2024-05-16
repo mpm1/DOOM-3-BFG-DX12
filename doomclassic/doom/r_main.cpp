@@ -424,7 +424,7 @@ void R_InitPointToAngle (void)
 	//
 	for (i=0 ; i<=SLOPERANGE ; i++)
 	{
-		f = atan( (float)i/SLOPERANGE )/(3.141592657*2);
+		f = atan( (float)i/SLOPERANGE )/(3.141592654*2);
 		t = 0xffffffff*f;
 		tantoangle[i] = t;
 	}
