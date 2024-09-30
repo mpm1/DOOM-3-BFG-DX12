@@ -12,6 +12,7 @@
 #include "./dx12_RootSignature.h"
 #include "./dx12_raytracing.h"
 #include "./dx12_TextureManager.h"
+#include "./dx12_shader.h"
 
 // Use D3D clip space.
 #define CLIP_SPACE_D3D
@@ -29,6 +30,9 @@ class idRenderModel;
 #ifdef _DEBUG
 struct viewLight_t;
 #endif
+
+constexpr int DYNAMIC_VERTEX_MEMORY_PER_FRAME = 31 * 1024 * 1024; // Matches VERTCACHE_VERTEX_MEMORY_PER_FRAME
+constexpr int DYNAMIC_VERTEX_ALIGNMENT = 32; // Matches VERTEX_CACHE_ALIGN
 
 namespace DX12Rendering {
 
@@ -84,7 +88,7 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	// Buffers
-	DX12Rendering::Geometry::VertexBuffer* AllocVertexBuffer(UINT numBytes, LPCWSTR name);
+	DX12Rendering::Geometry::VertexBuffer* AllocVertexBuffer(const UINT numBytes, const LPCWSTR name, const bool isGPUWritable);
 	void FreeVertexBuffer(DX12Rendering::Geometry::VertexBuffer* buffer);
 
 	DX12Rendering::Geometry::IndexBuffer* AllocIndexBuffer(UINT numBytes, LPCWSTR name);
@@ -93,6 +97,9 @@ public:
 	DX12Rendering::Geometry::JointBuffer* AllocJointBuffer(UINT numBytes);
 	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
 	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
+
+	UINT64 CopyDynamicVertexData(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT64 srcOffset, size_t size);
+	UINT ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT offset /* assume srcBuffer and dstBuffer are the same layout */, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset);
 
 	// Textures
 	void SetActiveTextureRegister(UINT8 index);
@@ -121,7 +128,6 @@ public:
 
 	void DXR_AddModelBLASToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
 	void DXR_AddBLASToTLAS(const uint entityIndex, const dxHandle_t id, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
-
 
 	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
 	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);
@@ -172,7 +178,8 @@ private:
 	CD3DX12_VIEWPORT m_viewport;
 	CD3DX12_RECT m_scissorRect;
 	ComPtr<IDXGISwapChain3> m_swapChain;
-	DX12Rendering::DX12RootSignature* m_rootSignature;
+	DX12Rendering::RenderRootSignature* m_rootSignature;
+	DX12Rendering::ComputeRootSignature* m_computeRootSignature;
 
 	XMFLOAT4 m_constantBuffer[57/* RENDERPARM_TOTAL */];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
@@ -181,6 +188,13 @@ private:
 	UINT m_stencilRef = 0;
 
 	UINT m_objectIndex = 0;
+
+	// Compute Shaders
+	ComPtr<ID3D12PipelineState> m_skinnedModelShader = nullptr;
+
+	// Dynamic Surface Data
+	UINT m_nextDynamicVertexIndex = 0;
+	DX12Rendering::Geometry::VertexBuffer* m_dynamicVertexBuffer[DX12_FRAME_COUNT];
 
 	// Render Targets
 	UINT m_activeRenderTargets = 0;
@@ -204,6 +218,10 @@ private:
 
 	void LoadPipeline(HWND hWnd);
 	void LoadAssets();
+
+	void CreateDynamicPerFrameData();
+	void DestroyDynamicPerFrameData();
+	void ResetDynamicPerFrameData();
 
 	void SignalNextFrame();
     void WaitForPreviousFrame();

@@ -43,6 +43,9 @@ namespace DX12Rendering {
 		/// <returns>True if a transition was created.</returns>
 		bool TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier);
 
+		virtual D3D12_UNORDERED_ACCESS_VIEW_DESC* GetUavDescriptorView() { return nullptr; }
+		virtual D3D12_SHADER_RESOURCE_VIEW_DESC* GetSrvDescriptorView() { return nullptr; }
+
 	protected:
 		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps, const D3D12_CLEAR_VALUE* clearValue = nullptr);
 

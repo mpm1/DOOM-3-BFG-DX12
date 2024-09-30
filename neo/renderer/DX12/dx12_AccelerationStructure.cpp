@@ -4,6 +4,8 @@
 #include "./dx12_DeviceManager.h"
 #include "./dx12_CommandList.h"
 
+#include "./dx12_shader.h"
+
 #include <algorithm>
 
 namespace
@@ -220,7 +222,8 @@ namespace DX12Rendering {
 #pragma region BLASContainer
 	BLASManager::BLASManager() :
 		m_scratchBuffer(DEFAULT_BLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"BLAS Scratch Buffer")
-	{}
+	{
+	}
 
 	BLASManager::~BLASManager()
 	{
@@ -569,18 +572,18 @@ namespace DX12Rendering {
 		m_instances[frameIndex].reserve(DEFAULT_TLAS_COUNT);
 	}
 
+	void TLASManager::UpdateDynamicInstances()
+	{
+		const UINT frameIndex = GetCurrentFrameIndex();
+
+		for (Instance& instance : m_instances[frameIndex])
+		{
+			// TODO
+		}
+	}
+
 	bool TLASManager::Generate()
 	{
-		{
-			/*DX12Rendering::ReadLock instanceLock(m_instanceLock);
-
-			if (!IsDirty())
-			{
-				// The TLAS has not changed, so there's no need to rebuild.
-				return true;
-			}*/
-		}
-
 		bool result = false;
 		{
 			DX12Rendering::WriteLock instanceLock(m_instanceLock);
@@ -593,17 +596,16 @@ namespace DX12Rendering {
 				m_scratch.Build();
 			}
 
-			UINT size1 = m_instances[GetCurrentFrameIndex()].size();
+			UINT instanceCount = m_instances[GetCurrentFrameIndex()].size();
 
 			result = GetCurrent().UpdateResources(*m_blasManager, m_instances[GetCurrentFrameIndex()], &m_scratch);
 
-			assert(size1 == m_instances[GetCurrentFrameIndex()].size());
+			assert(instanceCount == m_instances[GetCurrentFrameIndex()].size()); // Verify that no new instances have been added during execution.
 
 			if (result)
 			{
 				m_isDirty = false;
-
-				assert(size1 == m_instances[GetCurrentFrameIndex()].size());
+				
 				Reset();
 			}
 		}	

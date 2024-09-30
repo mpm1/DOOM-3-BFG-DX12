@@ -15,15 +15,6 @@ namespace DX12Rendering {
 		RootSignatureAssociation(ID3D12RootSignature* rootSignature, const std::vector<std::wstring>& symbols);
 	};
 
-	struct LibraryDescription {
-		DX12Rendering::CompiledShader m_shader;
-		std::vector<D3D12_EXPORT_DESC> m_symbolDesc;
-		D3D12_DXIL_LIBRARY_DESC m_libDesc = {};
-
-		LibraryDescription(const std::string libraryName, const std::vector<std::wstring>& symbolExports);
-		~LibraryDescription();
-	};
-
 	struct HitGroupDescription {
 		std::wstring m_name;
 		std::wstring m_closestHitSymbol;

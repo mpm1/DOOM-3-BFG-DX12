@@ -157,6 +157,9 @@ namespace DX12Rendering {
 
 	void Raytracing::GenerateTLAS()
 	{
+		// Update all needed child BLAS
+		m_tlasManager.UpdateDynamicInstances();
+
 		// Update the resource
 		if (!m_tlasManager.Generate())
 		{
@@ -451,8 +454,8 @@ namespace DX12Rendering {
 	{
 		m_generalSBTDesc.Reset();
 
-		D3D12_GPU_DESCRIPTOR_HANDLE srvUavHandle = m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart();
-		D3D12_GPU_DESCRIPTOR_HANDLE textureHeap = GetTextureManager()->GetDescriptorHandle();
+		D3D12_GPU_DESCRIPTOR_HANDLE srvUavHandle = m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart(); // TODO: move this to the HeapDescriptorManager
+		D3D12_GPU_DESCRIPTOR_HANDLE textureHeap = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureEntries, 0);
 		
 		std::vector<void*> heapPointers = {};
 		heapPointers.push_back(reinterpret_cast<void*>(srvUavHandle.ptr));

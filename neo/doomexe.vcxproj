@@ -181,7 +181,7 @@
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WIN32;_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12;DEBUG_PIX</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WIN32;_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12;DEBUG_PIX_OFF</PreprocessorDefinitions>
       <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">_USE_32BIT_TIME_T;%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp14</LanguageStandard>
     </ClCompile>
@@ -282,11 +282,11 @@
     <ClInclude Include="renderer\DX12\debug\dx12_debug.h" />
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
     <ClInclude Include="renderer\DX12\dx12_AccelerationStructure.h" />
-    <ClInclude Include="renderer\DX12\dx12_buffermap.h" />
     <ClInclude Include="renderer\DX12\dx12_CommandList.h" />
     <ClInclude Include="renderer\DX12\dx12_DeviceManager.h" />
     <ClInclude Include="renderer\DX12\dx12_Geometry.h" />
     <ClInclude Include="renderer\DX12\dx12_global.h" />
+    <ClInclude Include="renderer\DX12\dx12_HeapDescriptorManager.h" />
     <ClInclude Include="renderer\DX12\dx12_imgui.h" />
     <ClInclude Include="renderer\DX12\dx12_raytracing.h" />
     <ClInclude Include="renderer\DX12\dx12_RaytracingPipeline.h" />
@@ -545,12 +545,12 @@
     <ClCompile Include="renderer\DX12\dx12renderer.cpp" />
     <ClCompile Include="renderer\DX12\dx12_AccelerationStructure.cpp" />
     <ClCompile Include="renderer\DX12\dx12_backend.cpp" />
-    <ClCompile Include="renderer\DX12\dx12_buffermap.cpp" />
     <ClCompile Include="renderer\DX12\dx12_BufferObject.cpp" />
     <ClCompile Include="renderer\DX12\dx12_CommandList.cpp" />
     <ClCompile Include="renderer\DX12\dx12_DeviceManager.cpp" />
     <ClCompile Include="renderer\DX12\dx12_Geometry.cpp" />
     <ClCompile Include="renderer\DX12\dx12_global.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_HeapDescriptorManager.cpp" />
     <ClCompile Include="renderer\DX12\dx12_imgui.cpp" />
     <ClCompile Include="renderer\DX12\dx12_raytracing.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RaytracingPipeline.cpp" />
@@ -948,6 +948,22 @@
     <None Include="..\base\renderprogs\color.vertex" />
     <None Include="..\base\renderprogs\colorProcess.pixel" />
     <None Include="..\base\renderprogs\colorProcess.vertex" />
+    <FxCompile Include="..\base\renderprogs\compute_skinned_offset.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.5</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Retail|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Retail|x64'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Retail|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Retail|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).ccso</ObjectFileOutput>
+      <EnableDebuggingInformation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableDebuggingInformation>
+    </FxCompile>
     <FxCompile Include="..\base\renderprogs\depth.pixel">
       <FileType>Document</FileType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>

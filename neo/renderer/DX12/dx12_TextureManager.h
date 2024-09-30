@@ -3,6 +3,7 @@
 
 #include "./dx12_resource.h"
 #include <renderer/DX12/dx12_CommandList.h>
+#include "./dx12_HeapDescriptorManager.h"
 
 namespace DX12Rendering
 {
@@ -89,13 +90,10 @@ namespace DX12Rendering
 
 		// PipelineFunctions
 		const D3D12_DESCRIPTOR_RANGE1* GetDescriptorRanges() { return m_descriptorRanges; }
-		const D3D12_GPU_DESCRIPTOR_HANDLE GetDescriptorHandle() { return m_textureUavHeaps->GetGPUDescriptorHandleForHeapStart(); }
 	private:
 		ScratchBuffer m_textureUploadHeap;
 		
 		CD3DX12_DESCRIPTOR_RANGE1 m_descriptorRanges[TEXTURE_SPACE_COUNT];
-		ComPtr<ID3D12DescriptorHeap> m_textureUavHeaps; // This will be used to define our bindless textures. Texture indecies should match m_textures.
-		UINT m_cbvHeapIncrementor;
 
 		std::vector<DX12Rendering::TextureBuffer*> m_textures; // Stores the active texture information in the scene.
 

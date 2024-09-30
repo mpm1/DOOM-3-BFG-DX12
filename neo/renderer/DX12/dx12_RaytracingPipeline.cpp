@@ -204,22 +204,6 @@ namespace DX12Rendering {
 		}
 	}
 
-	LibraryDescription::LibraryDescription(const std::string libraryName, const std::vector<std::wstring>& symbolExports) :
-		m_symbolDesc()
-	{
-		DX12Rendering::LoadHLSLShader(&m_shader, libraryName.c_str(), DXR);
-
-		m_symbolDesc.reserve(symbolExports.size());
-		for (auto& symbol : symbolExports) {
-			m_symbolDesc.push_back({ symbol.c_str(), nullptr, D3D12_EXPORT_FLAG_NONE });
-		}
-	}
-
-	LibraryDescription::~LibraryDescription()
-	{
-		DX12Rendering::UnloadHLSLShader(&m_shader);
-	}
-
 	HitGroupDescription::HitGroupDescription(std::wstring hitGroupName, std::wstring closestHitSymbol) :
 		m_name(std::move(hitGroupName)),
 		m_closestHitSymbol(std::move(closestHitSymbol))

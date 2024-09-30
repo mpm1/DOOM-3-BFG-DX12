@@ -7,6 +7,7 @@
 #include "./dx12_global.h"
 #include "./dx12_resource.h"
 #include "./dx12_Geometry.h"
+#include <renderer/DX12/dx12_RootSignature.h>
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -78,7 +79,8 @@ namespace DX12Rendering
 		UINT				hitGroupIndex; // TODO: We will change this to point to the hitGroup in the stack that contains the normal map for the surface.
 		UINT				mask; // ACCELLERATION_INSTANCE_MASK
 
-										   //TODO: Add support for bone information.
+		/* Dynamic Object Properties */
+		UINT originalBlasId;								   //TODO: Add support for bone information.
 
 		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId, UINT hitGroupIndex, ACCELLERATION_INSTANCE_MASK mask, ACCELERATION_INSTANCE_TYPE accelerationType) :
 			instanceId(id),
@@ -212,6 +214,11 @@ public:
 	~TLASManager();
 
 	bool Generate();
+
+	/// <summary>
+	/// Goes through each requested TLAS and updates corrisponding BLAS if needed.
+	/// </summary>
+	void UpdateDynamicInstances();
 
 	const bool IsReady() noexcept { return GetCurrent().Exists(); }
 	const void WaitForFence() { return GetCurrent().fence.Wait(); }

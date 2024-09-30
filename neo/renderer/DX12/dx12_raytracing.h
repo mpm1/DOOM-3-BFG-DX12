@@ -130,6 +130,7 @@ public:
 	UINT GetLightMask(const UINT index);
 
 	void GenerateTLAS();
+	void UpdateActiveBLAS();
 
 	void CleanUpAccelerationStructure();
 

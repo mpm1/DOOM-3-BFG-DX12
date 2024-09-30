@@ -278,20 +278,25 @@ struct DX12Rendering::Commands::CommandManagerCycleBlock
 		// Make sure we're starting fresh
 		assert(commandManager != nullptr);
 
+#ifdef _DEBUG
 		auto commandList = commandManager->RequestNewCommandList();
 
 		DX12Rendering::CaptureEventStart(commandList, message);
 
 		commandList->Close();
+#endif
 	}
 
 	~CommandManagerCycleBlock()
 	{
+#ifdef _DEBUG
 		auto commandList = m_commandManager->RequestNewCommandList();
 
 		DX12Rendering::CaptureEventEnd(commandList);
 
 		commandList->Close();
+#endif
+
 		m_commandManager->Execute();
 	}
 

@@ -126,6 +126,8 @@ ID3D12DescriptorHeap* DX12Rendering::CreateDescriptorHeap(ID3D12Device* device, 
 	ID3D12DescriptorHeap* heap;
 	ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap)));
 
+	heap->SetName(L"Bindless Texture Heap");
+
 	return heap;
 }
 

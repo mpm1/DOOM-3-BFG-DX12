@@ -20,13 +20,20 @@ namespace DX12Rendering
 
 		struct VertexBuffer : GeometryResource
 		{
-			VertexBuffer(const UINT numBytes, const LPCWSTR name);
+			VertexBuffer(const UINT numBytes, const LPCWSTR name, const bool isGPUWritable);
 
 			const D3D12_VERTEX_BUFFER_VIEW* GetView() { return &m_vertexBufferView; }
 
 			D3D12_VERTEX_BUFFER_VIEW* GetMutableView() { return &m_vertexBufferView; }
+
+			D3D12_UNORDERED_ACCESS_VIEW_DESC* GetUavDescriptorView() { return &m_uavBufferView; }
+
+			D3D12_SHADER_RESOURCE_VIEW_DESC* GetSrvDescriptorView() { return &m_srvBufferView; }
+
 		private:
 			D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+			D3D12_UNORDERED_ACCESS_VIEW_DESC m_uavBufferView;
+			D3D12_SHADER_RESOURCE_VIEW_DESC m_srvBufferView;
 		};
 
 		struct IndexBuffer : GeometryResource

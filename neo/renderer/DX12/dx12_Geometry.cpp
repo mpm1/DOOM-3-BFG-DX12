@@ -30,18 +30,34 @@ namespace DX12Rendering {
 	}
 
 #pragma region VertexBuffer
-	Geometry::VertexBuffer::VertexBuffer(const UINT numBytes, const LPCWSTR name) :
-		GeometryResource(name)
+	Geometry::VertexBuffer::VertexBuffer(const UINT numBytes, const LPCWSTR name, const bool isGPUWritable) :
+		GeometryResource(name),
+		m_vertexBufferView({}),
+		m_uavBufferView({}),
+		m_srvBufferView({})
 	{
 		// Allocate at the start
-		D3D12_RESOURCE_DESC description = CD3DX12_RESOURCE_DESC::Buffer(numBytes);
-		D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
-		Allocate(description, D3D12_RESOURCE_STATE_GENERIC_READ, heapProps);
+		D3D12_RESOURCE_DESC description = CD3DX12_RESOURCE_DESC::Buffer(numBytes, isGPUWritable ? D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS : D3D12_RESOURCE_FLAG_NONE);
+		D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(isGPUWritable ? D3D12_HEAP_TYPE_DEFAULT : D3D12_HEAP_TYPE_UPLOAD);
+		Allocate(description, isGPUWritable ? D3D12_RESOURCE_STATE_COMMON : D3D12_RESOURCE_STATE_GENERIC_READ, heapProps);
 
 		// Fill in the view
 		m_vertexBufferView.BufferLocation = state == Unallocated ? NULL : resource->GetGPUVirtualAddress();
 		m_vertexBufferView.SizeInBytes = numBytes;
-		m_vertexBufferView.StrideInBytes = sizeof(idDrawVert); // TODO: Change to Doom vertex structure
+		m_vertexBufferView.StrideInBytes = sizeof(idDrawVert);
+
+		m_uavBufferView.Format = description.Format;
+		m_uavBufferView.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
+		m_uavBufferView.Buffer.FirstElement = 0;
+		m_uavBufferView.Buffer.NumElements = numBytes / sizeof(idDrawVert);
+		m_uavBufferView.Buffer.StructureByteStride = sizeof(idDrawVert);
+
+		m_srvBufferView.Format = description.Format;
+		m_srvBufferView.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+		m_srvBufferView.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		m_srvBufferView.Buffer.FirstElement = 0;
+		m_srvBufferView.Buffer.NumElements = numBytes / sizeof(idDrawVert);
+		m_srvBufferView.Buffer.StructureByteStride = sizeof(idDrawVert);
 	}
 #pragma endregion
 

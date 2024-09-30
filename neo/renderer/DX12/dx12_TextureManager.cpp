@@ -21,8 +21,7 @@ namespace DX12Rendering
 	}
 
 	TextureManager::TextureManager() :
-		m_textureUploadHeap(3840*2160*4*16, D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap"),
-		m_cbvHeapIncrementor(0)
+		m_textureUploadHeap(3840*2160*4*16, D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap")
 	{
 		m_textures.reserve(BINDLESS_TEXTURE_COUNT);
 
@@ -43,16 +42,7 @@ namespace DX12Rendering
 		Clear();
 	}
 
-	void TextureManager::Initialize(uint screenWidth, uint screenHeight) {
-		if (m_cbvHeapIncrementor == 0)
-		{
-			auto device = DX12Rendering::Device::GetDevice();
-
-			// We haven't initialized the CBV heap yet.
-			m_textureUavHeaps = CreateDescriptorHeap(device, BINDLESS_TEXTURE_COUNT, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
-			m_cbvHeapIncrementor = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-		}
-
+	void TextureManager::Initialize(uint screenWidth, uint screenHeight) {	
 		// Create the basic entries for the global textures
 		for (int i = 0; i < eGlobalTexture::TEXTURE_COUNT; ++i)
 		{
@@ -120,6 +110,19 @@ namespace DX12Rendering
 				shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
 				m_textures.size() <= i ? -1 : i);
 		}
+
+		// Fill in all textures
+		HeapDescriptorManager* heapManager = GetDescriptorManager();
+
+		for (int i = eGlobalTexture::TEXTURE_COUNT; i < BINDLESS_TEXTURE_COUNT; ++i)
+		{
+			auto defaultTexture = GetGlobalTexture(eGlobalTexture::ALBEDO);
+
+			ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
+			CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, i);
+			device->CreateShaderResourceView(defaultTexture->resource.Get(), &defaultTexture->textureView, textureHandle);
+		}
 	}
 
 	TextureBuffer* GetGlobalTexture(eGlobalTexture textureId);
@@ -172,7 +175,7 @@ namespace DX12Rendering
 	}
 
 	bool TextureManager::SetTexturePixelShaderState(TextureBuffer* buffer, DX12Rendering::Commands::CommandList* commandList) const {
-		return SetTextureState(buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, commandList);
+		return SetTextureState(buffer, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE|D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, commandList);
 	}
 
 	bool TextureManager::SetTextureState(TextureBuffer* buffer, const D3D12_RESOURCE_STATES usageState, DX12Rendering::Commands::CommandList* commandList) const {
@@ -280,7 +283,7 @@ namespace DX12Rendering
 			
 			if (index < BINDLESS_TEXTURE_COUNT)
 			{
-				CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_textureUavHeaps->GetCPUDescriptorHandleForHeapStart(), index, m_cbvHeapIncrementor);
+				CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle = GetDescriptorManager()->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, index);
 				device->CreateShaderResourceView(buffer->resource.Get(), &buffer->textureView, textureHandle);
 			}
 

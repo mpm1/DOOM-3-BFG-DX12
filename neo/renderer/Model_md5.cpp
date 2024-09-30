@@ -865,9 +865,16 @@ void idRenderModelMD5::WriteBinaryModel( idFile * file, ID_TIME_T *_timeStamp ) 
 // Load the blas data
 void idRenderModelMD5::GenerateBLAS()
 {
+	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs
+
+	UpdateBLASData(id);
+}
+
+void idRenderModelMD5::UpdateBLASData(dxHandle_t id)
+{
 	std::vector<DX12Rendering::RaytracingGeometryArgument> geometry = {};
 	geometry.reserve(meshes.Num());
-
+	
 	for (int i = 0; i < meshes.Num(); i++) 
 	{
 		if (meshes[i].shader->Coverage() == MC_TRANSLUCENT)
@@ -894,7 +901,6 @@ void idRenderModelMD5::GenerateBLAS()
 		geometry.emplace_back(geo);
 	}
 
-	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs
 	dxRenderer.DXR_UpdateBLAS(id, this->Name(), false, geometry.size(), geometry.data());
 }
 
@@ -906,8 +912,10 @@ void idRenderModelMD5::DestroyBLAS()
 
 void idRenderModelMD5::UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
 {
+	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs. These should be a combination of entityIndex and id
+
 	//Mark start here. We need to add the blas per mesh item then call only what's visible here.
-	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs
+	UpdateBLASData(id);
 
 	dxRenderer.DXR_AddBLASToTLAS(entityIndex, id, transform, DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC, instanceMask);
 }

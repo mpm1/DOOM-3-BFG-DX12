@@ -39,6 +39,39 @@ UINT LoadBindlessTexture(idImage* image)
 	return buffer->GetTextureIndex();
 }
 
+
+int GetVertexBufferOffset(const vertCacheHandle_t vbHandle)
+{
+	// TODO: Add check here to grab the current frames joint model offset if it exists.
+	return (int)(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+}
+
+UINT GetVertexBufferSize(const vertCacheHandle_t vbHandle)
+{
+	return (vbHandle >> VERTCACHE_SIZE_SHIFT) & VERTCACHE_SIZE_MASK;
+}
+
+idVertexBuffer* GetVertexBuffer(const vertCacheHandle_t vbHandle)
+{
+	// TODO: Add check here to grab the current frames joint model if it exists.
+	// get vertex buffer
+	idVertexBuffer* vertexBuffer;
+	if (vertexCache.CacheIsStatic(vbHandle)) {
+		vertexBuffer = &vertexCache.staticData.vertexBuffer;
+	}
+	else {
+		const uint64 frameNum = (int)(vbHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
+		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
+			idLib::Warning("RB_DrawElementsWithCounters, vertexBuffer == NULL");
+			return nullptr;
+		}
+		vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
+	}
+
+	return vertexBuffer;
+}
+	
+
 bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 {
 	// TODO: Implement
@@ -436,19 +469,14 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
 
 	// get vertex buffer
-	idVertexBuffer* vertexBuffer;
-	if (vertexCache.CacheIsStatic(vbHandle)) {
-		vertexBuffer = &vertexCache.staticData.vertexBuffer;
+	idVertexBuffer* vertexBuffer = GetVertexBuffer(vbHandle);
+	const int vertOffset = GetVertexBufferOffset(vbHandle);
+
+	if (vertexBuffer == nullptr)
+	{
+		// An error occured when grabbing the vertex buffer data.
+		return;
 	}
-	else {
-		const uint64 frameNum = (int)(vbHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
-		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
-			idLib::Warning("RB_DrawElementsWithCounters, vertexBuffer == NULL");
-			return;
-		}
-		vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
-	}
-	const int vertOffset = (int)(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
 	auto apiVertexBuffer = reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject());
 	
@@ -2947,15 +2975,54 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
 	const int numDrawSurfs = viewDef->numDrawSurfs;
 
-	for (int i = 0; i < numDrawSurfs; i++) {
-		const drawSurf_t* ds = viewDef->drawSurfs[i];
-		if (ds->material != NULL) {
-			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
-		}
-	}
-
 	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
 	const bool useGBuffer = raytracedEnabled;
+
+	// Copy Vertex data for drawing dynamic objects
+	/*{
+		idVertexBuffer* vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
+		dxRenderer.CopyDynamicVertexData(reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject()), vertexBuffer->GetOffset(), vertexBuffer->GetSize());
+	}*/
+
+	{
+		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_DrawViewInternal::ComputeBones");
+
+		for (int i = 0; i < numDrawSurfs; i++) {
+			const drawSurf_t* ds = viewDef->drawSurfs[i];
+			if (ds->material != NULL) {
+				const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
+			}
+
+			if (ds->jointCache)
+			{
+				// get vertex buffer
+				idVertexBuffer* const vertexBuffer = GetVertexBuffer(ds->ambientCache);
+				const int vertOffset = GetVertexBufferOffset(ds->ambientCache);
+				const UINT vertSize = GetVertexBufferSize(ds->ambientCache);
+
+				if (vertexBuffer == nullptr)
+				{
+					// An error occured when grabbing the vertex buffer data.
+					return;
+				}
+
+				DX12Rendering::Geometry::VertexBuffer* const apiVertexBuffer = static_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject());
+
+				// get joint buffer
+				idJointBuffer jointBuffer;
+				if (!vertexCache.GetJointBuffer(ds->jointCache, &jointBuffer)) {
+					idLib::Warning("BackEnd ComputeSurfaceBones, jointBuffer == NULL");
+					return;
+				}
+
+				DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
+
+				// Update the vert structure.
+				dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
+			}
+		}
+	}
 
 	//-------------------------------------------------
 	// RB_BeginDrawingView
@@ -3124,16 +3191,16 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	bool raytraceUpdated = false;
 	if (backEnd.viewDef->viewEntitys != NULL) {
+		//-------------------------------------------------
+		// fill the depth buffer and clear color buffer to black except on subviews
+		//-------------------------------------------------
+		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
+
 		if (raytracedEnabled)
 		{
 			raytraceUpdated = true;
 			dxRenderer.DXR_UpdateAccelerationStructure();
 		}
-
-		//-------------------------------------------------
-		// fill the depth buffer and clear color buffer to black except on subviews
-		//-------------------------------------------------
-		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
 
 		if (useGBuffer)
 		{

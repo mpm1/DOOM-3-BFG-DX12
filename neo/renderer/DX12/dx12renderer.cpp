@@ -95,6 +95,7 @@ DX12Renderer::DX12Renderer() :
 	m_height(2),
 	m_fullScreen(0),
 	m_rootSignature(nullptr),
+	m_computeRootSignature(nullptr),
 	m_raytracing(nullptr),
 	m_frameFence(L"Frame Fence"),
 	m_copyFence(L"Copy Fence")
@@ -216,6 +217,159 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 
 	// Create Frame Resources
 	ZeroMemory(&this->m_constantBuffer, sizeof(m_constantBuffer));
+
+	// Create the Per Frame Dynamic 
+	CreateDynamicPerFrameData();
+}
+
+void DX12Renderer::CreateDynamicPerFrameData()
+{
+	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex)
+	{
+		m_dynamicVertexBuffer[frameIndex] = AllocVertexBuffer(DX12_ALIGN(DYNAMIC_VERTEX_MEMORY_PER_FRAME, DYNAMIC_VERTEX_ALIGNMENT), L"Dynamic Vertex Data", true);
+	}
+}
+
+void DX12Renderer::DestroyDynamicPerFrameData()
+{
+	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex)
+	{
+		FreeVertexBuffer(m_dynamicVertexBuffer[frameIndex]);
+	}
+}
+
+void DX12Renderer::ResetDynamicPerFrameData()
+{
+	m_nextDynamicVertexIndex = 0;
+}
+
+UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT offset /* assume srcBuffer and dstBuffer are the same layout */, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset)
+{
+	struct 	ComputeConstants
+	{
+		UINT vertCount;
+		UINT vertOffset;
+		UINT vertPerThread;
+		UINT pad0;
+	};
+
+	constexpr UINT vertStride = sizeof(idDrawVert);
+	const UINT vertIndexCount = vertBytes / vertStride;
+	const UINT alignedVerts = DX12_ALIGN(vertIndexCount, 64);
+	const UINT vertsPerSection = (vertIndexCount <= 64) ? 1 : (alignedVerts >> 6);
+
+	UINT8 frameIndex = DX12Rendering::GetCurrentFrameIndex();
+	DX12Rendering::Geometry::VertexBuffer* dstBuffer = m_dynamicVertexBuffer[frameIndex];
+
+	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::ComputeSurfaceBones");
+
+	ID3D12PipelineState* pipelineState = m_skinnedModelShader.Get();
+	assert(pipelineState != nullptr);
+
+	UINT objectIndex = m_computeRootSignature->RequestNewObjectIndex();
+
+	// Create constants
+	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
+
+	{
+		// Object Constants
+		ComputeConstants constants = {};
+		constants.vertCount = vertIndexCount;
+		constants.vertPerThread = vertsPerSection;
+		constants.vertOffset = offset;
+
+		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(ComputeConstants));
+		resourceManager.FillConstantBuffer(buffer, &constants);
+		m_computeRootSignature->SetConstantBufferView(objectIndex, 2, buffer);
+	}
+
+	{
+		// Joint Constants
+		DX12Rendering::ConstantBuffer constantBuffer = {};
+		constantBuffer.bufferLocation.BufferLocation = joints->resource->GetGPUVirtualAddress() + jointOffset;
+		constantBuffer.bufferLocation.SizeInBytes = *joints->GetSize();
+
+		m_computeRootSignature->SetConstantBufferView(objectIndex, 1, constantBuffer);
+	}
+
+	{
+		// Setup the input buffer
+		m_computeRootSignature->SetUnorderedAccessView(objectIndex, 3, dstBuffer);
+
+		// Setup the output buffer
+		m_computeRootSignature->SetShaderResourceView(objectIndex, 4, srcBuffer);
+	}
+
+	m_computeRootSignature->SetRootDescriptorTable(objectIndex, commandList);
+	commandList->CommandSetPipelineState(pipelineState);
+
+	commandList->AddCommandAction([&dstBuffer](ID3D12GraphicsCommandList4* commandList)
+	{
+		{
+			D3D12_RESOURCE_BARRIER barrier;
+			if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &barrier))
+			{
+				commandList->ResourceBarrier(1, &barrier);
+			}
+		}
+
+		// TODO: Make sure we;ve setup the CBV heap correctly.
+
+		commandList->Dispatch(64, 1, 1);
+
+		{
+			D3D12_RESOURCE_BARRIER barrier;
+			if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_COMMON, &barrier))
+			{
+				commandList->ResourceBarrier(1, &barrier);
+			}
+		}
+	});
+
+	return objectIndex;
+}
+
+UINT64 DX12Renderer::CopyDynamicVertexData(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT64 srcOffset, size_t size)
+{
+	UINT8 frameIndex = DX12Rendering::GetCurrentFrameIndex();
+	DX12Rendering::Geometry::VertexBuffer* vertexBuffer = m_dynamicVertexBuffer[frameIndex];
+
+	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::CopyDynamicVertexData");
+
+	UINT index = m_nextDynamicVertexIndex;
+	UINT alignedSize = DX12_ALIGN(size, DYNAMIC_VERTEX_ALIGNMENT);
+
+	m_nextDynamicVertexIndex += m_nextDynamicVertexIndex;
+
+	assert(DYNAMIC_VERTEX_MEMORY_PER_FRAME >= m_nextDynamicVertexIndex);
+
+	ID3D12Resource* srcResource = srcBuffer->resource.Get();
+
+	commandList->AddCommandAction([vertexBuffer, srcResource, index, srcOffset, size](ID3D12GraphicsCommandList4* commandList)
+	{
+		{
+			D3D12_RESOURCE_BARRIER barrier;
+			if (vertexBuffer->TryTransition(D3D12_RESOURCE_STATE_COPY_DEST, &barrier))
+			{
+				commandList->ResourceBarrier(1, &barrier);
+			}
+		}
+
+		commandList->CopyBufferRegion(vertexBuffer->resource.Get(), index, srcResource, srcOffset, size);
+
+		{
+			D3D12_RESOURCE_BARRIER barrier;
+			if (vertexBuffer->TryTransition(D3D12_RESOURCE_STATE_GENERIC_READ, &barrier)) {
+				commandList->ResourceBarrier(1, &barrier);
+			}
+		}
+	});
+
+	commandList->AddPostFenceSignal(&vertexBuffer->fence);
+
+	return index;
 }
 
 bool DX12Renderer::CreateBackBuffer() {
@@ -306,15 +460,24 @@ void DX12Renderer::LoadAssets() {
 	}
 
 	// Create Empty Root Signature
-	m_rootSignature = new DX12Rendering::DX12RootSignature(device);
+	m_rootSignature = new DX12Rendering::RenderRootSignature(device);
 
 	{
 		std::fill(m_activeTextures, m_activeTextures + TEXTURE_REGISTER_COUNT, static_cast<DX12Rendering::TextureBuffer*>(nullptr));
 	}
+
+	// Create the Compute Root Signature
+	m_computeRootSignature = new DX12Rendering::ComputeRootSignature(device);
+
+	// Load compute shaders
+	{
+		DX12Rendering::computeShader_t* computeShader = DX12Rendering::GetComputeShader(DX12Rendering::eComputeShaders::COMPUTE_SKINNED_OFFSET);
+		LoadComputePipelineState(computeShader, m_computeRootSignature, &m_skinnedModelShader);
+	}
 }
 
-DX12Rendering::Geometry::VertexBuffer* DX12Renderer::AllocVertexBuffer(UINT numBytes, LPCWSTR name) {
-	DX12Rendering::Geometry::VertexBuffer* result = new DX12Rendering::Geometry::VertexBuffer(numBytes, name);
+DX12Rendering::Geometry::VertexBuffer* DX12Renderer::AllocVertexBuffer(UINT numBytes, LPCWSTR name, const bool isGPUWritable) {
+	DX12Rendering::Geometry::VertexBuffer* result = new DX12Rendering::Geometry::VertexBuffer(numBytes, name, isGPUWritable);
 
 	return result;
 }
@@ -353,7 +516,7 @@ void DX12Renderer::SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, 
 	constantBuffer.bufferLocation.BufferLocation = buffer->resource->GetGPUVirtualAddress() + jointOffset;
 	constantBuffer.bufferLocation.SizeInBytes = *buffer->GetSize();
 
-	m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRootSignatureEntry::eJointCBV, constantBuffer);
+	m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRenderRootSignatureEntry::eJointCBV, constantBuffer);
 }
 
 void DX12Renderer::SignalNextFrame() {
@@ -442,6 +605,7 @@ void DX12Renderer::BeginDraw() {
 	}
 
 	DX12Rendering::UpdateFrameIndex(m_swapChain.Get());
+	ResetDynamicPerFrameData();
 
 	WaitForPreviousFrame();
 
@@ -569,7 +733,7 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 		// Set our constant buffer values.
 		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(m_constantBuffer));
 		resourceManager.FillConstantBuffer(buffer, m_constantBuffer);
-		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRootSignatureEntry::eModelCBV, buffer);
+		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRenderRootSignatureEntry::eModelCBV, buffer);
 
 		// TODO: split this up so we have an already existing camera buffer.
 	}
@@ -579,7 +743,7 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 		// Set our constant buffer values.
 		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(surfaceConstantsSize);
 		resourceManager.FillConstantBuffer(buffer, surfaceConstants);
-		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRootSignatureEntry::eSurfaceCBV, buffer);
+		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRenderRootSignatureEntry::eSurfaceCBV, buffer);
 	}
 
 	if (surfaceConstants == nullptr)
@@ -699,6 +863,8 @@ void DX12Renderer::OnDestroy() {
 	ReleaseImGui();
 #endif
 
+	DestroyDynamicPerFrameData();
+
 	if (m_raytracing != nullptr) {
 		delete m_raytracing;
 		m_raytracing = nullptr;
@@ -707,6 +873,11 @@ void DX12Renderer::OnDestroy() {
 	if (m_rootSignature != nullptr) {
 		delete m_rootSignature;
 		m_rootSignature = nullptr;
+	}
+
+	if (m_computeRootSignature != nullptr) {
+		delete m_computeRootSignature;
+		m_computeRootSignature = nullptr;
 	}
 
 	DX12Rendering::DestroySurfaces();
