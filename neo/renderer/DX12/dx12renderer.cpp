@@ -97,8 +97,7 @@ DX12Renderer::DX12Renderer() :
 	m_rootSignature(nullptr),
 	m_computeRootSignature(nullptr),
 	m_raytracing(nullptr),
-	m_frameFence(L"Frame Fence"),
-	m_copyFence(L"Copy Fence")
+	m_endFrameFence(DX12Rendering::Commands::DIRECT, 0)
 {
 }
 
@@ -330,48 +329,6 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 	return objectIndex;
 }
 
-UINT64 DX12Renderer::CopyDynamicVertexData(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT64 srcOffset, size_t size)
-{
-	UINT8 frameIndex = DX12Rendering::GetCurrentFrameIndex();
-	DX12Rendering::Geometry::VertexBuffer* vertexBuffer = m_dynamicVertexBuffer[frameIndex];
-
-	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::CopyDynamicVertexData");
-
-	UINT index = m_nextDynamicVertexIndex;
-	UINT alignedSize = DX12_ALIGN(size, DYNAMIC_VERTEX_ALIGNMENT);
-
-	m_nextDynamicVertexIndex += m_nextDynamicVertexIndex;
-
-	assert(DYNAMIC_VERTEX_MEMORY_PER_FRAME >= m_nextDynamicVertexIndex);
-
-	ID3D12Resource* srcResource = srcBuffer->resource.Get();
-
-	commandList->AddCommandAction([vertexBuffer, srcResource, index, srcOffset, size](ID3D12GraphicsCommandList4* commandList)
-	{
-		{
-			D3D12_RESOURCE_BARRIER barrier;
-			if (vertexBuffer->TryTransition(D3D12_RESOURCE_STATE_COPY_DEST, &barrier))
-			{
-				commandList->ResourceBarrier(1, &barrier);
-			}
-		}
-
-		commandList->CopyBufferRegion(vertexBuffer->resource.Get(), index, srcResource, srcOffset, size);
-
-		{
-			D3D12_RESOURCE_BARRIER barrier;
-			if (vertexBuffer->TryTransition(D3D12_RESOURCE_STATE_GENERIC_READ, &barrier)) {
-				commandList->ResourceBarrier(1, &barrier);
-			}
-		}
-	});
-
-	commandList->AddPostFenceSignal(&vertexBuffer->fence);
-
-	return index;
-}
-
 bool DX12Renderer::CreateBackBuffer() {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
@@ -434,15 +391,15 @@ void DX12Renderer::LoadAssets() {
 
 	// Create the synchronization objects
 	{
-		m_frameFence.Allocate(device);
-
 		// Attach event for device removal
 #ifdef DEBUG_GPU
 		m_removeDeviceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
 		if (m_removeDeviceEvent == nullptr) {
 			DX12Rendering::ThrowIfFailed(HRESULT_FROM_WIN32(GetLastError()));
 		}
-		m_frameFence.SetCompletionEvent(UINT64_MAX, m_removeDeviceEvent); // This is done because all fence values are set the to  UINT64_MAX value when the device is removed.
+
+		auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
+		commandManager->SetFenceCompleteEvent(UINT64_MAX, m_removeDeviceEvent); // This is done because all fence values are set the to  UINT64_MAX value when the device is removed.
 
 		RegisterWaitForSingleObject(
 			&m_deviceRemovedHandle,
@@ -524,18 +481,18 @@ void DX12Renderer::SignalNextFrame() {
 	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
 
 	auto commandList = commandManager->RequestNewCommandList();
-	commandList->AddPostFenceSignal(&m_frameFence);
+	
+	const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
+	m_endFrameFence.commandList = fence.commandList;
+	m_endFrameFence.value = fence.value;
+	
 	commandList->Close();
 
 	commandManager->Execute();
 }
 
 void DX12Renderer::WaitForPreviousFrame() {
-	m_frameFence.Wait();
-}
-
-void DX12Renderer::WaitForCopyToComplete() {
-	m_copyFence.Wait();
+	DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->WaitOnFence(m_endFrameFence);
 }
 
 void DX12Renderer::SetPassDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue)
@@ -640,12 +597,12 @@ void DX12Renderer::BeginDraw() {
 	}
 
 	// Reset Allocators.
-	if (m_copyFence.IsFenceCompleted()) {
-		//if (FAILED(m_copyCommandAllocator->Reset())) {
-		//	common->Warning("Could not reset the copy command allocator.");
-		//	//return;
-		//}
-	}
+	//if (m_copyFence.IsFenceCompleted()) {
+	//	//if (FAILED(m_copyCommandAllocator->Reset())) {
+	//	//	common->Warning("Could not reset the copy command allocator.");
+	//	//	//return;
+	//	//}
+	//}
 
 	{
 		ResetRenderTargets();
@@ -1298,8 +1255,9 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
-	bool result = m_raytracing->CastShadowRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
-	
+	const DX12Rendering::Commands::FenceValue drawFence = m_raytracing->CastShadowRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
+	const bool result = drawFence.value > 0;
+
 	if (result)
 	{
 		// Copy the raytraced shadow data
@@ -1308,17 +1266,24 @@ bool DX12Renderer::DXR_CastRays()
 
 		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceShadowMask);
 
-		surface->CopySurfaceToTexture(lightTexture, textureManager);
+		surface->CopySurfaceToTexture(lightTexture, textureManager, drawFence);
 
 		// Copy the diffuse data
 		auto diffuseMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Diffuse);
 		DX12Rendering::TextureBuffer* diffuseTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE);
-		diffuseMap->CopySurfaceToTexture(diffuseTexture, textureManager);
+		diffuseMap->CopySurfaceToTexture(diffuseTexture, textureManager, drawFence);
 
 		// Copy the specular data
 		auto specularMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular);
 		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
-		specularMap->CopySurfaceToTexture(specularTexture, textureManager)->Wait();
+		auto fenceValue = specularMap->CopySurfaceToTexture(specularTexture, textureManager, drawFence);
+
+		// Wait for all copies to complete.
+		/*auto directWait = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
+		directWait->AddPreFenceWait(fenceValue);
+		directWait->Close();*/
+
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->WaitOnFence(fenceValue);
 	}
 
 	return result;
@@ -1466,43 +1431,6 @@ const DX12Rendering::RenderSurface** DX12Renderer::GetCurrentRenderTargets(UINT&
 	return (const DX12Rendering::RenderSurface**)m_renderTargets;
 }
 
-void DX12Renderer::CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height)
-{
-	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::CopySurfaceToDisplay");
-
-	DX12Rendering::RenderSurface& surface = *DX12Rendering::GetSurface(surfaceId);
-	DX12Rendering::RenderSurface& renderTarget = *GetOutputRenderTarget();
-
-	commandList->AddPreFenceWait(&surface.fence); // Wait for all drawing to complete.
-
-	commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
-	{
-		D3D12_RESOURCE_BARRIER transition = {};
-		if (surface.TryTransition(D3D12_RESOURCE_STATE_COPY_SOURCE, &transition))
-		{
-			commandList->ResourceBarrier(1, &transition);
-		}
-
-		if (renderTarget.TryTransition(D3D12_RESOURCE_STATE_COPY_DEST, &transition))
-		{
-			commandList->ResourceBarrier(1, &transition);
-		}
-
-		const CD3DX12_TEXTURE_COPY_LOCATION dst(renderTarget.resource.Get());
-		const CD3DX12_TEXTURE_COPY_LOCATION src(surface.resource.Get());
-		const CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
-		commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
-
-		if (renderTarget.TryTransition(D3D12_RESOURCE_STATE_RENDER_TARGET, &transition))
-		{
-			commandList->ResourceBarrier(1, &transition);
-		}
-	});
-
-	commandList->AddPostFenceSignal(&surface.fence);
-}
-
 #ifdef _DEBUG
 
 void DX12Renderer::DebugAddLight(const viewLight_t& light)
@@ -1513,12 +1441,6 @@ void DX12Renderer::DebugAddLight(const viewLight_t& light)
 void DX12Renderer::DebugClearLights()
 {
 	m_debugLights.clear();
-}
-
-void DX12Renderer::CopyDebugResultToDisplay()
-{
-	//renderTarget->fence.Wait();
-	CopySurfaceToDisplay(DX12Rendering::eRenderSurface::Diffuse, 0, 0, 0, 0, m_width / 2, m_height);
 }
 
 #ifdef DEBUG_IMGUI

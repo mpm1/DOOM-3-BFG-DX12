@@ -54,15 +54,7 @@ DX12Rendering::RenderPassBlock::~RenderPassBlock()
 	
 	DX12Rendering::CaptureEventEnd(commandList);
 
-	for (int index = 0; index < renderTargetCount; ++index)
-	{
-		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(m_renderSurfaces[index]);
-		
-		if (surface)
-		{
-			commandList->AddPostFenceSignal(&surface->fence);
-		}
-	}
+	commandList->AddPostFenceSignal();
 
 	commandList->Close();
 	m_commandManager->Execute();

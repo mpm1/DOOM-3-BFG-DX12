@@ -126,7 +126,9 @@ namespace DX12Rendering {
 
 		ID3D12Device5* device = Device::GetDevice();
 
-		if (device == nullptr || !fence.IsFenceCompleted())
+		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+
+		if (device == nullptr || !commandManager->IsFenceCompleted(m_lastFenceValue))
 		{
 			return false; // We are not ready to generate.
 		}
@@ -146,7 +148,7 @@ namespace DX12Rendering {
 				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE; // For now we will always allow updates in our BLAS
 		}
 
-		DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
+		DX12Rendering::Commands::CommandList* commandList = commandManager->RequestNewCommandList();
 		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "BottomLevelAccelerationStructure::Generate");
 
 		UINT64 requestedScratchSize;
@@ -215,7 +217,11 @@ namespace DX12Rendering {
 			commandList->ResourceBarrier(1, &uavBarrier);
 		});
 
-		commandList->AddPostFenceSignal(&fence); // Add our fence that we will signal on exit.
+		Commands::FenceValue resultFence = commandList->AddPostFenceSignal(); // Add our fence that we will signal on exit.
+
+		assert(resultFence.commandList == m_lastFenceValue.commandList);
+
+		m_lastFenceValue.value = resultFence.value;
 	}
 
 #pragma endregion
@@ -277,7 +283,7 @@ namespace DX12Rendering {
 	UINT BLASManager::Generate()
 	{
 		// TODO: Define starting point for BLAS using m_blasIndex
-		auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "BLASManager::Generate");
 
 		UINT count = 0;
@@ -295,7 +301,7 @@ namespace DX12Rendering {
 					break;
 				}
 			}
-			else if (!m_scratchBuffer.fence.IsFenceCompleted())//!blasPair->second.Exists() && m_scratchBuffer.state == DX12Rendering::Resource::Dirty)
+			else if (!m_scratchBuffer.IsFenceCompleted())//!blasPair->second.Exists() && m_scratchBuffer.state == DX12Rendering::Resource::Dirty)
 			{
 				// Our scratch buffer is full, so we should wait.
 				break;
@@ -499,7 +505,11 @@ namespace DX12Rendering {
 			commandList->ResourceBarrier(1, &uavBarrier);
 		});
 
-		commandList->AddPostFenceSignal(&fence);
+		DX12Rendering::Commands::FenceValue resultValue = commandList->AddPostFenceSignal();
+
+		assert(resultValue.commandList == m_lastFenceValue.commandList);
+
+		m_lastFenceValue.value = resultValue.value;
 
 		return true;
 	}
@@ -611,6 +621,13 @@ namespace DX12Rendering {
 		}	
 
 		return result;
+	}
+
+	const void TLASManager::WaitForFence()
+	{
+		const DX12Rendering::Commands::FenceValue& fenceValue = GetCurrent().GetLastFenceValue();
+		
+		DX12Rendering::Commands::GetCommandManager(fenceValue.commandList)->WaitOnFence(fenceValue);
 	}
 
 	void TLASManager::AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, ACCELLERATION_INSTANCE_MASK instanceMask)

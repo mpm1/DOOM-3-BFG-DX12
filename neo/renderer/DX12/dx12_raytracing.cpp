@@ -269,7 +269,7 @@ namespace DX12Rendering {
 		return true;
 	}
 
-	bool Raytracing::CastShadowRays(
+	const DX12Rendering::Commands::FenceValue Raytracing::CastShadowRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect
@@ -289,7 +289,7 @@ namespace DX12Rendering {
 
 		if (tlasManager && !tlasManager->IsReady()) {
 			// No objects to cast shadows.
-			return false;
+			return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::COMPUTE, 0);
 		}
 
 		//tlasManager->WaitForFence();
@@ -316,7 +316,7 @@ namespace DX12Rendering {
 		return CastRays(frameIndex, viewport, scissorRect, surfaces, surfaceCount);
 	}
 
-	bool Raytracing::CastRays(
+	const DX12Rendering::Commands::FenceValue Raytracing::CastRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
@@ -332,7 +332,7 @@ namespace DX12Rendering {
 		);
 		auto commandList = renderPass.GetCommandManager()->RequestNewCommandList();
 
-		commandList->AddPreFenceWait(&m_tlasManager.GetCurrent().fence);
+		commandList->AddPreFenceWait(m_tlasManager.GetCurrent().GetLastFenceValue());
 
 		// Copy the CBV data to the heap
 		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
@@ -380,9 +380,11 @@ namespace DX12Rendering {
 			commandList->DispatchRays(&desc);
 		});
 
+		const DX12Rendering::Commands::FenceValue result = commandList->AddPostFenceSignal();
+
 		commandList->Close();
 
-		return true;
+		return result;
 	}
 
 	void Raytracing::AddObjectToAllTopLevelAS() {

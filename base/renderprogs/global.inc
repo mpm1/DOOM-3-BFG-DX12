@@ -28,6 +28,8 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "functions.inc"
 
+#define GROUP_THREADS 64
+
 SamplerState MeshTextureSampler
 {
     Filter = MIN_MAG_MIP_LINEAR;

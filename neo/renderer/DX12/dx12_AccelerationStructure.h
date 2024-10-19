@@ -122,7 +122,8 @@ namespace DX12Rendering
 			id(id),
 			m_sizeInBytes(0),
 			m_isStatic(isStatic),
-			isBuilt(false)
+			isBuilt(false),
+			m_lastFenceValue(Commands::COMPUTE, 0)
 		{}
 
 		~BottomLevelAccelerationStructure()
@@ -141,6 +142,8 @@ namespace DX12Rendering
 	private:
 		UINT64 m_sizeInBytes;
 
+		DX12Rendering::Commands::FenceValue m_lastFenceValue;
+
 		void CalculateBufferSize(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS* desc);
 	};
 
@@ -151,7 +154,8 @@ namespace DX12Rendering
 	{
 		TopLevelAccelerationStructure(const std::wstring name) :
 			Resource(std::move(name.c_str())),
-			m_instanceDescriptor(InstanceDescriptor((name + L": Descriptor").c_str()))
+			m_instanceDescriptor(InstanceDescriptor((name + L": Descriptor").c_str())),
+			m_lastFenceValue(DX12Rendering::Commands::dx12_commandList_t::COMPUTE, 0)
 		{}
 		~TopLevelAccelerationStructure();
 
@@ -166,6 +170,8 @@ namespace DX12Rendering
 
 		ID3D12Resource* GetResult() { return resource.Get(); }
 
+		const DX12Rendering::Commands::FenceValue& GetLastFenceValue(){ return m_lastFenceValue; }
+
 #ifdef DEBUG_IMGUI
 		const void ImGuiDebug();
 #endif
@@ -174,6 +180,8 @@ namespace DX12Rendering
 		UINT64 m_resultSize = 0;
 
 		void CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize, const UINT instanceCount, const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS* description);
+
+		DX12Rendering::Commands::FenceValue m_lastFenceValue;
 	};
 }
 
@@ -204,7 +212,7 @@ private:
 	std::map<dxHandle_t, BottomLevelAccelerationStructure> m_objectMap = {};
 	ScratchBuffer m_scratchBuffer;
 
-	DX12Rendering::Fence m_fence;
+	
 };
 
 class DX12Rendering::TLASManager
@@ -221,7 +229,7 @@ public:
 	void UpdateDynamicInstances();
 
 	const bool IsReady() noexcept { return GetCurrent().Exists(); }
-	const void WaitForFence() { return GetCurrent().fence.Wait(); }
+	const void WaitForFence();
 
 	TopLevelAccelerationStructure& GetCurrent() { return m_tlas[GetCurrentFrameIndex()]; }
 

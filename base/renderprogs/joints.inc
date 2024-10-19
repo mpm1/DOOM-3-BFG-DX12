@@ -31,7 +31,12 @@ struct JointConstants {
 };
 ConstantBuffer<JointConstants> matrices_ubo : register(b1);
 
+float4 GetJointFromConst(JointConstants joints, int index)
+{
+	return joints.matrices[index];
+}
+
 float4 GetJoint(int index)
 {
-	return matrices_ubo.matrices[index];
+	return GetJointFromConst(matrices_ubo, index);
 }

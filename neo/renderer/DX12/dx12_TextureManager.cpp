@@ -42,6 +42,8 @@ namespace DX12Rendering
 		Clear();
 	}
 
+	TextureBuffer* GetGlobalTexture(eGlobalTexture textureId);
+
 	void TextureManager::Initialize(uint screenWidth, uint screenHeight) {	
 		// Create the basic entries for the global textures
 		for (int i = 0; i < eGlobalTexture::TEXTURE_COUNT; ++i)
@@ -116,16 +118,19 @@ namespace DX12Rendering
 
 		for (int i = eGlobalTexture::TEXTURE_COUNT; i < BINDLESS_TEXTURE_COUNT; ++i)
 		{
-			auto defaultTexture = GetGlobalTexture(eGlobalTexture::ALBEDO);
-
-			ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-
 			CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, i);
-			device->CreateShaderResourceView(defaultTexture->resource.Get(), &defaultTexture->textureView, textureHandle);
+			SetTextureToDefault(textureHandle);
 		}
 	}
 
-	TextureBuffer* GetGlobalTexture(eGlobalTexture textureId);
+	void TextureManager::SetTextureToDefault(CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle)
+	{
+		auto defaultTexture = GetGlobalTexture(eGlobalTexture::ALBEDO); // TODO: Change to a default mangenta for debugging
+
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
+		device->CreateShaderResourceView(defaultTexture->resource.Get(), &defaultTexture->textureView, textureHandle);
+	}
 
 	void TextureManager::Clear() {
 		for (TextureBuffer* texture : m_textures)
@@ -207,12 +212,11 @@ namespace DX12Rendering
 		commandList->Close();
 	}
 
-	void TextureManager::EndTextureWrite(TextureBuffer* buffer) {
+	const DX12Rendering::Commands::FenceValue TextureManager::EndTextureWrite(TextureBuffer* buffer) {
 		auto copyCommands = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
 		auto commandList = copyCommands->RequestNewCommandList();
 
-		commandList->AddPreFenceWait(&buffer->fence);
-		commandList->AddPostFenceSignal(&buffer->fence);
+		const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
 
 		DX12Rendering::CaptureEventEnd(commandList);
 		commandList->Close();
@@ -221,6 +225,8 @@ namespace DX12Rendering
 
 		// Clean out the temp images
 		m_tempImages.clear();
+
+		return fence;
 	}
 
 	byte* TextureManager::CreateTemporaryImageStorage(const UINT imageSize)
@@ -295,7 +301,11 @@ namespace DX12Rendering
 
 	void TextureManager::FreeTextureBuffer(TextureBuffer* buffer) {
 		if (buffer != nullptr) {
-			buffer->fence.Wait();
+			const Commands::FenceValue fence = buffer->GetLastFenceValue();
+			Commands::GetCommandManager(fence.commandList)->WaitOnFence(fence);
+
+			CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle = GetDescriptorManager()->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, buffer->m_heapIndex);
+			SetTextureToDefault(textureHandle);
 
 			m_textures[buffer->m_heapIndex] = nullptr;
 
@@ -318,7 +328,8 @@ namespace DX12Rendering
 			{
 				copyCommands->Close();
 				copyManager->Execute();
-				m_textureUploadHeap.fence.Wait(); // Since we are not streaming in textures, we'll forcfully wait for our upload.
+
+				uploadHeap.WaitForLastFenceToComplete(); // Since we are not streaming in textures, we'll forcfully wait for our upload.
 
 				copyCommands = copyManager->RequestNewCommandList();
 			}
@@ -334,6 +345,8 @@ namespace DX12Rendering
 
 				UpdateSubresources(commandList, buffer->resource.Get(), uploadHeap.resource.Get(), intermediateOffset, subresource, 1, &textureData);
 			});
+
+			buffer->SetLastFenceValue(copyCommands->AddPostFenceSignal());
 
 			copyCommands->Close();
 		}

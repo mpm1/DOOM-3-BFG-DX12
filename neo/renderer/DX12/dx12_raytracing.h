@@ -137,7 +137,7 @@ public:
 	void BeginFrame();
 	void EndFrame();
 
-	bool CastShadowRays(
+	const DX12Rendering::Commands::FenceValue CastShadowRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect
@@ -150,7 +150,7 @@ public:
 	/// <param name="viewport">The viewport size.</param>
 	/// <param name="scissorRect">Any scissor rectable size.</param>
 	/// <returns></returns>
-	bool CastRays(
+	const DX12Rendering::Commands::FenceValue CastRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,

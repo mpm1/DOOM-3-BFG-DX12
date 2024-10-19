@@ -18,7 +18,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
-				m_commandManagers.emplace_back(&queueDesc, true, L"Direct", 20);
+				m_commandManagers.emplace_back(&queueDesc, Commands::DIRECT, true, L"Direct", 20);
 			}
 
 			// Copy Commands
@@ -27,7 +27,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
 
-				m_commandManagers.emplace_back(&queueDesc, false, L"Copy", 20);
+				m_commandManagers.emplace_back(&queueDesc, Commands::COPY, false, L"Copy", 20);
 			}
 
 			//  Commands
@@ -36,7 +36,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
 
-				m_commandManagers.emplace_back(&queueDesc, true, L"Compute", 10);
+				m_commandManagers.emplace_back(&queueDesc, Commands::COMPUTE, true, L"Compute", 10);
 			}
 		}
 
@@ -65,12 +65,12 @@ namespace DX12Rendering {
 #pragma endregion
 
 #pragma region CommandManager
-		CommandManager::CommandManager(D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, const LPCWSTR name, const UINT commandListCount)
+		CommandManager::CommandManager(D3D12_COMMAND_QUEUE_DESC* queueDesc, const dx12_commandList_t commandListType, const bool resetPerFrame, const LPCWSTR name, const UINT commandListCount)
 			: resetPerFrame(resetPerFrame)
 			, commandListCount(commandListCount)
+			, m_fence(commandListType, std::wstring(L"CommandFence: ").append(name).c_str())
 #ifdef _DEBUG
 			, m_name(std::wstring(name))
-			, m_fence(std::wstring(L"CommandFence: ").append(name).c_str())
 #endif
 		{
 			assert(commandListCount > 1); // Our functions need at least two command lists to work correctly
@@ -100,7 +100,7 @@ namespace DX12Rendering {
 					WCHAR listName[64];
 					wsprintfW(listName, L"%s Command List %d:%d", name, frame, index);
 
-					m_commandLists.emplace_back(queueDesc->Type, m_commandAllocator[frame].Get(), listName);
+					m_commandLists.emplace_back(queueDesc->Type, m_commandAllocator[frame].Get(), &m_fence, listName);
 
 					if (index == 0)
 					{
@@ -182,7 +182,7 @@ namespace DX12Rendering {
 				return false;
 			}
 
-			m_fence.Wait();
+			m_fence.WaitOnSelf();
 
 			m_commandListStart = &m_commandLists[GetCommandListStartingPoint(GetCurrentFrameIndex())];
 			m_commandListNext = m_commandListStart;
@@ -342,10 +342,11 @@ namespace DX12Rendering {
 #pragma endregion
 
 #pragma region CommandList
-		CommandList::CommandList(D3D12_COMMAND_LIST_TYPE type, ID3D12CommandAllocator* allocator, const LPCWSTR name)
+		CommandList::CommandList(D3D12_COMMAND_LIST_TYPE type, ID3D12CommandAllocator* allocator, DX12Rendering::Commands::Fence* fence, const LPCWSTR name)
 			: m_state(UNKNOWN),
 			m_commandCount(0),
 			m_chunkDepth(0),
+			m_fence(fence),
 #ifdef _DEBUG
 			m_name(std::wstring(name))
 #endif

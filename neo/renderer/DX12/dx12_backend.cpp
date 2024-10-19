@@ -786,15 +786,15 @@ If there are no subview surfaces, we could clear to black and use fast-Z renderi
 on the 360.
 =====================
 */
-static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
+static const DX12Rendering::Commands::FenceValue RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	// TODO: Run this on it's own commandList so we can fill the rest while running.
 	if (numDrawSurfs == 0) {
-		return;
+		return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::DIRECT, 0);
 	}
 
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	if (backEnd.viewDef->viewEntitys == NULL) {
-		return;
+		return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::DIRECT, 0);
 	}
 
 	renderLog.OpenMainBlock(MRB_FILL_DEPTH_BUFFER);
@@ -876,15 +876,15 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	// Allow platform specific data to be collected after the depth pass.
 	GL_FinishDepthPass();
 
-	{
-		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
-		commandList->AddPostFenceSignal(&DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->fence);
+	auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+	const DX12Rendering::Commands::FenceValue resultFence = commandList->AddPostFenceSignal();
 
-		commandList->Close();
-	}
+	commandList->Close();
 
 	renderLog.CloseBlock();
 	renderLog.CloseMainBlock();
+
+	return resultFence;
 }
 
 /*
@@ -1870,7 +1870,7 @@ DRAW GBUFFER
 RB_DrawGBuffer
 ==================
 */
-static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
+static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	constexpr UINT surfaceCount = 5;
 	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 		DX12Rendering::eRenderSurface::FlatNormal,
@@ -2107,6 +2107,12 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		// draw it solid
 		RB_DrawElementsWithCounters(surf, &surfaceConstants, sizeof(GBufferSurfaceConstants));
 	}
+
+	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
+	const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
+	commandList->Close();
+
+	return fence;
 }
 
 /*
@@ -2939,11 +2945,11 @@ void RB_DrawCombinedGBufferResults()
 		auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
 
 		// Prepare the surfaces for rendering
-		commandList->AddPreFenceWait(&diffuse->fence);
+		commandList->AddPreFenceWait(diffuse->GetLastFenceValue());
 		GL_SelectTexture(0);
 		dxRenderer.SetTexture(diffuse);
 
-		commandList->AddPreFenceWait(&specular->fence);
+		commandList->AddPreFenceWait(specular->GetLastFenceValue());
 		GL_SelectTexture(1);
 		dxRenderer.SetTexture(specular);
 
@@ -3200,22 +3206,16 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		{
 			raytraceUpdated = true;
 			dxRenderer.DXR_UpdateAccelerationStructure();
-		}
 
-		if (useGBuffer)
-		{
-			// Fill the GBuffer
-			RB_DrawGBuffer(drawSurfs, numDrawSurfs);
-		}
-
-		if (raytracedEnabled)
-		{
 			// Build our light list
 			dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix);
 		}
 
 		if (useGBuffer)
 		{
+			// Fill the GBuffer
+			const DX12Rendering::Commands::FenceValue fence = RB_DrawGBuffer(drawSurfs, numDrawSurfs);
+
 			// Copy the depth buffer to a texture
 			auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
 			//viewDepth->fence.Wait();
@@ -3223,27 +3223,27 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			// TODO: Make a system to perform multiple copies
 			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 			DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
-			viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
+			viewDepth->CopySurfaceToTexture(depthTexture, textureManager, fence);
 
 			// Copy the albedo
 			auto albedo = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo);
 			DX12Rendering::TextureBuffer* albedoTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
-			albedo->CopySurfaceToTexture(albedoTexture, textureManager);
+			albedo->CopySurfaceToTexture(albedoTexture, textureManager, fence);
 
 			// Copy the specular
 			auto specular = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor);
 			DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
-			specular->CopySurfaceToTexture(specularTexture, textureManager);
+			specular->CopySurfaceToTexture(specularTexture, textureManager, fence);
 
 			// Copy the flat normal map to a texture
 			auto normalFlatMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal);
 			DX12Rendering::TextureBuffer* normalFlatTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_FLAT_NORMALS);
-			normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager);
+			normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager, fence);
 
 			// Copy the normal map to a texture
 			auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);
 			DX12Rendering::TextureBuffer* normalTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
-			normalMap->CopySurfaceToTexture(normalTexture, textureManager);
+			normalMap->CopySurfaceToTexture(normalTexture, textureManager, fence);
 
 			// TODO: Find a better place to reset this.
 			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Reset();

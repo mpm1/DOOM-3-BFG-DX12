@@ -31,7 +31,8 @@ namespace DX12Rendering
 		D3D12_SHADER_RESOURCE_VIEW_DESC textureView;
 
 		TextureBuffer(const LPCWSTR name) : Resource(name),
-			textureView{}
+			textureView{},
+			m_lastFenceValue(DX12Rendering::Commands::COPY, 0)
 		{
 		}
 
@@ -43,10 +44,22 @@ namespace DX12Rendering
 		void SetGPUDescriptorHandle(CD3DX12_GPU_DESCRIPTOR_HANDLE handle) { m_gpuHandle = handle; }
 
 		const UINT GetTextureIndex() const { return m_heapIndex; }
+
+		const Commands::FenceValue& GetLastFenceValue() { return m_lastFenceValue; }
+		const Commands::FenceValue& SetLastFenceValue(const Commands::FenceValue& fence)
+		{
+			m_lastFenceValue.commandList = fence.commandList;
+			m_lastFenceValue.value = fence.value;
+
+			return m_lastFenceValue;
+		}
+
 	private:
 		D3D12_RESOURCE_DESC m_textureDesc;
 		CD3DX12_GPU_DESCRIPTOR_HANDLE m_gpuHandle;
 		UINT m_heapIndex;
+
+		Commands::FenceValue m_lastFenceValue;
 	};
 
 	class TextureManager {
@@ -67,7 +80,7 @@ namespace DX12Rendering
 
 		// Data management
 		void StartTextureWrite(TextureBuffer* buffer);
-		void EndTextureWrite(TextureBuffer* buffer);
+		const DX12Rendering::Commands::FenceValue EndTextureWrite(TextureBuffer* buffer);
 
 		/// <summary>
 		/// Generates a texture to be stored in video memory
@@ -98,6 +111,8 @@ namespace DX12Rendering
 		std::vector<DX12Rendering::TextureBuffer*> m_textures; // Stores the active texture information in the scene.
 
 		std::vector<std::unique_ptr<byte[]>> m_tempImages;
+
+		void SetTextureToDefault(CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle);
 	};
 
 	TextureManager* GetTextureManager();

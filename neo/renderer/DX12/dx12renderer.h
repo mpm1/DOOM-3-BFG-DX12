@@ -98,7 +98,6 @@ public:
 	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
 	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
 
-	UINT64 CopyDynamicVertexData(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT64 srcOffset, size_t size);
 	UINT ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT offset /* assume srcBuffer and dstBuffer are the same layout */, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset);
 
 	// Textures
@@ -158,8 +157,6 @@ public:
 #ifdef _DEBUG
 	void DebugAddLight(const viewLight_t& light);
 	void DebugClearLights();
-
-	void CopyDebugResultToDisplay(); // Copies the resulting image to the user display.
 #endif
 
 private:
@@ -167,6 +164,8 @@ private:
 	UINT m_height;
 	int m_fullScreen; // 0 = windowed, otherwise 1 based monitor number to go full screen on
 						// -1 = borderless window for spanning multiple displays
+
+	DX12Rendering::Commands::FenceValue m_endFrameFence;
 
 	FLOAT m_aspectRatio = 1.0f;
     FLOAT m_FoV = 90.0f;
@@ -200,10 +199,6 @@ private:
 	UINT m_activeRenderTargets = 0;
 	DX12Rendering::RenderSurface* m_renderTargets[MAX_RENDER_TARGETS];
 
-	// Synchronization
-	DX12Rendering::Fence m_frameFence;
-	DX12Rendering::Fence m_copyFence;
-
 	// Textures
 	UINT8 m_activeTextureRegister;
 	DX12Rendering::TextureBuffer* m_activeTextures[TEXTURE_REGISTER_COUNT];
@@ -225,19 +220,6 @@ private:
 
 	void SignalNextFrame();
     void WaitForPreviousFrame();
-	void WaitForCopyToComplete();
-
-	/// <summary>
-	/// Copies the contents of a render target to the display buffer.
-	/// </summary>
-	/// <param name="renderTarget"></param>
-	/// <param name="sx">The source x location</param>
-	/// <param name="sy">The source y location</param>
-	/// <param name="rx">The result x location</param>
-	/// <param name="ry">The result y location</param>
-	/// <param name="width">The width of pixels to copy</param>
-	/// <param name="height">The height of the pixels to copy</param>
-	void CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height);
 
 	bool CreateBackBuffer();
 

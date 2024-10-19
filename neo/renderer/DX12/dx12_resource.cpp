@@ -88,7 +88,7 @@ namespace DX12Rendering {
 
 		if (waitForSpace)
 		{
-			if (fence.IsFenceCompleted())
+			if (commandList->IsFenceComplete(m_lastFenceValue))
 			{
 				state = Ready;
 			}
@@ -109,13 +109,31 @@ namespace DX12Rendering {
 			offset = 0;
 			m_currentIndex = 0;
 
-			commandList->AddPostFenceSignal(&fence);
+			m_lastFenceValue = commandList->AddPostFenceSignal();
 
 			if (waitForSpace)
 			{
 				state = Dirty;
 				return false;
 			}
+		}
+
+		return true;
+	}
+
+	void ScratchBuffer::WaitForLastFenceToComplete()
+	{
+		if (m_lastFenceValue.value > 0)
+		{
+			return DX12Rendering::Commands::GetCommandManager(m_lastFenceValue.commandList)->WaitOnFence(m_lastFenceValue);
+		}
+	}
+
+	bool ScratchBuffer::IsFenceCompleted()
+	{
+		if (m_lastFenceValue.value > 0)
+		{
+			return DX12Rendering::Commands::GetCommandManager(m_lastFenceValue.commandList)->IsFenceCompleted(m_lastFenceValue);
 		}
 
 		return true;

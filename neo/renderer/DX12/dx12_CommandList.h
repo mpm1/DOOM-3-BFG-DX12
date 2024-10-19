@@ -71,6 +71,151 @@ namespace DX12Rendering
 
 		// Defines that a section of code will cycle its command list on exit.
 		struct CommandListCycleBlock;
+
+		struct FenceValue
+		{
+		public:
+			dx12_commandList_t commandList;
+			UINT value;
+
+			FenceValue(const dx12_commandList_t inCommandList, const UINT inValue) :
+				commandList(inCommandList),
+				value(inValue)
+			{}
+		};
+
+		class Fence
+		{
+		public:
+			Fence(const dx12_commandList_t commandList, const LPCWSTR name = nullptr) :
+				m_value(commandList, 0),
+				m_lastSignaledValue(commandList, 0),
+				m_commandList(commandList),
+				m_fence(nullptr),
+				m_fenceEvent(nullptr),
+				m_name(name == nullptr ? L"" : name)
+			{
+			}
+
+			~Fence()
+			{
+				if (m_fenceEvent != nullptr)
+				{
+					CloseHandle(m_fenceEvent);
+				}
+			}
+
+			const FenceValue Increment()
+			{
+				++m_value.value;
+
+				return m_value;
+			}
+
+			HRESULT Allocate(ID3D12Device5* device)
+			{
+				HRESULT result = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence));
+				m_value.value = 1;
+
+#if defined(_DEBUG)
+				if (m_fence && !m_name.empty())
+				{
+					m_fence->SetName(m_name.c_str());
+				}
+#endif
+
+				m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
+
+				return result;
+			}
+
+			const FenceValue Signal(ID3D12Device5* device, ID3D12CommandQueue* commandQueue)
+			{
+				if (m_lastSignaledValue.value >= m_value.value)
+				{
+					// We've already signaled the expected value.
+					return m_lastSignaledValue;
+				}
+
+				if (m_fence == nullptr)
+				{
+					ThrowIfFailed(Allocate(device));
+				}
+				
+				ThrowIfFailed(commandQueue->Signal(m_fence.Get(), m_value.value));
+
+				m_lastSignaledValue.value = m_value.value;
+
+				return m_lastSignaledValue;
+			}
+
+			HRESULT SetCompletionEvent(UINT64 value, HANDLE completionEvent)
+			{
+				if (m_fence == nullptr)
+				{
+					ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+					ThrowIfFailed(Allocate(device));
+				}
+
+				return m_fence->SetEventOnCompletion(value, completionEvent);
+			}
+
+			bool IsFenceCompleted(const FenceValue checkValue)
+			{
+				if (m_fence == nullptr)
+				{
+					// No fence to evaluate.
+					return true;
+				}
+
+				UINT64 completedValue = m_fence->GetCompletedValue();
+				return completedValue >= checkValue.value;
+			}
+
+			void GPUWait(ID3D12CommandQueue* commandQueue, const FenceValue checkValue)
+			{
+				if (m_fence == nullptr)
+				{
+					return;
+				}
+
+				WarnIfFailed(commandQueue->Wait(m_fence.Get(), checkValue.value));
+			}
+
+			void Wait(const FenceValue checkValue)
+			{
+				WaitLimitted(FENCE_MAX_WAIT, checkValue);
+			}
+
+			void WaitOnSelf()
+			{
+				Wait(m_value);
+			}
+
+			void WaitLimitted(DWORD waitTime, const FenceValue checkValue)
+			{
+				if (m_fence == nullptr)
+				{
+					return;
+				}
+
+				if (!IsFenceCompleted(checkValue))
+				{
+					HRESULT result = SetCompletionEvent(checkValue.value, m_fenceEvent);
+					DX12Rendering::WarnIfFailed(result);
+					WaitForSingleObject(m_fenceEvent, waitTime);
+				}
+			}
+		private:
+			//TODO: define to only work with debug.
+			const std::wstring m_name;
+
+			FenceValue m_value;
+			FenceValue m_lastSignaledValue;
+			dx12_commandList_t m_commandList;
+			ComPtr<ID3D12Fence> m_fence;
+			HANDLE m_fenceEvent;
+		};
 	}
 }
 
@@ -80,11 +225,13 @@ namespace DX12Rendering
 /// </summary>
 class DX12Rendering::Commands::CommandManager
 {
+	friend class CommandList;
+
 public:
 	const bool resetPerFrame;
 	const UINT commandListCount;
 
-	CommandManager(D3D12_COMMAND_QUEUE_DESC* queueDesc, const bool resetPerFrame, const LPCWSTR name, const UINT commandListCount);
+	CommandManager(D3D12_COMMAND_QUEUE_DESC* queueDesc, const dx12_commandList_t commandListType, const bool resetPerFrame, const LPCWSTR name, const UINT commandListCount);
 	~CommandManager();
 
 	/// <summary>
@@ -115,6 +262,13 @@ public:
 
 	ID3D12CommandQueue* GetCommandQueue() { return m_commandQueue.Get(); }
 
+	void WaitOnFence(const DX12Rendering::Commands::FenceValue value) { return m_fence.Wait(value); }
+	bool IsFenceCompleted(const DX12Rendering::Commands::FenceValue value) { return m_fence.IsFenceCompleted(value); }
+
+#ifdef DEBUG_GPU
+	void SetFenceCompleteEvent(UINT64 value, HANDLE completionEvent) { m_fence.SetCompletionEvent(value, completionEvent); }
+#endif
+
 private:
 	ComPtr<ID3D12CommandQueue> m_commandQueue;
 	ComPtr<ID3D12CommandAllocator> m_commandAllocator[DX12_FRAME_COUNT];
@@ -124,7 +278,7 @@ private:
 	DX12Rendering::Commands::CommandList* m_commandListNext; // Next available command list
 	std::vector<QueuedAction> m_queuedAction;
 
-	DX12Rendering::Fence m_fence;
+	DX12Rendering::Commands::Fence m_fence;
 
 #ifdef _DEBUG
 	const std::wstring m_name;
@@ -141,7 +295,7 @@ class DX12Rendering::Commands::CommandList
 	friend class CommandManager;
 
 public:
-	CommandList(D3D12_COMMAND_LIST_TYPE type, ID3D12CommandAllocator* allocator, const LPCWSTR name);
+	CommandList(D3D12_COMMAND_LIST_TYPE type, ID3D12CommandAllocator* allocator, DX12Rendering::Commands::Fence* fence, const LPCWSTR name);
 	~CommandList();
 
 	/// <summary>
@@ -185,6 +339,8 @@ public:
 	bool IsOpen() const { return m_state == OPEN; }
 
 	ID3D12GraphicsCommandList4* GetCommandList(){ return m_commandList.Get(); }
+
+	bool IsFenceComplete(const FenceValue value) { return m_fence->IsFenceCompleted(value); }
 	
 #pragma region Command Shortcuts
 	void CommandSetPipelineState(ID3D12PipelineState* pipelineState)
@@ -211,20 +367,28 @@ public:
 		});
 	}
 
-	void AddPreFenceWait(DX12Rendering::Fence* fence)
+	void AddPreFenceWait(const DX12Rendering::Commands::FenceValue& fenceValue)
 	{
-		AddPreExecuteQueueAction([fence](ID3D12CommandQueue* commandQueue)
+		DX12Rendering::Commands::Fence* fence = &GetCommandManager(fenceValue.commandList)->m_fence;
+
+		AddPreExecuteQueueAction([fenceValue, fence](ID3D12CommandQueue* commandQueue)
 		{
-			fence->GPUWait(commandQueue);
+			fence->GPUWait(commandQueue, fenceValue);
 		});
 	}
 
-	void AddPostFenceSignal(DX12Rendering::Fence* fence)
+	const DX12Rendering::Commands::FenceValue AddPostFenceSignal()
 	{
+		DX12Rendering::Commands::Fence* fence = m_fence;
+		const DX12Rendering::Commands::FenceValue result = fence->Increment();
+
 		AddPostExecuteQueueAction([fence](ID3D12CommandQueue* commandQueue)
 		{
 			fence->Signal(DX12Rendering::Device::GetDevice(), commandQueue);
+			// TODO: Modify so we only send the largest at the end of an execute queue.
 		});
+
+		return result;
 	}
 
 	void ClearRTV(D3D12_CPU_DESCRIPTOR_HANDLE renderTargetHandle, const float rgbaColor[4])
@@ -253,6 +417,8 @@ private:
 	dx12_commandListState_t m_state;
 	UINT m_commandCount;
 	UINT m_chunkDepth;
+
+	DX12Rendering::Commands::Fence* m_fence; // Fence provided by the command manager
 
 	std::vector<QueueFunction> m_preQueuedFunctions;
 	std::vector<D3D12_RESOURCE_BARRIER> m_preQueuedResourceBarriers;

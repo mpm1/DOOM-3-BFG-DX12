@@ -185,7 +185,7 @@ void RayGen() {
 	float3 resultSpecular = float3(0.0, 0.0, 0.0);
 
 	// Get the ray location on the screen
-	float2 lerpValues = ((float2)DispatchRaysIndex() + 0.5) / (float2)DispatchRaysDimensions();
+	float2 lerpValues = ((float2)DispatchRaysIndex() + 0.0) / (float2)DispatchRaysDimensions();
 	float3 screenLocation = float3(
 		lerp(sceneConstants.rp.viewport.x, sceneConstants.rp.viewport.z, lerpValues.x),
 		lerp(sceneConstants.rp.viewport.y, sceneConstants.rp.viewport.w, 1.0 - lerpValues.y), // We need to flip the y coordinates due to the directx screen coordinates.

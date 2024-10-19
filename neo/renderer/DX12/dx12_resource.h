@@ -17,14 +17,12 @@ namespace DX12Rendering {
 			Count
 		};
 
-		Fence fence;
 		ComPtr<ID3D12Resource> resource;
 		eResourceState state;
 
 		Resource(const LPCWSTR name = nullptr) :
 			m_name(name == nullptr ? L"" : name),
-			state(eResourceState::Unallocated),
-			fence(name == nullptr ? nullptr : std::wstring(L"ResourceFence: ").append(name).c_str())
+			state(eResourceState::Unallocated)
 		{
 			
 		}
@@ -66,7 +64,8 @@ namespace DX12Rendering {
 			m_alignment(alignment),
 			m_heapProps(heapProps),
 			m_flags(flags),
-			m_defaultResourceState(resourceState)
+			m_defaultResourceState(resourceState),
+			m_lastFenceValue(Commands::DIRECT, 0)
 		{}
 
 		ID3D12Resource* Build();
@@ -80,12 +79,17 @@ namespace DX12Rendering {
 		/// <returns>True if we were able to allocate the space. False otherwise.</returns>
 		bool RequestSpace(DX12Rendering::Commands::CommandList* commandList, const UINT64 size, UINT64& offset, bool waitForSpace = true);
 
+		bool IsFenceCompleted();
+		void WaitForLastFenceToComplete();
+
 	private:
 		UINT64 m_currentIndex; // The next available space to fill the scratch buffer.
 		const UINT m_alignment;
 		const D3D12_HEAP_PROPERTIES m_heapProps;
 		const D3D12_RESOURCE_FLAGS m_flags;
 		const D3D12_RESOURCE_STATES m_defaultResourceState;
+
+		DX12Rendering::Commands::FenceValue m_lastFenceValue;
 	};
 
 	struct ConstantBuffer
