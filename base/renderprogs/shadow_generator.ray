@@ -115,6 +115,8 @@ void HandlePointLight(
 
 	float3 pointToCenter = normalize(light.center - worldPosition);
 
+	RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
+
 	for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
 	{
 		float3 lightPosition = castsShadows ?
@@ -140,34 +142,31 @@ void HandlePointLight(
 
 		if(intensity > 0 && length(lightColor) > 0)
 		{
-			// Initialize the ray payload
-			ShadowHitInfo payload;
-			payload.maxDistance = maxDistance;
-			payload.intensity = intensity;
-
 			if(castsShadows)
 			{
 				// We are inside the light radius.
 				// Define a ray, consisting of origin, direction, and the min-max distance values
 				RayDesc ray;
 				ray.TMin = rayStartDistance;
-				ray.TMax = payload.maxDistance;
+				ray.TMax = maxDistance;
 				ray.Origin = worldPosition;
 				ray.Direction = lightVector;
 
-				TraceRay( //TODO: Modify this to have hit shaders for different light types and can cast multiple at onc.
+				inlineQuery.TraceRayInline(
 					SceneBVH,
-					RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, //RAY_FLAG_CULL_BACK_FACING_TRIANGLES,
+					RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
 					INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
-					0,
-					0, // First Hit Shader
-					0, // Miss Shader
-					ray,
-					payload
-				);
+					ray);
+
+				inlineQuery.Proceed(); // Run the tracer.
+				
+				if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+				{
+					continue; // We hit a shadow so we should not add any data to the colors
+				}
 			}
 
-			if (payload.intensity > 0.0)
+			if (intensity > 0.0)
 			{
 				localDiffuse += (light.color.rgb * lightColor * diffuseColor);
 				localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, specularColor, 2.0 /* Keeping consistant original method */);
@@ -186,7 +185,7 @@ void RayGen() {
 	float3 resultSpecular = float3(0.0, 0.0, 0.0);
 
 	// Get the ray location on the screen
-	float2 lerpValues = ((float2)DispatchRaysIndex() + 0.5) / (float2)DispatchRaysDimensions();
+	float2 lerpValues = ((float2)DispatchRaysIndex() + 0.0) / (float2)DispatchRaysDimensions();
 	float3 screenLocation = float3(
 		lerp(sceneConstants.rp.viewport.x, sceneConstants.rp.viewport.z, lerpValues.x),
 		lerp(sceneConstants.rp.viewport.y, sceneConstants.rp.viewport.w, 1.0 - lerpValues.y), // We need to flip the y coordinates due to the directx screen coordinates.

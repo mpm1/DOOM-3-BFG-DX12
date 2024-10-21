@@ -17,13 +17,12 @@ namespace DX12Rendering {
 			Count
 		};
 
-		Fence fence;
 		ComPtr<ID3D12Resource> resource;
 		eResourceState state;
 
 		Resource(const LPCWSTR name = nullptr) :
 			m_name(name == nullptr ? L"" : name),
-			state(eResourceState::Unallocated) 
+			state(eResourceState::Unallocated)
 		{
 			
 		}
@@ -41,6 +40,9 @@ namespace DX12Rendering {
 		/// <param name="resourceBarrier">The barrier to store the stransition information in.</params>
 		/// <returns>True if a transition was created.</returns>
 		bool TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier);
+
+		virtual D3D12_UNORDERED_ACCESS_VIEW_DESC* GetUavDescriptorView() { return nullptr; }
+		virtual D3D12_SHADER_RESOURCE_VIEW_DESC* GetSrvDescriptorView() { return nullptr; }
 
 	protected:
 		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps, const D3D12_CLEAR_VALUE* clearValue = nullptr);
@@ -62,7 +64,8 @@ namespace DX12Rendering {
 			m_alignment(alignment),
 			m_heapProps(heapProps),
 			m_flags(flags),
-			m_defaultResourceState(resourceState)
+			m_defaultResourceState(resourceState),
+			m_lastFenceValue(Commands::DIRECT, 0)
 		{}
 
 		ID3D12Resource* Build();
@@ -76,13 +79,57 @@ namespace DX12Rendering {
 		/// <returns>True if we were able to allocate the space. False otherwise.</returns>
 		bool RequestSpace(DX12Rendering::Commands::CommandList* commandList, const UINT64 size, UINT64& offset, bool waitForSpace = true);
 
+		bool IsFenceCompleted();
+		void WaitForLastFenceToComplete();
+
 	private:
 		UINT64 m_currentIndex; // The next available space to fill the scratch buffer.
 		const UINT m_alignment;
 		const D3D12_HEAP_PROPERTIES m_heapProps;
 		const D3D12_RESOURCE_FLAGS m_flags;
 		const D3D12_RESOURCE_STATES m_defaultResourceState;
+
+		DX12Rendering::Commands::FenceValue m_lastFenceValue;
 	};
+
+	struct ConstantBuffer
+	{
+		size_t offset;
+		size_t size;
+
+		D3D12_CONSTANT_BUFFER_VIEW_DESC bufferLocation;
+	};
+
+	class ResourceManager;
+
+	ResourceManager* GetResourceManager();
+	void DestroyResourceManager();
 }
 
+class DX12Rendering::ResourceManager
+{
+public:
+	ResourceManager(const DX12Rendering::ResourceManager&) = delete;
+
+	static const size_t MAX_CONSTANT_BUFFER_SIZE = 4096;
+
+	ResourceManager();
+	~ResourceManager();
+
+	void Initialize();
+
+	/// <summary>
+	/// Constant buffer that is garunteed for the current frame.
+	/// </summary>
+	/// <param name="size">Size in bytes of the requested buffer.</param>
+	/// <returns></returns>
+	const ConstantBuffer RequestTemporyConstantBuffer(size_t size);
+	void FillConstantBuffer(const ConstantBuffer& buffer, const void* data);
+
+private:
+	const size_t m_maxCBVHeapSize;
+
+	ComPtr<ID3D12Resource> m_cbvUploadHeap;
+	UINT m_nextConstantBufferOffset;
+};
 #endif

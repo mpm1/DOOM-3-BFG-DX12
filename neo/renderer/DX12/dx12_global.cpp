@@ -16,7 +16,7 @@ namespace
 	
 }
 
-void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, const std::string message) 
+void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, const std::string message)
 {
 	commandList->AddPreExecuteQueueAction([message](ID3D12CommandQueue* commandQueue)
 	{
@@ -24,7 +24,7 @@ void DX12Rendering::CaptureEventStart(Commands::CommandList* commandList, const 
 	});
 };
 
-void DX12Rendering::CaptureEventEnd(Commands::CommandList* commandList) { 
+void DX12Rendering::CaptureEventEnd(Commands::CommandList* commandList) {
 	commandList->AddPostExecuteQueueAction([](ID3D12CommandQueue* commandQueue)
 	{
 		PIXEndEvent(commandQueue);
@@ -119,12 +119,14 @@ ID3D12Resource* DX12Rendering::CreateBuffer(ID3D12Device5* device, uint64_t size
 ID3D12DescriptorHeap* DX12Rendering::CreateDescriptorHeap(ID3D12Device* device, uint32_t count, D3D12_DESCRIPTOR_HEAP_TYPE type, bool shaderVisible)
 {
 	D3D12_DESCRIPTOR_HEAP_DESC desc = {};
-	desc.NumDescriptors = count;
+	desc.NumDescriptors = count * DX12_FRAME_COUNT; // Have a full set of descriptors per frame.
 	desc.Type = type;
 	desc.Flags = shaderVisible ? D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE : D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
 	ID3D12DescriptorHeap* heap;
 	ThrowIfFailed(device->CreateDescriptorHeap(&desc, IID_PPV_ARGS(&heap)));
+
+	heap->SetName(L"Bindless Texture Heap");
 
 	return heap;
 }
@@ -132,14 +134,10 @@ ID3D12DescriptorHeap* DX12Rendering::CreateDescriptorHeap(ID3D12Device* device, 
 UINT8 g_frameIndex = 0;
 const UINT8 DX12Rendering::GetCurrentFrameIndex() { return g_frameIndex; }
 const UINT8 DX12Rendering::GetLastFrameIndex() { return g_frameIndex == 0 ? DX12_FRAME_COUNT - 1 : g_frameIndex - 1; }
-const UINT8 DX12Rendering::IncrementFrameIndex()
+const UINT8 DX12Rendering::GetNextFrameIndex() { return g_frameIndex == DX12_FRAME_COUNT - 1 ? 0 : g_frameIndex + 1; }
+const UINT8 DX12Rendering::UpdateFrameIndex(IDXGISwapChain3* swapChain) // This should only be used by dxRenderer
 {
-	++g_frameIndex;
-
-	if (g_frameIndex == DX12_FRAME_COUNT)
-	{
-		g_frameIndex = 0;
-	}
+	g_frameIndex = swapChain->GetCurrentBackBufferIndex();
 
 	return g_frameIndex;
 }

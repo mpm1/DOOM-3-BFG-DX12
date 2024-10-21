@@ -34,7 +34,7 @@ If you have questions concerning this license or the applicable additional terms
 #ifdef LINUX
 #include <math.h>
 #else
-const float PI = 				3.141592657f;
+const float PI = 				3.141592654f;
 #endif
 
 

@@ -3,6 +3,7 @@
 
 #include "./dx12_resource.h"
 #include <renderer/DX12/dx12_CommandList.h>
+#include "./dx12_HeapDescriptorManager.h"
 
 namespace DX12Rendering
 {
@@ -30,7 +31,8 @@ namespace DX12Rendering
 		D3D12_SHADER_RESOURCE_VIEW_DESC textureView;
 
 		TextureBuffer(const LPCWSTR name) : Resource(name),
-			textureView{}
+			textureView{},
+			m_lastFenceValue(DX12Rendering::Commands::COPY, 0)
 		{
 		}
 
@@ -40,13 +42,31 @@ namespace DX12Rendering
 
 		const CD3DX12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptorHandle() const { return m_gpuHandle; }
 		void SetGPUDescriptorHandle(CD3DX12_GPU_DESCRIPTOR_HANDLE handle) { m_gpuHandle = handle; }
+
+		const UINT GetTextureIndex() const { return m_heapIndex; }
+
+		const Commands::FenceValue& GetLastFenceValue() { return m_lastFenceValue; }
+		const Commands::FenceValue& SetLastFenceValue(const Commands::FenceValue& fence)
+		{
+			m_lastFenceValue.commandList = fence.commandList;
+			m_lastFenceValue.value = fence.value;
+
+			return m_lastFenceValue;
+		}
+
 	private:
 		D3D12_RESOURCE_DESC m_textureDesc;
 		CD3DX12_GPU_DESCRIPTOR_HANDLE m_gpuHandle;
+		UINT m_heapIndex;
+
+		Commands::FenceValue m_lastFenceValue;
 	};
 
 	class TextureManager {
 	public:
+		static const UINT BINDLESS_TEXTURE_COUNT = 4096;
+		static const UINT TEXTURE_SPACE_COUNT = 2;
+
 		TextureManager();
 		~TextureManager();
 
@@ -60,9 +80,17 @@ namespace DX12Rendering
 
 		// Data management
 		void StartTextureWrite(TextureBuffer* buffer);
-		void EndTextureWrite(TextureBuffer* buffer);
+		const DX12Rendering::Commands::FenceValue EndTextureWrite(TextureBuffer* buffer);
 
-		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState);
+		/// <summary>
+		/// Generates a texture to be stored in video memory
+		/// </summary>
+		/// <param name="name">Name of the texture.</param>
+		/// <param name="textureDesc"></param>
+		/// <param name="shaderComponentMapping">Any special mapping we need to define our RGB components</param>
+		/// <param name="resourceState">The default state for the texture.</param>
+		/// <param name="index">Index to store the texture in the system. A value less than 1 will append the texture to the end.</param>
+		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index = -1);
 
 		TextureBuffer* GetTextureBuffer(uint64 textureHandle); //TODO: Move everything to a reference to create bindless textures.
 		void FreeTextureBuffer(TextureBuffer* buffer);
@@ -73,12 +101,21 @@ namespace DX12Rendering
 		// Stores images in temporary data. This is reset on EndTextureWrite.
 		byte* CreateTemporaryImageStorage(const UINT imageSize);
 
+		// PipelineFunctions
+		const D3D12_DESCRIPTOR_RANGE1* GetDescriptorRanges() { return m_descriptorRanges; }
 	private:
 		ScratchBuffer m_textureUploadHeap;
-		// TODO: Create bindless textures.
+		
+		CD3DX12_DESCRIPTOR_RANGE1 m_descriptorRanges[TEXTURE_SPACE_COUNT];
+
 		std::vector<DX12Rendering::TextureBuffer*> m_textures; // Stores the active texture information in the scene.
 
 		std::vector<std::unique_ptr<byte[]>> m_tempImages;
+
+		void SetTextureToDefault(CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle);
 	};
+
+	TextureManager* GetTextureManager();
+	void DestroyTextureManager();
 }
 #endif

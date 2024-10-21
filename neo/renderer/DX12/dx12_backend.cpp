@@ -18,6 +18,60 @@ extern idCVar stereoRender_swapEyes;
 
 backEndState_t	backEnd;
 
+struct GBufferSurfaceConstants
+{
+	UINT bumpMapIndex;
+	UINT albedoIndex;
+	UINT specularIndex;
+	UINT pad;
+};
+
+// Loads a texture into memory and provides the bindless index to that texture
+UINT LoadBindlessTexture(idImage* image)
+{
+	auto buffer = static_cast<const DX12Rendering::TextureBuffer*>(image->Bindless());
+
+	if (buffer == nullptr)
+	{
+		return 0;
+	}
+
+	return buffer->GetTextureIndex();
+}
+
+
+int GetVertexBufferOffset(const vertCacheHandle_t vbHandle)
+{
+	// TODO: Add check here to grab the current frames joint model offset if it exists.
+	return (int)(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+}
+
+UINT GetVertexBufferSize(const vertCacheHandle_t vbHandle)
+{
+	return (vbHandle >> VERTCACHE_SIZE_SHIFT) & VERTCACHE_SIZE_MASK;
+}
+
+idVertexBuffer* GetVertexBuffer(const vertCacheHandle_t vbHandle)
+{
+	// TODO: Add check here to grab the current frames joint model if it exists.
+	// get vertex buffer
+	idVertexBuffer* vertexBuffer;
+	if (vertexCache.CacheIsStatic(vbHandle)) {
+		vertexBuffer = &vertexCache.staticData.vertexBuffer;
+	}
+	else {
+		const uint64 frameNum = (int)(vbHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
+		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
+			idLib::Warning("RB_DrawElementsWithCounters, vertexBuffer == NULL");
+			return nullptr;
+		}
+		vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
+	}
+
+	return vertexBuffer;
+}
+	
+
 bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 {
 	// TODO: Implement
@@ -405,7 +459,7 @@ static void RB_PrepareStageTexturing(const shaderStage_t* pStage, const drawSurf
 	SetVertexParm(RENDERPARM_TEXGEN_0_ENABLED, useTexGenParm);
 }
 
-void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t vbHandle, const size_t vertexStride, const DX12Rendering::eSurfaceVariant variant) {
+void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t vbHandle, const size_t vertexStride, const DX12Rendering::eSurfaceVariant variant, void* surfaceConstants, size_t surfaceConstantsSize) {
 	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawElementsWithCounters");
 
@@ -415,19 +469,14 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
 
 	// get vertex buffer
-	idVertexBuffer* vertexBuffer;
-	if (vertexCache.CacheIsStatic(vbHandle)) {
-		vertexBuffer = &vertexCache.staticData.vertexBuffer;
+	idVertexBuffer* vertexBuffer = GetVertexBuffer(vbHandle);
+	const int vertOffset = GetVertexBufferOffset(vbHandle);
+
+	if (vertexBuffer == nullptr)
+	{
+		// An error occured when grabbing the vertex buffer data.
+		return;
 	}
-	else {
-		const uint64 frameNum = (int)(vbHandle >> VERTCACHE_FRAME_SHIFT) & VERTCACHE_FRAME_MASK;
-		if (frameNum != ((vertexCache.currentFrame - 1) & VERTCACHE_FRAME_MASK)) {
-			idLib::Warning("RB_DrawElementsWithCounters, vertexBuffer == NULL");
-			return;
-		}
-		vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
-	}
-	const int vertOffset = (int)(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
 	auto apiVertexBuffer = reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject());
 	
@@ -468,12 +517,12 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		}
 		assert((jointBuffer.GetOffset() & (glConfig.uniformBufferOffsetAlignment - 1)) == 0);
 
-		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), *commandList);
+		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), commandList);
 	}
 
 	const triIndex_t* test = (triIndex_t*)indexOffset;
 
-	if (dxRenderer.EndSurfaceSettings(variant, *commandList)) {
+	if (dxRenderer.EndSurfaceSettings(variant, surfaceConstants, surfaceConstantsSize, *commandList)) {
 		dxRenderer.DrawModel(
 			*commandList,
 			apiVertexBuffer,
@@ -519,8 +568,12 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		vertOffset / sizeof(idDrawVert));*/
 }
 
+void RB_DrawElementsWithCounters(const drawSurf_t* surf, void* surfaceConstants, size_t bufferSize) {
+	RB_DrawElementsWithCounters(surf, surf->ambientCache, 0 /* Keep the value in the view */, DX12Rendering::VARIANT_DEFAULT, surfaceConstants, bufferSize);
+}
+
 void RB_DrawElementsWithCounters(const drawSurf_t* surf) {
-	RB_DrawElementsWithCounters(surf, surf->ambientCache, 0 /* Keep the value in the view */, DX12Rendering::VARIANT_DEFAULT);
+	RB_DrawElementsWithCounters(surf, nullptr, 0);
 }
 
 /*
@@ -539,8 +592,11 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 			continue;
 		}
 
-		auto commandManager = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager();
-		DX12Rendering::Commands::CommandManagerCycleBlock subCycleBlock(commandManager, "Depth Buffer Surface");
+		{
+			// Removed block as it slowed down rendering.
+			//auto commandManager = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager();
+			//DX12Rendering::Commands::CommandManagerCycleBlock subCycleBlock(commandManager, "Depth Buffer Surface");
+		}
 
 		// get the expressions for conditionals / color / texcoords
 		const float* regs = drawSurf->shaderRegisters;
@@ -730,15 +786,15 @@ If there are no subview surfaces, we could clear to black and use fast-Z renderi
 on the 360.
 =====================
 */
-static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
+static const DX12Rendering::Commands::FenceValue RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	// TODO: Run this on it's own commandList so we can fill the rest while running.
 	if (numDrawSurfs == 0) {
-		return;
+		return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::DIRECT, 0);
 	}
 
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	if (backEnd.viewDef->viewEntitys == NULL) {
-		return;
+		return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::DIRECT, 0);
 	}
 
 	renderLog.OpenMainBlock(MRB_FILL_DEPTH_BUFFER);
@@ -820,15 +876,15 @@ static void RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	// Allow platform specific data to be collected after the depth pass.
 	GL_FinishDepthPass();
 
-	{
-		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
-		commandList->AddPostFenceSignal(&DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->fence);
+	auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+	const DX12Rendering::Commands::FenceValue resultFence = commandList->AddPostFenceSignal();
 
-		commandList->Close();
-	}
+	commandList->Close();
 
 	renderLog.CloseBlock();
 	renderLog.CloseMainBlock();
+
+	return resultFence;
 }
 
 /*
@@ -959,7 +1015,7 @@ static void RB_DrawSingleInteraction(drawInteraction_t* din) {
 
 	// texture 5 is the screenspace shadow texture.
 	GL_SelectTexture(INTERACTION_TEXUINIT_SHADOW);
-	dxRenderer.SetTexture(dxRenderer.GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
+	dxRenderer.SetTexture(DX12Rendering::GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
 
 	RB_DrawElementsWithCounters(din->surf);
 }
@@ -1253,13 +1309,13 @@ static void RB_StencilShadowPass(const drawSurf_t* drawSurfs, const viewLight_t*
 			backEnd.glState.vertexLayout = LAYOUT_DRAW_SHADOW_VERT;
 		}
 
-		RB_DrawElementsWithCounters(drawSurf, drawSurf->shadowCache, vertexSize, variant);
+		RB_DrawElementsWithCounters(drawSurf, drawSurf->shadowCache, vertexSize, variant, nullptr, 0);
 
 		if (!renderZPass && r_useStencilShadowPreload.GetBool())
 		{
 			variant = drawSurf->jointCache ? DX12Rendering::VARIANT_STENCIL_SHADOW_RENDER_ZPASS_SKINNED : DX12Rendering::VARIANT_STENCIL_SHADOW_RENDER_ZPASS;
 			// Render again with z-pass
-			RB_DrawElementsWithCounters(drawSurf, drawSurf->shadowCache, vertexSize, variant);
+			RB_DrawElementsWithCounters(drawSurf, drawSurf->shadowCache, vertexSize, variant, nullptr, 0);
 		}
 
 		//// get vertex buffer
@@ -1439,7 +1495,7 @@ static void RB_StencilSelectLight(const viewLight_t* vLight) {
 	//// two-sided stencil test
 	const DX12Rendering::eSurfaceVariant variant = DX12Rendering::VARIANT_STENCIL_TWOSIDED;
 
-	RB_DrawElementsWithCounters(&backEnd.zeroOneCubeSurface, backEnd.zeroOneCubeSurface.ambientCache, 0, variant);
+	RB_DrawElementsWithCounters(&backEnd.zeroOneCubeSurface, backEnd.zeroOneCubeSurface.ambientCache, 0, variant, nullptr, 0);
 
 	//// reset stencil state
 
@@ -1703,7 +1759,7 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 
 				// texture 5 is the screenspace shadow texture.
 				GL_SelectTexture(INTERACTION_TEXUINIT_SHADOW);
-				dxRenderer.SetTexture(dxRenderer.GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
+				dxRenderer.SetTexture(DX12Rendering::GetTextureManager()->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SHADOWMAP));
 
 				RB_DrawElementsWithCounters(surf);
 
@@ -1814,7 +1870,7 @@ DRAW GBUFFER
 RB_DrawGBuffer
 ==================
 */
-static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
+static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	constexpr UINT surfaceCount = 5;
 	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 		DX12Rendering::eRenderSurface::FlatNormal,
@@ -1825,9 +1881,6 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 	};
 
 	DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
-
-	//Set this to write to the appropriate render surfaces
-	GL_SelectTexture(0);
 
 	//First fill in the sub view surfaces
 	int surfNum;
@@ -1844,6 +1897,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 //TODO: Move to it's own buffer to render and cast rays'
 
 
+	GBufferSurfaceConstants surfaceConstants = {};
 	// continue checking past the subview surfaces
 	for (; surfNum < numDrawSurfs; surfNum++) {
 		const drawSurf_t* surf = drawSurfs[surfNum];
@@ -1928,16 +1982,13 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		const idMaterial* surfaceShader = surf->material;
 		if (surfaceShader->GetFastPathBumpImage() && !r_skipInteractionFastPath.GetBool()) {
 			// texture 0 will be the per-surface bump map
-			GL_SelectTexture(0);
-			surfaceShader->GetFastPathBumpImage()->Bind();
+			surfaceConstants.bumpMapIndex = LoadBindlessTexture(surfaceShader->GetFastPathBumpImage());
 
 			// texture 3 is the per-surface diffuse map
-			GL_SelectTexture(1);
-			surfaceShader->GetFastPathDiffuseImage()->Bind();
+			surfaceConstants.albedoIndex = LoadBindlessTexture(surfaceShader->GetFastPathDiffuseImage());
 
 			// texture 4 is the per-surface specular map
-			GL_SelectTexture(2);
-			surfaceShader->GetFastPathSpecularImage()->Bind();
+			surfaceConstants.specularIndex = LoadBindlessTexture(surfaceShader->GetFastPathSpecularImage());
 
 			const idVec4 sMatrix(1, 0, 0, 0);
 			const idVec4 tMatrix(0, 1, 0, 0);
@@ -1985,8 +2036,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 					bumpMapFound = true;
 
 					// texture 0 will be the per-surface bump map
-					GL_SelectTexture(0);
-					surfaceStage->texture.image->Bind();
+					surfaceConstants.bumpMapIndex = LoadBindlessTexture(surfaceStage->texture.image);
 
 					idVec4 bumpMatrix[2];
 					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
@@ -2012,8 +2062,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 					diffuseMapFound = true;
 
 					// texture 3 will be the diffuse map
-					GL_SelectTexture(1);
-					surfaceStage->texture.image->Bind();
+					surfaceConstants.albedoIndex = LoadBindlessTexture(surfaceStage->texture.image);
 
 					idVec4 matrix[2];
 					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
@@ -2039,8 +2088,7 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 					specularMapFound = true;
 
 					// texture 3 will be the diffuse map
-					GL_SelectTexture(2);
-					surfaceStage->texture.image->Bind();
+					surfaceConstants.specularIndex = LoadBindlessTexture(surfaceStage->texture.image);
 
 					idVec4 matrix[2];
 					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
@@ -2057,8 +2105,14 @@ static void RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
 		}
 
 		// draw it solid
-		RB_DrawElementsWithCounters(surf);
+		RB_DrawElementsWithCounters(surf, &surfaceConstants, sizeof(GBufferSurfaceConstants));
 	}
+
+	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
+	const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
+	commandList->Close();
+
+	return fence;
 }
 
 /*
@@ -2083,7 +2137,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 
 	DX12Rendering::RenderPassBlock renderPassBlock("DrawInteractions", DX12Rendering::Commands::DIRECT);
 	
-	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 
 	GL_SelectTexture(0);
 
@@ -2852,8 +2906,6 @@ static void RB_FogAllLights() {
 	backEnd.currentSpace = NULL;
 
 	for (viewLight_t* vLight = backEnd.viewDef->viewLights; vLight != NULL; vLight = vLight->next) {
-		dxRenderer.SetActiveLight(vLight->sceneIndex);
-
 		if (vLight->lightShader->IsFogLight()) {
 			RB_FogPass(vLight->globalInteractions, vLight->localInteractions, vLight);
 		}
@@ -2870,7 +2922,7 @@ void RB_DrawCombinedGBufferResults()
 {
 	DX12Rendering::RenderPassBlock renderPassBlock("DXR_GenerateResult", DX12Rendering::Commands::DIRECT);
 	
-	DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 
 	
 	GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
@@ -2886,18 +2938,22 @@ void RB_DrawCombinedGBufferResults()
 
 	// Prepare the textures
 	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+
 		// Wait for any copy operations to finish
 		auto diffuse = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE);
 		auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
 
 		// Prepare the surfaces for rendering
-		diffuse->fence.Wait();
+		commandList->AddPreFenceWait(diffuse->GetLastFenceValue());
 		GL_SelectTexture(0);
 		dxRenderer.SetTexture(diffuse);
 
-		specular->fence.Wait();
+		commandList->AddPreFenceWait(specular->GetLastFenceValue());
 		GL_SelectTexture(1);
 		dxRenderer.SetTexture(specular);
+
+		commandList->Close();
 	}
 
 	// Draw
@@ -2925,15 +2981,54 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
 	const int numDrawSurfs = viewDef->numDrawSurfs;
 
-	for (int i = 0; i < numDrawSurfs; i++) {
-		const drawSurf_t* ds = viewDef->drawSurfs[i];
-		if (ds->material != NULL) {
-			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
-		}
-	}
-
 	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
 	const bool useGBuffer = raytracedEnabled;
+
+	// Copy Vertex data for drawing dynamic objects
+	/*{
+		idVertexBuffer* vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
+		dxRenderer.CopyDynamicVertexData(reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject()), vertexBuffer->GetOffset(), vertexBuffer->GetSize());
+	}*/
+
+	{
+		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_DrawViewInternal::ComputeBones");
+
+		for (int i = 0; i < numDrawSurfs; i++) {
+			const drawSurf_t* ds = viewDef->drawSurfs[i];
+			if (ds->material != NULL) {
+				const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
+			}
+
+			if (ds->jointCache)
+			{
+				// get vertex buffer
+				idVertexBuffer* const vertexBuffer = GetVertexBuffer(ds->ambientCache);
+				const int vertOffset = GetVertexBufferOffset(ds->ambientCache);
+				const UINT vertSize = GetVertexBufferSize(ds->ambientCache);
+
+				if (vertexBuffer == nullptr)
+				{
+					// An error occured when grabbing the vertex buffer data.
+					return;
+				}
+
+				DX12Rendering::Geometry::VertexBuffer* const apiVertexBuffer = static_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject());
+
+				// get joint buffer
+				idJointBuffer jointBuffer;
+				if (!vertexCache.GetJointBuffer(ds->jointCache, &jointBuffer)) {
+					idLib::Warning("BackEnd ComputeSurfaceBones, jointBuffer == NULL");
+					return;
+				}
+
+				DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
+
+				// Update the vert structure.
+				dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
+			}
+		}
+	}
 
 	//-------------------------------------------------
 	// RB_BeginDrawingView
@@ -3102,59 +3197,53 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	bool raytraceUpdated = false;
 	if (backEnd.viewDef->viewEntitys != NULL) {
-		if (raytracedEnabled)
-		{
-			raytraceUpdated = true;
-			dxRenderer.DXR_UpdateAccelerationStructure();
-		}
-
 		//-------------------------------------------------
 		// fill the depth buffer and clear color buffer to black except on subviews
 		//-------------------------------------------------
 		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
 
-		if (useGBuffer)
-		{
-			// Fill the GBuffer
-			RB_DrawGBuffer(drawSurfs, numDrawSurfs);
-		}
-
 		if (raytracedEnabled)
 		{
+			raytraceUpdated = true;
+			dxRenderer.DXR_UpdateAccelerationStructure();
+
 			// Build our light list
 			dxRenderer.DXR_SetupLights(backEnd.viewDef->viewLights, backEnd.viewDef->worldSpace.modelMatrix);
 		}
 
 		if (useGBuffer)
 		{
+			// Fill the GBuffer
+			const DX12Rendering::Commands::FenceValue fence = RB_DrawGBuffer(drawSurfs, numDrawSurfs);
+
 			// Copy the depth buffer to a texture
 			auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
-			viewDepth->fence.Wait();
+			//viewDepth->fence.Wait();
 
 			// TODO: Make a system to perform multiple copies
-			DX12Rendering::TextureManager* textureManager = dxRenderer.GetTextureManager();
+			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 			DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
-			viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
+			viewDepth->CopySurfaceToTexture(depthTexture, textureManager, fence);
 
 			// Copy the albedo
 			auto albedo = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo);
 			DX12Rendering::TextureBuffer* albedoTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
-			albedo->CopySurfaceToTexture(albedoTexture, textureManager);
+			albedo->CopySurfaceToTexture(albedoTexture, textureManager, fence);
 
 			// Copy the specular
 			auto specular = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor);
 			DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
-			specular->CopySurfaceToTexture(specularTexture, textureManager);
+			specular->CopySurfaceToTexture(specularTexture, textureManager, fence);
 
 			// Copy the flat normal map to a texture
 			auto normalFlatMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal);
 			DX12Rendering::TextureBuffer* normalFlatTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_FLAT_NORMALS);
-			normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager);
+			normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager, fence);
 
 			// Copy the normal map to a texture
 			auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);
 			DX12Rendering::TextureBuffer* normalTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
-			normalMap->CopySurfaceToTexture(normalTexture, textureManager);
+			normalMap->CopySurfaceToTexture(normalTexture, textureManager, fence);
 
 			// TODO: Find a better place to reset this.
 			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Reset();

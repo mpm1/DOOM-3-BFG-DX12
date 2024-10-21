@@ -7,6 +7,7 @@
 #include "./dx12_global.h"
 #include "./dx12_resource.h"
 #include "./dx12_Geometry.h"
+#include <renderer/DX12/dx12_RootSignature.h>
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
@@ -48,6 +49,18 @@ namespace DX12Rendering
 
 	DEFINE_ENUM_FLAG_OPERATORS(ACCELERATION_INSTANCE_TYPE);
 
+	struct RaytracingGeometryArgument {
+		dxHandle_t meshIndex; // If we use multiple meshes, this is the index on the top model.
+		
+		dxHandle_t vertexHandle;
+		UINT vertCounts;
+		
+		dxHandle_t indexHandle;
+		UINT indexCounts;
+
+		dxHandle_t jointsHandle;
+	};
+
 	struct DX12AccelerationObject {
 		D3D12_RAYTRACING_GEOMETRY_DESC vertex_buffer;
 		UINT index;
@@ -58,18 +71,23 @@ namespace DX12Rendering
 	};
 
 	struct Instance {
+		ACCELERATION_INSTANCE_TYPE blasType; // Dynamic instances will need to have their BLAS updated.
+
 		float				transformation[3][4];
 		const dxHandle_t	instanceId;
 		dxHandle_t			blasId;
 		UINT				hitGroupIndex; // TODO: We will change this to point to the hitGroup in the stack that contains the normal map for the surface.
 		UINT				mask; // ACCELLERATION_INSTANCE_MASK
-										   //TODO: Add support for bone information.
 
-		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId, UINT hitGroupIndex, ACCELLERATION_INSTANCE_MASK mask) :
+		/* Dynamic Object Properties */
+		UINT originalBlasId;								   //TODO: Add support for bone information.
+
+		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId, UINT hitGroupIndex, ACCELLERATION_INSTANCE_MASK mask, ACCELERATION_INSTANCE_TYPE accelerationType) :
 			instanceId(id),
 			blasId(blasId),
 			hitGroupIndex(hitGroupIndex),
 			mask(mask),
+			blasType(accelerationType),
 			transformation{}
 		{
 			std::memcpy(transformation, srcTransformation, sizeof(float[3][4]));
@@ -95,13 +113,17 @@ namespace DX12Rendering
 	{
 		const dxHandle_t id;
 		std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry = {};
+		std::vector<dxHandle_t> joints = {};
 		const bool m_isStatic;
+		bool isBuilt; // We may need to build this structure later.
 
 		BottomLevelAccelerationStructure(const dxHandle_t id, bool isStatic, const LPCWSTR name) :
 			Resource(name),
 			id(id),
 			m_sizeInBytes(0),
-			m_isStatic(isStatic)
+			m_isStatic(isStatic),
+			isBuilt(false),
+			m_lastFenceValue(Commands::COMPUTE, 0)
 		{}
 
 		~BottomLevelAccelerationStructure()
@@ -109,7 +131,7 @@ namespace DX12Rendering
 			geometry.clear();
 		}
 
-		void AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount);
+		void AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, dxHandle_t jointsHandle);
 		void AddGeometry(D3D12_RAYTRACING_GEOMETRY_DESC geometryDesc);
 
 		/// <summary>
@@ -119,6 +141,9 @@ namespace DX12Rendering
 
 	private:
 		UINT64 m_sizeInBytes;
+
+		DX12Rendering::Commands::FenceValue m_lastFenceValue;
+
 		void CalculateBufferSize(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS* desc);
 	};
 
@@ -129,7 +154,8 @@ namespace DX12Rendering
 	{
 		TopLevelAccelerationStructure(const std::wstring name) :
 			Resource(std::move(name.c_str())),
-			m_instanceDescriptor(InstanceDescriptor((name + L": Descriptor").c_str()))
+			m_instanceDescriptor(InstanceDescriptor((name + L": Descriptor").c_str())),
+			m_lastFenceValue(DX12Rendering::Commands::dx12_commandList_t::COMPUTE, 0)
 		{}
 		~TopLevelAccelerationStructure();
 
@@ -140,9 +166,11 @@ namespace DX12Rendering
 		/// <param name="instanceCount">The total instances in the TLAS.</param>
 		/// <param name="scratchBuffer">The scratch buffer used to create the TLAS.</param>
 		/// <returns>True if the resource buffer was updated. False otherwise.</returns>
-		bool UpdateResources(BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& staticInstances, const std::vector<DX12Rendering::Instance>& dynamicInstances, ScratchBuffer* scratchBuffer);
+		bool UpdateResources(BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& instances, ScratchBuffer* scratchBuffer);
 
 		ID3D12Resource* GetResult() { return resource.Get(); }
+
+		const DX12Rendering::Commands::FenceValue& GetLastFenceValue(){ return m_lastFenceValue; }
 
 #ifdef DEBUG_IMGUI
 		const void ImGuiDebug();
@@ -152,6 +180,8 @@ namespace DX12Rendering
 		UINT64 m_resultSize = 0;
 
 		void CacluateBufferSizes(ID3D12Device5* device, UINT64* scratchSizeInBytes, UINT64* resultSizeInBytes, UINT64* instanceDescsSize, const UINT instanceCount, const D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS* description);
+
+		DX12Rendering::Commands::FenceValue m_lastFenceValue;
 	};
 }
 
@@ -162,11 +192,9 @@ public:
 	BLASManager();
 	~BLASManager();
 
-	BottomLevelAccelerationStructure* CreateBLAS(const dxHandle_t& key, const LPCWSTR name);
+	BottomLevelAccelerationStructure* CreateBLAS(const dxHandle_t& key, const bool isStatic, const bool isBuilt, const LPCWSTR name);
 	BottomLevelAccelerationStructure* GetBLAS(const dxHandle_t& key);
 	void RemoveBLAS(const dxHandle_t& key);
-
-	BottomLevelAccelerationStructure* ReserveBLASPlaceholder(const dxHandle_t& key);
 
 	void Reset();
 
@@ -184,7 +212,7 @@ private:
 	std::map<dxHandle_t, BottomLevelAccelerationStructure> m_objectMap = {};
 	ScratchBuffer m_scratchBuffer;
 
-	DX12Rendering::Fence m_fence;
+	
 };
 
 class DX12Rendering::TLASManager
@@ -195,13 +223,19 @@ public:
 
 	bool Generate();
 
-	void Reset(const ACCELERATION_INSTANCE_TYPE typesMask);
-	const bool IsReady() noexcept { return GetCurrent().Exists(); }
-	const void WaitForFence() { return GetCurrent().fence.Wait(); }
+	/// <summary>
+	/// Goes through each requested TLAS and updates corrisponding BLAS if needed.
+	/// </summary>
+	void UpdateDynamicInstances();
 
-	TopLevelAccelerationStructure& GetCurrent() { return m_tlas; }
+	const bool IsReady() noexcept { return GetCurrent().Exists(); }
+	const void WaitForFence();
+
+	TopLevelAccelerationStructure& GetCurrent() { return m_tlas[GetCurrentFrameIndex()]; }
 
 	void AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, const ACCELLERATION_INSTANCE_MASK instanceMask);
+
+	void Reset();
 
 	const bool IsDirty(){ return m_isDirty; }
 	void MarkDirty() { m_isDirty = true; }
@@ -212,12 +246,13 @@ public:
 private:
 	BLASManager* m_blasManager;
 	DX12Rendering::dx12_lock m_instanceLock;
-	std::vector<DX12Rendering::Instance> m_staticInstances;
-	std::vector<DX12Rendering::Instance> m_dynamicInstances;
-	TopLevelAccelerationStructure m_tlas;
+	std::vector<DX12Rendering::Instance> m_instances[DX12_FRAME_COUNT];
+
+	TopLevelAccelerationStructure m_tlas[DX12_FRAME_COUNT];
 	ScratchBuffer m_scratch;
 	bool m_isDirty;
+	byte m_accelerationCooldown;
 
-	const bool TryGetWriteInstance(const dxHandle_t& instanceId, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance);
+	const bool TryGetWriteInstance(const UINT frameIndex, const dxHandle_t& instanceId, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance);
 };
 #endif

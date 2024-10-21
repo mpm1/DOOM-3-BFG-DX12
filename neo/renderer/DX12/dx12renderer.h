@@ -12,6 +12,7 @@
 #include "./dx12_RootSignature.h"
 #include "./dx12_raytracing.h"
 #include "./dx12_TextureManager.h"
+#include "./dx12_shader.h"
 
 // Use D3D clip space.
 #define CLIP_SPACE_D3D
@@ -29,6 +30,9 @@ class idRenderModel;
 #ifdef _DEBUG
 struct viewLight_t;
 #endif
+
+constexpr int DYNAMIC_VERTEX_MEMORY_PER_FRAME = 31 * 1024 * 1024; // Matches VERTCACHE_VERTEX_MEMORY_PER_FRAME
+constexpr int DYNAMIC_VERTEX_ALIGNMENT = 32; // Matches VERTEX_CACHE_ALIGN
 
 namespace DX12Rendering {
 
@@ -84,7 +88,7 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	// Buffers
-	DX12Rendering::Geometry::VertexBuffer* AllocVertexBuffer(UINT numBytes, LPCWSTR name);
+	DX12Rendering::Geometry::VertexBuffer* AllocVertexBuffer(const UINT numBytes, const LPCWSTR name, const bool isGPUWritable);
 	void FreeVertexBuffer(DX12Rendering::Geometry::VertexBuffer* buffer);
 
 	DX12Rendering::Geometry::IndexBuffer* AllocIndexBuffer(UINT numBytes, LPCWSTR name);
@@ -92,15 +96,11 @@ public:
 
 	DX12Rendering::Geometry::JointBuffer* AllocJointBuffer(UINT numBytes);
 	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
-	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList& commandList);
+	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
 
-	// Lights
-	UINT SetLightData(const UINT sceneIndex, const UINT shadowMask);
-	void MoveLightsToHeap();
-	const DX12Rendering::ShaderLightData SetActiveLight(const UINT lightIndex);
+	UINT ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT offset /* assume srcBuffer and dstBuffer are the same layout */, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset);
 
 	// Textures
-	DX12Rendering::TextureManager* GetTextureManager() { return &m_textureManager; }
 	void SetActiveTextureRegister(UINT8 index);
 	void SetTexture(DX12Rendering::TextureBuffer* buffer);
 
@@ -109,18 +109,24 @@ public:
 	DX12Rendering::Commands::CommandList* Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4], DX12Rendering::Commands::CommandList* commandList);
 	void EndDraw();
 	void PresentBackbuffer();
+	void SetPassDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
 	void SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
-	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant, DX12Rendering::Commands::CommandList& commandList); // Records the the surface entry into the heap.
+	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant, void* surfaceConstants, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList); // Records the the surface entry into the heap.
 	void DrawModel(DX12Rendering::Commands::CommandList& commandList, DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride /* 0 means no override */);
 
 #pragma region RayTracing
 	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.
 	void DXR_UpdateAccelerationStructure();
 
-	void DXR_UpdateModelInBLAS(const idRenderModel* model);
+	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateModelInBLAS(const idRenderModel* model);
+	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments);
+	
+	void DXR_RemoveModelInBLAS(const idRenderModel* model);
+	void DXR_RemoveBLAS(const dxHandle_t id);
 
-	void DXR_AddEntityToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
+	void DXR_AddModelBLASToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
+	void DXR_AddBLASToTLAS(const uint entityIndex, const dxHandle_t id, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
 
 	void DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t param, const float* uniform);
 	void DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, const float* uniform, const UINT count);
@@ -135,7 +141,7 @@ public:
 	void SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count);
 	void EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList);
 	void ResetRenderTargets();
-	DX12Rendering::eRenderSurface GetOutputSurface() { return (DX12Rendering::eRenderSurface)(DX12Rendering::eRenderSurface::RenderTarget1 + m_frameIndex); }
+	DX12Rendering::eRenderSurface GetOutputSurface() { return (DX12Rendering::eRenderSurface)(DX12Rendering::eRenderSurface::RenderTarget1 + DX12Rendering::GetCurrentFrameIndex()); }
 
 #pragma region Top Level Acceleration Structure
 	//TODO
@@ -151,8 +157,6 @@ public:
 #ifdef _DEBUG
 	void DebugAddLight(const viewLight_t& light);
 	void DebugClearLights();
-
-	void CopyDebugResultToDisplay(); // Copies the resulting image to the user display.
 #endif
 
 private:
@@ -160,6 +164,8 @@ private:
 	UINT m_height;
 	int m_fullScreen; // 0 = windowed, otherwise 1 based monitor number to go full screen on
 						// -1 = borderless window for spanning multiple displays
+
+	DX12Rendering::Commands::FenceValue m_endFrameFence;
 
 	FLOAT m_aspectRatio = 1.0f;
     FLOAT m_FoV = 90.0f;
@@ -171,29 +177,29 @@ private:
 	CD3DX12_VIEWPORT m_viewport;
 	CD3DX12_RECT m_scissorRect;
 	ComPtr<IDXGISwapChain3> m_swapChain;
-	DX12RootSignature* m_rootSignature;
-
-	DX12Rendering::ShaderLightData m_lights[MAX_SCENE_LIGHTS]; // All lights being rendered into the scene.
-	UINT m_activeLight = 0;
+	DX12Rendering::RenderRootSignature* m_rootSignature;
+	DX12Rendering::ComputeRootSignature* m_computeRootSignature;
 
 	XMFLOAT4 m_constantBuffer[57/* RENDERPARM_TOTAL */];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
+	bool m_isPipelineStateNew = false; // When we set the active pipeline state, we will use this to define that the state has changed and we must set new properties.
 	UINT m_stencilRef = 0;
 
 	UINT m_objectIndex = 0;
+
+	// Compute Shaders
+	ComPtr<ID3D12PipelineState> m_skinnedModelShader = nullptr;
+
+	// Dynamic Surface Data
+	UINT m_nextDynamicVertexIndex = 0;
+	DX12Rendering::Geometry::VertexBuffer* m_dynamicVertexBuffer[DX12_FRAME_COUNT];
 
 	// Render Targets
 	UINT m_activeRenderTargets = 0;
 	DX12Rendering::RenderSurface* m_renderTargets[MAX_RENDER_TARGETS];
 
-	// Synchronization
-	UINT m_frameIndex;
-	DX12Rendering::Fence m_frameFence;
-	DX12Rendering::Fence m_copyFence;
-
 	// Textures
-	DX12Rendering::TextureManager m_textureManager;
 	UINT8 m_activeTextureRegister;
 	DX12Rendering::TextureBuffer* m_activeTextures[TEXTURE_REGISTER_COUNT];
 
@@ -208,21 +214,12 @@ private:
 	void LoadPipeline(HWND hWnd);
 	void LoadAssets();
 
+	void CreateDynamicPerFrameData();
+	void DestroyDynamicPerFrameData();
+	void ResetDynamicPerFrameData();
+
 	void SignalNextFrame();
     void WaitForPreviousFrame();
-	void WaitForCopyToComplete();
-
-	/// <summary>
-	/// Copies the contents of a render target to the display buffer.
-	/// </summary>
-	/// <param name="renderTarget"></param>
-	/// <param name="sx">The source x location</param>
-	/// <param name="sy">The source y location</param>
-	/// <param name="rx">The result x location</param>
-	/// <param name="ry">The result y location</param>
-	/// <param name="width">The width of pixels to copy</param>
-	/// <param name="height">The height of the pixels to copy</param>
-	void CopySurfaceToDisplay(DX12Rendering::eRenderSurface surfaceId, UINT sx, UINT sy, UINT rx, UINT ry, UINT width, UINT height);
 
 	bool CreateBackBuffer();
 

@@ -26,12 +26,17 @@ If you have questions concerning this license or the applicable additional terms
 ===========================================================================
 */
 
-#include "global.inc"
-
-struct PS_OUT {
-	float4 color : SV_TARGET;
+struct JointConstants {
+	float4 matrices[404]; //Convert this to an SRV
 };
+ConstantBuffer<JointConstants> matrices_ubo : register(b1);
 
-void main( out PS_OUT result ) {
-	result.color = float4( 0.0, 0.0, 0.0, 1.0 ); // TODO: make sure this is hidden.
+float4 GetJointFromConst(JointConstants joints, int index)
+{
+	return joints.matrices[index];
+}
+
+float4 GetJoint(int index)
+{
+	return GetJointFromConst(matrices_ubo, index);
 }

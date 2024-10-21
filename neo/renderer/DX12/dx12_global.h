@@ -37,10 +37,10 @@
 
 #define DX12_FRAME_COUNT 2
 
+#define CBV_REGISTER_COUNT 3
 #define TEXTURE_REGISTER_COUNT 6
-#define MAX_DESCRIPTOR_COUNT 7 // 2 CBV and 5 Shader Resource View
-#define MAX_OBJECT_COUNT 10000
-#define MAX_HEAP_INDEX_COUNT 70000
+#define MAX_DESCRIPTOR_COUNT (CBV_REGISTER_COUNT + TEXTURE_REGISTER_COUNT)
+#define MAX_OBJECT_COUNT 5000
 
 #define MAX_SCENE_LIGHTS 128 // Total lights allowed in a scene.
 #define MAX_DXR_LIGHTS 32 // We use each light as a mask position.
@@ -59,9 +59,7 @@ namespace DX12Rendering {
 		UAV_DiffuseMap,
 		UAV_SpecularMap,
 		SRV_TLAS,
-		CBV_CameraProperties,
-
-		SRV_TextureArray // Used as the starting point for all indexed entries in the descriptor heap
+		CBV_CameraProperties
 	};
 
 	namespace Commands
@@ -118,127 +116,14 @@ namespace DX12Rendering {
 	// FrameIndexing
 	const UINT8 GetCurrentFrameIndex();
 	const UINT8 GetLastFrameIndex();
-	const UINT8 IncrementFrameIndex();
+	const UINT8 GetNextFrameIndex();
+	const UINT8 UpdateFrameIndex(IDXGISwapChain3* swapChain);
 
 	// Locking
 	typedef std::shared_mutex dx12_lock;
 	typedef std::unique_lock<dx12_lock> ReadLock;
 	typedef std::shared_lock<dx12_lock> WriteLock;
 
-	class Fence
-	{
-	public:
-		Fence() : 
-			m_value(0), m_fence(nullptr), m_fenceEvent(nullptr)
-		{
-		}
-
-		~Fence()
-		{
-			if (m_fenceEvent != nullptr)
-			{
-				CloseHandle(m_fenceEvent);
-			}
-		}
-
-		void Increment()
-		{
-			++m_value;
-		}
-
-		void Invalidate()
-		{
-			m_value = 1;
-		}
-
-		HRESULT Allocate(ID3D12Device5* device)
-		{
-			HRESULT result = device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence));
-			m_value = 1;
-
-			m_fenceEvent = CreateEvent(nullptr, FALSE, FALSE, nullptr);
-
-			return result;
-		}
-
-		HRESULT Signal(ID3D12Device5* device, ID3D12CommandQueue* commandQueue)
-		{
-			HRESULT result;
-
-			if (m_fence == nullptr)
-			{
-				result = Allocate(device);
-
-				if (FAILED(result))
-				{
-					return result;
-				}
-			}
-
-			Increment();
-			return commandQueue->Signal(m_fence.Get(), m_value);
-		}
-
-		HRESULT SetCompletionEvent(UINT64 value, HANDLE completionEvent)
-		{
-			return m_fence->SetEventOnCompletion(value, completionEvent);
-		}
-
-		bool IsFenceCompleted()
-		{
-			if (m_fence == nullptr)
-			{
-				// No fence to evaluate.
-				return true;
-			}
-
-			UINT64 completedValue = m_fence->GetCompletedValue();
-			return completedValue >= m_value;
-		}
-
-		void GPUWait(ID3D12CommandQueue* commandQueue)
-		{
-			if (m_fence == nullptr)
-			{
-				return;
-			}
-
-			WarnIfFailed(commandQueue->Wait(m_fence.Get(), m_value));
-		}
-
-		void Wait()
-		{
-			WaitLimitted(FENCE_MAX_WAIT);
-		}
-
-		void WaitLimitted(DWORD waitTime)
-		{
-			if (m_fence == nullptr)
-			{
-				return;
-			}
-
-			if (!IsFenceCompleted())
-			{
-				HRESULT result = SetCompletionEvent(m_value, m_fenceEvent);
-				DX12Rendering::WarnIfFailed(result);
-				WaitForSingleObject(m_fenceEvent, waitTime);
-			}
-		}
-	private:
-		UINT16 m_value;
-		ComPtr<ID3D12Fence> m_fence;
-		HANDLE m_fenceEvent;
-	};
-
-	// Light data being sent to the shaders. This must be 256 byte aligned to be properly referenced.
-	__declspec(align(256)) struct ShaderLightData
-	{
-		UINT shadowMask;
-		UINT pad0;
-		UINT pad1;
-		UINT pad2;
-	};
 }
 
 struct Vertex

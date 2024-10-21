@@ -3,6 +3,20 @@ Basic functions to enable the gbuffer.
 */
 
 #include "global.inc"
+#include "bindless_textures.inc"
+
+#ifdef SKINNED
+#include "joints.inc"
+#endif
+
+struct GBufferConstants
+{
+	uint bumpMapIndex;
+	uint albedoIndex;
+	uint specularIndex;
+	uint pad;
+};
+ConstantBuffer<GBufferConstants> gbufferConstants : register(b2, space0);
 
 #ifdef VERTEX_SHADER
 struct VS_IN {
@@ -63,24 +77,24 @@ void main( VS_IN vertex, out VS_OUT result ) {
 
 	float4 matX, matY, matZ;	// must be float4 for vec4
 	float joint = vertex.color.x * 255.1 * 3;
-	matX = matrices_ubo.matrices[int(joint+0)] * w0;
-	matY = matrices_ubo.matrices[int(joint+1)] * w0;
-	matZ = matrices_ubo.matrices[int(joint+2)] * w0;
+	matX = GetJoint(int(joint+0)) * w0;
+	matY = GetJoint(int(joint+1)) * w0;
+	matZ = GetJoint(int(joint+2)) * w0;
 
 	joint = vertex.color.y * 255.1 * 3;
-	matX += matrices_ubo.matrices[int(joint+0)] * w1;
-	matY += matrices_ubo.matrices[int(joint+1)] * w1;
-	matZ += matrices_ubo.matrices[int(joint+2)] * w1;
+	matX += GetJoint(int(joint+0)) * w1;
+	matY += GetJoint(int(joint+1)) * w1;
+	matZ += GetJoint(int(joint+2)) * w1;
 
 	joint = vertex.color.z * 255.1 * 3;
-	matX += matrices_ubo.matrices[int(joint+0)] * w2;
-	matY += matrices_ubo.matrices[int(joint+1)] * w2;
-	matZ += matrices_ubo.matrices[int(joint+2)] * w2;
+	matX += GetJoint(int(joint+0)) * w2;
+	matY += GetJoint(int(joint+1)) * w2;
+	matZ += GetJoint(int(joint+2)) * w2;
 
 	joint = vertex.color.w * 255.1 * 3;
-	matX += matrices_ubo.matrices[int(joint+0)] * w3;
-	matY += matrices_ubo.matrices[int(joint+1)] * w3;
-	matZ += matrices_ubo.matrices[int(joint+2)] * w3;
+	matX += GetJoint(int(joint+0)) * w3;
+	matY += GetJoint(int(joint+1)) * w3;
+	matZ += GetJoint(int(joint+2)) * w3;
 
 	float3 normal;
 	normal.x = dot3( matX, vNormal );
@@ -148,9 +162,6 @@ void main( VS_IN vertex, out VS_OUT result ) {
 #endif // end VERTEX_SHADER
 
 #ifdef PIXEL_SHADER
-uniform Texture2D<float4>	samp0 : register(t0); // texture 1 is the per-surface bump map
-uniform Texture2D<float4>	samp1 : register(t1); // texture 2 is the per-surface diffuse map
-uniform Texture2D<float4>	samp2 : register(t2); // texture 3 is the per-surface specular map
 
 struct PS_IN {
 	half4 position	: SV_POSITION;
@@ -177,10 +188,10 @@ struct PS_OUT {
 };
 
 void main( PS_IN fragment, out PS_OUT result ) {
-	half4 bumpMap =	samp0.Sample(baseSampler, fragment.texcoord0.xy );
-	half4 YCoCG = samp1.Sample(baseSampler, fragment.texcoord1.xy );
+	half4 bumpMap =	GetBindlessTexture4f(gbufferConstants.bumpMapIndex).Sample(baseSampler, fragment.texcoord0.xy );
+	half4 YCoCG = GetBindlessTexture4f(gbufferConstants.albedoIndex).Sample(baseSampler, fragment.texcoord1.xy );
 	
-	result.specularColor = samp2.Sample(baseSampler, fragment.texcoord2.xy );
+	result.specularColor = GetBindlessTexture4f(gbufferConstants.specularIndex).Sample(baseSampler, fragment.texcoord2.xy );
 	
 	result.albedo.rgb = ConvertYCoCgToRGB( YCoCG ); //we need the diffuse modifier constant?
 

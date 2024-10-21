@@ -4,53 +4,111 @@
 #include "./dx12_global.h"
 #include "./dx12_CommandList.h"
 #include "./dx12_Geometry.h"
+#include "./dx12_HeapDescriptorManager.h"
 #include "./dx12_TextureManager.h"
 
 using namespace DirectX;
 using namespace Microsoft::WRL;
 
-class DX12RootSignature {
+namespace DX12Rendering
+{
+	enum eRenderRootSignatureEntry
+	{
+		eModelCBV = 0,
+		eJointCBV,
+		eSurfaceCBV,
+		eTesxture0SRV,
+		eTesxture1SRV,
+		eTesxture2SRV,
+		eTesxture3SRV,
+		eTesxture4SRV,
+		eTesxture5SRV,
+	};
+
+	class DX12RootSignature
+	{
+	public:
+		DX12RootSignature(ID3D12Device5* device);
+		~DX12RootSignature();
+
+		ID3D12RootSignature* GetRootSignature() { return m_rootSignature.Get(); }
+
+		ID3D12DescriptorHeap* GetCBVHeap();
+
+		/// <summary>
+		/// Initializes the RootSignature for the current frame and resets cbvHeapIndex.
+		/// </summary>
+		/// <param name="frameIndex"></param>
+		void BeginFrame(UINT frameIndex);
+
+		virtual void SetRootDescriptorTable(const UINT objectIndex, DX12Rendering::Commands::CommandList* commandList) = 0;
+		virtual eHeapDescriptorPartition GetCBVHeapPartition() = 0;
+
+		void SetConstantBufferView(const UINT objectIndex, const UINT constantIndex, const ConstantBuffer& buffer);
+
+		void SetUnorderedAccessView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource);
+		void SetShaderResourceView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource);
+
+		DX12Rendering::TextureBuffer* SetTextureRegisterIndex(UINT objectIndex, UINT textureIndex, DX12Rendering::TextureBuffer* texture, DX12Rendering::Commands::CommandList* commandList);
+
+		const UINT RequestNewObjectIndex() {
+			UINT result = m_nextObjectIndex;
+
+			if ((++m_nextObjectIndex) >= MAX_OBJECT_COUNT) { m_nextObjectIndex = 0; }
+
+			return result;
+		}
+	protected:
+		ID3D12Device5* m_device;
+
+		void GenerateRootSignature(CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC* rootSignatureDesc, const LPCWSTR name);
+		const UINT GetHeapIndex(UINT objectIndex, UINT offset) const { return (objectIndex * MAX_DESCRIPTOR_COUNT) + offset; }
+
+		void Initialize();
+	private:
+		ComPtr<ID3D12RootSignature> m_rootSignature;
+
+		UINT m_nextObjectIndex;
+
+		void CreateCBVHeap();
+
+		virtual void CreateRootSignature() {};
+
+		virtual void OnDestroy() {};
+	};
+
+	class RenderRootSignature;
+	class ComputeRootSignature;
+}
+
+class DX12Rendering::RenderRootSignature : public DX12Rendering::DX12RootSignature
+{
 public:
-	DX12RootSignature(ID3D12Device5* device, const size_t constantBufferSize, const size_t lightBufferSize);
-	~DX12RootSignature();
+	RenderRootSignature(ID3D12Device5* device) : DX12RootSignature(device) { Initialize(); };
 
-	ID3D12RootSignature* GetRootSignature() { return m_rootSignature.Get(); }
-	ID3D12DescriptorHeap* GetCBVHeap() { return m_cbvHeap.Get(); }
+	DX12Rendering::TextureBuffer* SetTextureRegisterIndex(UINT objectIndex, UINT textureIndex, DX12Rendering::TextureBuffer* texture, DX12Rendering::Commands::CommandList* commandList);
 
-	/// <summary>
-	/// Initializes the RootSignature for the current frame and resets cbvHeapIndex.
-	/// </summary>
-	/// <param name="frameIndex"></param>
-	void BeginFrame(UINT frameIndex);
+	void SetRootDescriptorTable(const UINT objectIndex, DX12Rendering::Commands::CommandList* commandList);
 
-	// Lighting
-	void SetLightDescriptorTable(const size_t lightBufferSize, const DX12Rendering::ShaderLightData* constantBuffer);
-	D3D12_CONSTANT_BUFFER_VIEW_DESC SetActiveLightView(UINT lightIndex, DX12Rendering::Commands::CommandList* commandList);
-
-	D3D12_CONSTANT_BUFFER_VIEW_DESC SetJointDescriptorTable(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
-	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(const size_t constantBufferSize, XMFLOAT4* m_constantBuffer, UINT objectIndex, DX12Rendering::Commands::CommandList* commandList);
-	DX12Rendering::TextureBuffer* SetTextureRegisterIndex(UINT textureIndex, DX12Rendering::TextureBuffer* texture, DX12Rendering::Commands::CommandList* commandList);
+	eHeapDescriptorPartition GetCBVHeapPartition() { return eHeapDescriptorRenderObjects; }
 private:
-	ID3D12Device5* m_device;
-	ComPtr<ID3D12RootSignature> m_rootSignature;
+	virtual void CreateRootSignature();
 
-	ComPtr<ID3D12DescriptorHeap> m_cbvHeap;
-	ComPtr<ID3D12Resource> m_cbvUploadHeap;
-	UINT m_cbvHeapIncrementor;
-	UINT m_cbvHeapIndex;
+	virtual void OnDestroy();
+};
 
-	const UINT m_lightSpaceOffset;
-	const UINT m_constantBufferOffset;
+class DX12Rendering::ComputeRootSignature : public DX12Rendering::DX12RootSignature
+{
+public:
+	ComputeRootSignature(ID3D12Device5* device) : DX12RootSignature(device) { Initialize(); };
 
-	void CreateRootSignature();
-	void CreateCBVHeap(const size_t constantBufferSize, const size_t lightBufferSize);
+	void SetRootDescriptorTable(const UINT objectIndex, DX12Rendering::Commands::CommandList* commandList);
 
-	void OnDestroy();
+	eHeapDescriptorPartition GetCBVHeapPartition() { return eHeapDescriptorComputeObjects; }
+private:
+	virtual void CreateRootSignature();
 
-	const UINT GetHeapIndex() const { return m_cbvHeapIndex;  }
-	const UINT IncrementHeapIndex() {
-		if ((++m_cbvHeapIndex) >= MAX_HEAP_INDEX_COUNT) { m_cbvHeapIndex %= MAX_HEAP_INDEX_COUNT; } return m_cbvHeapIndex;
-	}
+	virtual void OnDestroy();
 };
 
 #endif

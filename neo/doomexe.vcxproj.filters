@@ -612,9 +612,6 @@
     <ClInclude Include="renderer\DX12\imgui\imstb_truetype.h">
       <Filter>Renderer\DX12\imgui</Filter>
     </ClInclude>
-    <ClInclude Include="renderer\DX12\dx12_buffermap.h">
-      <Filter>Renderer\DX12</Filter>
-    </ClInclude>
     <ClInclude Include="renderer\DX12\dx12_resource.h">
       <Filter>Renderer\DX12</Filter>
     </ClInclude>
@@ -634,6 +631,9 @@
       <Filter>Renderer\DX12</Filter>
     </ClInclude>
     <ClInclude Include="renderer\DX12\dx12_RenderPass.h">
+      <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\dx12_HeapDescriptorManager.h">
       <Filter>Renderer\DX12</Filter>
     </ClInclude>
   </ItemGroup>
@@ -1307,9 +1307,6 @@
     <ClCompile Include="renderer\DX12\dx12_imgui.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
-    <ClCompile Include="renderer\DX12\dx12_buffermap.cpp">
-      <Filter>Renderer\DX12</Filter>
-    </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_resource.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
@@ -1326,7 +1323,10 @@
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_RenderPass.cpp">
-      <Filter>Renderer</Filter>
+      <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\dx12_HeapDescriptorManager.cpp">
+      <Filter>Renderer\DX12</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
@@ -1505,6 +1505,9 @@
     <None Include="..\base\renderprogs\functions.inc">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\base\renderprogs\joints.inc">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sys\win32\rc\doom.rc">
@@ -1663,6 +1666,9 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\combineGbuffer.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\compute_skinned_offset.hlsl">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

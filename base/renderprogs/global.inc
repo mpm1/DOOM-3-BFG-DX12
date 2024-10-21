@@ -28,6 +28,8 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "functions.inc"
 
+#define GROUP_THREADS 64
+
 SamplerState MeshTextureSampler
 {
     Filter = MIN_MAG_MIP_LINEAR;
@@ -41,11 +43,6 @@ SamplerState GuiTextureSampler
     AddressU = Wrap;
     AddressV = Wrap;
 };
-
-struct JointConstants {
-	float4 matrices[404];
-};
-ConstantBuffer<JointConstants> matrices_ubo : register(b0, space1);
 
 struct SceneConstants {
 	float4 rpScreenCorrectionFactor;

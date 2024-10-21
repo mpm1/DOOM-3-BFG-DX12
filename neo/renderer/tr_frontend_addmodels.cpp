@@ -441,7 +441,7 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 			}
 		}
 
-		dxRenderer.DXR_AddEntityToTLAS(entityIndex, *entityDef->parms.hModel, entityDef->modelRenderMatrix[0], entityDef->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
+		entityDef->parms.hModel->UseTLASInFrame(entityIndex, entityDef->modelRenderMatrix[0], entityDef->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
 	}
 
 	// if we aren't visible and none of the shadows stretch into the view,

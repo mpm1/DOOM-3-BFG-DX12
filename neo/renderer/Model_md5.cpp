@@ -31,6 +31,7 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "tr_local.h"
 #include "Model_local.h"
+#include "DX12/dx12_AccelerationStructure.h"
 
 #ifdef ID_WIN_X86_SSE2_INTRIN
 
@@ -861,6 +862,64 @@ void idRenderModelMD5::WriteBinaryModel( idFile * file, ID_TIME_T *_timeStamp ) 
 	}
 }
 
+// Load the blas data
+void idRenderModelMD5::GenerateBLAS()
+{
+	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs
+
+	UpdateBLASData(id);
+}
+
+void idRenderModelMD5::UpdateBLASData(dxHandle_t id)
+{
+	std::vector<DX12Rendering::RaytracingGeometryArgument> geometry = {};
+	geometry.reserve(meshes.Num());
+	
+	for (int i = 0; i < meshes.Num(); i++) 
+	{
+		if (meshes[i].shader->Coverage() == MC_TRANSLUCENT)
+		{
+			// We are not adding translucent surfaces to the trace.
+			continue;
+		}
+
+		if (!meshes[i].shader->LightCastsShadows())
+		{
+			// If we dont cast shadows, drop it.
+			continue;
+		}
+
+		DX12Rendering::RaytracingGeometryArgument geo = {};
+		geo.meshIndex = i;
+
+		geo.vertexHandle = meshes[i].deformInfo->staticAmbientCache;
+		geo.vertCounts = meshes[i].NumVerts();
+
+		geo.indexHandle = meshes[i].deformInfo->staticIndexCache;
+		geo.indexCounts = meshes[i].deformInfo->numIndexes;
+
+		geometry.emplace_back(geo);
+	}
+
+	dxRenderer.DXR_UpdateBLAS(id, this->Name(), false, geometry.size(), geometry.data());
+}
+
+void idRenderModelMD5::DestroyBLAS()
+{
+	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs
+	dxRenderer.DXR_RemoveBLAS(id);
+}
+
+void idRenderModelMD5::UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
+{
+	dxHandle_t id = std::hash<std::string>{}(this->Name()); // TODO: Get better IDs. These should be a combination of entityIndex and id
+
+	//Mark start here. We need to add the blas per mesh item then call only what's visible here.
+	UpdateBLASData(id);
+
+	dxRenderer.DXR_AddBLASToTLAS(entityIndex, id, transform, DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC, instanceMask);
+}
+
 /*
 ====================
 idRenderModelMD5::LoadModel
@@ -969,6 +1028,8 @@ void idRenderModelMD5::LoadModel() {
 	fileSystem->ReadFile( name, NULL, &timeStamp );
 
 	common->UpdateLevelLoadPacifier();
+
+	GenerateBLAS();
 }
 
 /*
@@ -1397,6 +1458,8 @@ which can regenerate the data with LoadModel()
 ===================
 */
 void idRenderModelMD5::PurgeModel() {
+	DestroyBLAS();
+
 	purged = true;
 	joints.Clear();
 	defaultPose.Clear();

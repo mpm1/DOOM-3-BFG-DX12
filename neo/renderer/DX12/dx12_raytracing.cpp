@@ -82,65 +82,29 @@ namespace DX12Rendering {
 
 	void Raytracing::EndFrame()
 	{
-		
 	}
 
 	void Raytracing::CreateCBVHeap(const size_t constantBufferSize)
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-		// Create the buffer size.
-		constexpr UINT resourceAlignment = 1024 * 64; // Resource must be a multible of 64KB
-		const UINT entrySize = DX12_ALIGN(constantBufferSize, 256); // Size is required to be 256 byte aligned
-		const UINT heapSize = DX12_ALIGN(entrySize * MAX_OBJECT_COUNT, resourceAlignment);
-		WCHAR heapName[30];
-
-		assert(heapSize != 0);
-
-		// Create Descriptor Heaps
-		{
-			// Describe and create the constant buffer view (CBV) descriptor for each frame
-			for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
-				// Create the Constant buffer heap for each frame
-				DX12Rendering::ThrowIfFailed(device->CreateCommittedResource(
-					&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD),
-					D3D12_HEAP_FLAG_NONE,
-					&CD3DX12_RESOURCE_DESC::Buffer(heapSize),
-					D3D12_RESOURCE_STATE_GENERIC_READ,
-					nullptr, // Currently not clear value needed
-					IID_PPV_ARGS(&m_cbvUploadHeap[frameIndex])
-				));
-
-				wsprintfW(heapName, L"Raytracing CBV Upload Heap %d", frameIndex);
-				m_cbvUploadHeap[frameIndex]->SetName(heapName);
-			}
-
-			m_cbvHeapIncrementor = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-		}
+		m_cbvHeapIncrementor = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	}
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC Raytracing::SetCBVDescriptorTable(const size_t constantBufferSize, const void* constantBuffer, const UINT frameIndex) {
-		// Copy the CBV value to the upload heap
-		UINT8* buffer;
-		const UINT bufferSize = ((constantBufferSize + 255) & ~255);
-		const UINT offset = 0; // Each entry is 256 byte aligned.
-		CD3DX12_RANGE readRange(offset, bufferSize);
+		DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
 
-		DX12Rendering::ThrowIfFailed(m_cbvUploadHeap[frameIndex]->Map(0, &readRange, reinterpret_cast<void**>(&buffer)));
-		memcpy(buffer, constantBuffer, constantBufferSize);
-		m_cbvUploadHeap[frameIndex]->Unmap(0, &readRange);
+		// Copy the CBV value to the upload heap
+		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(constantBufferSize);
+		resourceManager.FillConstantBuffer(buffer, constantBuffer);
 
 		// Create the constant buffer view for the object
 		CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle(m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart(), DX12Rendering::e_RaytracingHeapIndex::CBV_CameraProperties, m_cbvHeapIncrementor);
 
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+		device->CreateConstantBufferView(&buffer.bufferLocation, descriptorHandle);
 
-		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-		cbvDesc.BufferLocation = m_cbvUploadHeap[frameIndex]->GetGPUVirtualAddress() + offset;
-		cbvDesc.SizeInBytes = bufferSize;
-		device->CreateConstantBufferView(&cbvDesc, descriptorHandle);
-
-		return cbvDesc;
+		return buffer.bufferLocation;
 	}
 
 	void Raytracing::CreateOutputBuffers()
@@ -148,7 +112,7 @@ namespace DX12Rendering {
 		//TODO: Make shadow atlas for lights. Right now were putting the depth into the diffuse buffer for testing
 	}
 
-	void Raytracing::Resize(UINT width, UINT height, DX12Rendering::TextureManager &textureManager)
+	void Raytracing::Resize(UINT width, UINT height)
 	{
 		m_width = width;
 		m_height = height;
@@ -157,7 +121,7 @@ namespace DX12Rendering {
 
 		// TODO: Check if the buffers already exists and clear them
 		CreateOutputBuffers();
-		CreateShaderResourceHeap(textureManager);
+		CreateShaderResourceHeap();
 		CreateShaderBindingTables();
 	}
 
@@ -169,15 +133,14 @@ namespace DX12Rendering {
 		duffuseSurface->CreateUnorderedAccessView(uavHandle);
 	}
 
-	void Raytracing::CreateShaderResourceHeap(DX12Rendering::TextureManager& textureManager)
+	void Raytracing::CreateShaderResourceHeap()
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-		// Create a SRV/UAV/CBV descriptor heap. We need 4 entries + texture entries - 
+		// Create a SRV/UAV/CBV descriptor heap.
 		// 3 UAV for the raytracing output
 		// 1 SRV for the TLAS
 		// 1 CBV for the Camera properties
-		// 1024 SRV for textures.
 		m_generalUavHeaps = CreateDescriptorHeap(device, DESCRIPTOR_HEAP_SIZE, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, true);
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart();
 
@@ -194,8 +157,16 @@ namespace DX12Rendering {
 
 	void Raytracing::GenerateTLAS()
 	{
+		// Update all needed child BLAS
+		m_tlasManager.UpdateDynamicInstances();
+
 		// Update the resource
 		if (!m_tlasManager.Generate())
+		{
+			return;
+		}
+
+		if (m_tlasManager.GetCurrent().state != Resource::eResourceState::Ready)
 		{
 			return;
 		}
@@ -212,11 +183,6 @@ namespace DX12Rendering {
 		srvDesc.RaytracingAccelerationStructure.Location = m_tlasManager.GetCurrent().resource->GetGPUVirtualAddress(); // Write the acceleration structure view in the heap 
 
 		device->CreateShaderResourceView(nullptr, &srvDesc, shadowHandle);
-
-		if (!m_tlasManager.IsDirty())
-		{
-			m_tlasManager.Reset(ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC | ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC);
-		}
 	}
 
 	void Raytracing::Uniform4f(UINT index, const float* uniform)
@@ -240,28 +206,6 @@ namespace DX12Rendering {
 		}
 
 		return 0x00000000;
-	}
-
-	UINT Raytracing::AddImageToDescriptorHeap(const DX12Rendering::TextureBuffer* texture)
-	{
-		if (m_nextDescriptorHeapIndex >= DX12Rendering::DESCRIPTOR_TEXTURE_COUNT)
-		{
-			return 0;
-		}
-
-		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-		if (device == nullptr)
-		{
-			return 0;
-		}
-
-		const UINT index = m_nextDescriptorHeapIndex;
-		++m_nextDescriptorHeapIndex;
-
-		CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle(m_generalUavHeaps->GetCPUDescriptorHandleForHeapStart(), index + DX12Rendering::e_RaytracingHeapIndex::SRV_TextureArray /* starting point */, m_cbvHeapIncrementor);
-		device->CreateShaderResourceView(texture->resource.Get(), &texture->textureView, textureHandle);
-
-		return index;
 	}
 
 	bool Raytracing::AddLight(const UINT lightIndex, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows)
@@ -317,19 +261,18 @@ namespace DX12Rendering {
 		m_constantBuffer.lights[index].projectionQ = lightProjection[2];
 		m_constantBuffer.lights[index].falloffS = lightProjection[3];
 
-		m_constantBuffer.lights[index].falloffIndex = AddImageToDescriptorHeap(falloffTexture);
-		m_constantBuffer.lights[index].projectionIndex = AddImageToDescriptorHeap(projectionTexture);
+		m_constantBuffer.lights[index].falloffIndex = falloffTexture->GetTextureIndex();
+		m_constantBuffer.lights[index].projectionIndex = projectionTexture->GetTextureIndex();
 
 		++m_constantBuffer.lightCount;
 
 		return true;
 	}
 
-	bool Raytracing::CastShadowRays(
+	const DX12Rendering::Commands::FenceValue Raytracing::CastShadowRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
-		const CD3DX12_RECT& scissorRect,
-		DX12Rendering::TextureManager* textureManager
+		const CD3DX12_RECT& scissorRect
 	)
 	{
 		const UINT surfaceCount = 3;
@@ -339,26 +282,27 @@ namespace DX12Rendering {
 			DX12Rendering::eRenderSurface::Specular
 		};
 
+		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 		assert(textureManager);
 
 		auto tlasManager = GetTLASManager();
 
 		if (tlasManager && !tlasManager->IsReady()) {
 			// No objects to cast shadows.
-			return false;
+			return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::COMPUTE, 0);
 		}
 
-		tlasManager->WaitForFence();
+		//tlasManager->WaitForFence();
 
 		auto commandManager = DX12Rendering::Commands::GetCommandManager(Commands::COMPUTE);
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RayTracing::CastShadowRays");
 
 		//Update the resources
-		m_constantBuffer.depthTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::VIEW_DEPTH));
-		m_constantBuffer.flatNormalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS));
-		m_constantBuffer.normalIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS));
-		m_constantBuffer.diffuseTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO));
-		m_constantBuffer.specularTextureIndex = AddImageToDescriptorHeap(textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR));
+		m_constantBuffer.depthTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::VIEW_DEPTH)->GetTextureIndex();
+		m_constantBuffer.flatNormalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS)->GetTextureIndex();
+		m_constantBuffer.normalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)->GetTextureIndex();
+		m_constantBuffer.diffuseTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO)->GetTextureIndex();
+		m_constantBuffer.specularTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR)->GetTextureIndex();
 
 		m_constantBuffer.raysPerLight = s_raysCastPerLight.GetInteger();
 
@@ -372,7 +316,7 @@ namespace DX12Rendering {
 		return CastRays(frameIndex, viewport, scissorRect, surfaces, surfaceCount);
 	}
 
-	bool Raytracing::CastRays(
+	const DX12Rendering::Commands::FenceValue Raytracing::CastRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
@@ -387,6 +331,8 @@ namespace DX12Rendering {
 			renderTargetCount
 		);
 		auto commandList = renderPass.GetCommandManager()->RequestNewCommandList();
+
+		commandList->AddPreFenceWait(m_tlasManager.GetCurrent().GetLastFenceValue());
 
 		// Copy the CBV data to the heap
 		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
@@ -434,9 +380,11 @@ namespace DX12Rendering {
 			commandList->DispatchRays(&desc);
 		});
 
+		const DX12Rendering::Commands::FenceValue result = commandList->AddPostFenceSignal();
+
 		commandList->Close();
 
-		return true;
+		return result;
 	}
 
 	void Raytracing::AddObjectToAllTopLevelAS() {
@@ -508,13 +456,17 @@ namespace DX12Rendering {
 	{
 		m_generalSBTDesc.Reset();
 
-		D3D12_GPU_DESCRIPTOR_HANDLE srvUavHandle = m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart();
-		void* heapPointer = reinterpret_cast<void*>(srvUavHandle.ptr);
+		D3D12_GPU_DESCRIPTOR_HANDLE srvUavHandle = m_generalUavHeaps->GetGPUDescriptorHandleForHeapStart(); // TODO: move this to the HeapDescriptorManager
+		D3D12_GPU_DESCRIPTOR_HANDLE textureHeap = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureEntries, 0);
+		
+		std::vector<void*> heapPointers = {};
+		heapPointers.push_back(reinterpret_cast<void*>(srvUavHandle.ptr));
+		heapPointers.push_back(reinterpret_cast<void*>(textureHeap.ptr));
 
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Create the SBT structure
-		m_generalSBTDesc.AddRayGeneratorProgram(L"RayGen", { heapPointer } );
+		m_generalSBTDesc.AddRayGeneratorProgram(L"RayGen", heapPointers);
 		m_generalSBTDesc.AddRayMissProgram(L"Miss", {});
 		m_generalSBTDesc.AddRayHitGroupProgram(L"HitGroup", {});
 

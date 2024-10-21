@@ -4,6 +4,8 @@
 #include "./dx12_DeviceManager.h"
 #include "./dx12_CommandList.h"
 
+#include "./dx12_shader.h"
+
 #include <algorithm>
 
 namespace
@@ -39,24 +41,14 @@ namespace
 		return result;
 	}
 
-	std::vector<D3D12_RAYTRACING_INSTANCE_DESC> BuildInstanceDescriptors(DX12Rendering::BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& staticInstances, const std::vector<DX12Rendering::Instance>& dynamicInstances)
+	std::vector<D3D12_RAYTRACING_INSTANCE_DESC> BuildInstanceDescriptors(DX12Rendering::BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& instances)
 	{
-		const UINT instanceCount = staticInstances.size() + dynamicInstances.size();
+		const UINT instanceCount = instances.size();
 		std::vector<D3D12_RAYTRACING_INSTANCE_DESC> descriptors;
 		descriptors.reserve(instanceCount);
 
 		UINT descIndex = 0;
-		for(const DX12Rendering::Instance& instance : staticInstances)
-		{
-			D3D12_RAYTRACING_INSTANCE_DESC desc;
-			if (CopyInstanceToDescriptor(instance, desc, blasManager))
-			{
-				descriptors.push_back(desc);
-				++descIndex;
-			}
-		};
-
-		for (const DX12Rendering::Instance& instance : dynamicInstances)
+		for(const DX12Rendering::Instance& instance : instances)
 		{
 			D3D12_RAYTRACING_INSTANCE_DESC desc;
 			if (CopyInstanceToDescriptor(instance, desc, blasManager))
@@ -86,7 +78,7 @@ namespace DX12Rendering {
 		*resultSizeInBytes = DX12_ALIGN(info.ResultDataMaxSizeInBytes, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT);
 	}
 
-	void BottomLevelAccelerationStructure::AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount)
+	void BottomLevelAccelerationStructure::AddGeometry(DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffsetBytes, UINT vertexCount, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, dxHandle_t jointsHandle)
 	{
 		auto vertexDesc = vertexBuffer->GetView();
 		auto indexDesc = indexBuffer->GetView();
@@ -105,6 +97,12 @@ namespace DX12Rendering {
 		geometryDesc.Flags = true ? D3D12_RAYTRACING_GEOMETRY_FLAG_OPAQUE
 			: D3D12_RAYTRACING_GEOMETRY_FLAG_NONE; //TODO: Eventually add support for opaque geometry.
 
+		// Only dynamic objects can have joints
+		if (!m_isStatic)
+		{
+			joints.emplace_back(jointsHandle);
+		}
+
 		AddGeometry(geometryDesc);
 	}
 
@@ -122,13 +120,15 @@ namespace DX12Rendering {
 	{
 		//TODO: Move the BLAS resource into BLASManager and control our own alocation.
 
-		if (state == Ready) {
+		if (state == Ready || !isBuilt) {
 			return false; // Nothing to update
 		}
 
 		ID3D12Device5* device = Device::GetDevice();
 
-		if (device == nullptr || !fence.IsFenceCompleted())
+		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+
+		if (device == nullptr || !commandManager->IsFenceCompleted(m_lastFenceValue))
 		{
 			return false; // We are not ready to generate.
 		}
@@ -148,7 +148,7 @@ namespace DX12Rendering {
 				D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE; // For now we will always allow updates in our BLAS
 		}
 
-		DX12Rendering::Commands::CommandList* commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
+		DX12Rendering::Commands::CommandList* commandList = commandManager->RequestNewCommandList();
 		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "BottomLevelAccelerationStructure::Generate");
 
 		UINT64 requestedScratchSize;
@@ -217,29 +217,36 @@ namespace DX12Rendering {
 			commandList->ResourceBarrier(1, &uavBarrier);
 		});
 
-		commandList->AddPostFenceSignal(&fence); // Add our fence that we will signal on exit.
+		Commands::FenceValue resultFence = commandList->AddPostFenceSignal(); // Add our fence that we will signal on exit.
+
+		assert(resultFence.commandList == m_lastFenceValue.commandList);
+
+		m_lastFenceValue.value = resultFence.value;
 	}
 
 #pragma endregion
 #pragma region BLASContainer
 	BLASManager::BLASManager() :
 		m_scratchBuffer(DEFAULT_BLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"BLAS Scratch Buffer")
-	{}
+	{
+	}
 
 	BLASManager::~BLASManager()
 	{
 		Reset();
 	}
 
-	BottomLevelAccelerationStructure* BLASManager::CreateBLAS(const dxHandle_t& key, const LPCWSTR name)
+	BottomLevelAccelerationStructure* BLASManager::CreateBLAS(const dxHandle_t& key, const bool isStatic, const bool isBuilt, const LPCWSTR name)
 	{
 		BottomLevelAccelerationStructure* blas = GetBLAS(key);
 		if (blas)
 		{
+			blas->isBuilt = isBuilt;
 			return blas;
 		}
 
-		blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, true /* All blas are static for now */, name)).first->second;
+		blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, isStatic, name)).first->second;
+		blas->isBuilt = isBuilt;
 
 		return blas;
 	}
@@ -266,13 +273,6 @@ namespace DX12Rendering {
 		}
 	}
 
-	BottomLevelAccelerationStructure* BLASManager::ReserveBLASPlaceholder(const dxHandle_t& key)
-	{
-		BottomLevelAccelerationStructure* blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, true /* All blas are static for now */, L"RESERVED")).first->second;
-
-		return blas;
-	}
-
 	void BLASManager::Reset()
 	{
 		m_blasIndex = 0;
@@ -283,7 +283,7 @@ namespace DX12Rendering {
 	UINT BLASManager::Generate()
 	{
 		// TODO: Define starting point for BLAS using m_blasIndex
-		auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "BLASManager::Generate");
 
 		UINT count = 0;
@@ -301,7 +301,7 @@ namespace DX12Rendering {
 					break;
 				}
 			}
-			else if (!m_scratchBuffer.fence.IsFenceCompleted())//!blasPair->second.Exists() && m_scratchBuffer.state == DX12Rendering::Resource::Dirty)
+			else if (!m_scratchBuffer.IsFenceCompleted())//!blasPair->second.Exists() && m_scratchBuffer.state == DX12Rendering::Resource::Dirty)
 			{
 				// Our scratch buffer is full, so we should wait.
 				break;
@@ -408,7 +408,7 @@ namespace DX12Rendering {
 	{
 	}
 
-	bool TopLevelAccelerationStructure::UpdateResources(BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& staticInstances, const std::vector<DX12Rendering::Instance>& dynamicInstances, ScratchBuffer* scratchBuffer) {
+	bool TopLevelAccelerationStructure::UpdateResources(BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& instances, ScratchBuffer* scratchBuffer) {
 		D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAGS flags = false
 			? D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE
 			: D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_NONE;
@@ -418,7 +418,7 @@ namespace DX12Rendering {
 
 		//TODO: build an array of descriptors first. That way we do not need to rely on the static instnces after. We'll then copy the results after.
 
-		const UINT instanceCount = staticInstances.size() + dynamicInstances.size();
+		const UINT instanceCount = instances.size();
 
 		if (instanceCount == 0)
 		{
@@ -438,7 +438,7 @@ namespace DX12Rendering {
 		inputDesc.Flags = flags;
 		inputDesc.InstanceDescs = NULL;
 
-		std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDesc = BuildInstanceDescriptors(blasManager, staticInstances, dynamicInstances);
+		std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDesc = BuildInstanceDescriptors(blasManager, instances);
 		inputDesc.NumDescs = instanceDesc.size();
 
 		CacluateBufferSizes(device, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize, inputDesc.NumDescs, &inputDesc);
@@ -505,7 +505,11 @@ namespace DX12Rendering {
 			commandList->ResourceBarrier(1, &uavBarrier);
 		});
 
-		commandList->AddPostFenceSignal(&fence);
+		DX12Rendering::Commands::FenceValue resultValue = commandList->AddPostFenceSignal();
+
+		assert(resultValue.commandList == m_lastFenceValue.commandList);
+
+		m_lastFenceValue.value = resultValue.value;
 
 		return true;
 	}
@@ -552,12 +556,13 @@ namespace DX12Rendering {
 
 #pragma region TLASManager
 	TLASManager::TLASManager(BLASManager* blasManager) :
+		m_accelerationCooldown(255),
 		m_blasManager(blasManager),
 		m_isDirty(false),
 		m_scratch(DEFAULT_TLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"TLAS Scratch Buffer"),
-		m_tlas{ TopLevelAccelerationStructure(L"TLAS") }
+		m_tlas{ TopLevelAccelerationStructure(L"TLAS_0"), TopLevelAccelerationStructure(L"TLAS_1") }
 	{
-		Reset(INSTANCE_TYPE_STATIC | INSTANCE_TYPE_DYNAMIC);
+		Reset();
 	}
 
 	TLASManager::~TLASManager()
@@ -565,35 +570,31 @@ namespace DX12Rendering {
 
 	}
 
-	void TLASManager::Reset(const ACCELERATION_INSTANCE_TYPE typesMask)
+	void TLASManager::Reset()
 	{
 		DX12Rendering::WriteLock instanceLock(m_instanceLock);
 
 		m_isDirty = false;
 
-		if ((typesMask & INSTANCE_TYPE_STATIC) != 0)
-		{
-			m_staticInstances.clear();
-			m_staticInstances.reserve(DEFAULT_TLAS_COUNT);
-		}
+		const UINT8 frameIndex = GetCurrentFrameIndex();
 
-		if ((typesMask & INSTANCE_TYPE_DYNAMIC) != 0)
+		m_instances[frameIndex].clear();
+		m_instances[frameIndex].reserve(DEFAULT_TLAS_COUNT);
+	}
+
+	void TLASManager::UpdateDynamicInstances()
+	{
+		const UINT frameIndex = GetCurrentFrameIndex();
+
+		for (Instance& instance : m_instances[frameIndex])
 		{
-			m_dynamicInstances.clear();
-			m_dynamicInstances.reserve(DEFAULT_TLAS_COUNT);
+			// TODO
 		}
 	}
 
 	bool TLASManager::Generate()
 	{
-		if (!IsDirty())
-		{
-			// The TLAS has not changed, so there's no need to rebuild.
-			return true;
-		}
-
 		bool result = false;
-		//CaptureGPUBegin();
 		{
 			DX12Rendering::WriteLock instanceLock(m_instanceLock);
 
@@ -605,71 +606,68 @@ namespace DX12Rendering {
 				m_scratch.Build();
 			}
 
-			result = GetCurrent().UpdateResources(*m_blasManager, m_staticInstances, m_dynamicInstances, &m_scratch);
-		}
-		//CaptureGPUEnd(FALSE);
+			UINT instanceCount = m_instances[GetCurrentFrameIndex()].size();
 
-		if (result)
-		{
-			m_isDirty = false;
-		}
+			result = GetCurrent().UpdateResources(*m_blasManager, m_instances[GetCurrentFrameIndex()], &m_scratch);
+
+			assert(instanceCount == m_instances[GetCurrentFrameIndex()].size()); // Verify that no new instances have been added during execution.
+
+			if (result)
+			{
+				m_isDirty = false;
+				
+				Reset();
+			}
+		}	
 
 		return result;
 	}
 
+	const void TLASManager::WaitForFence()
+	{
+		const DX12Rendering::Commands::FenceValue& fenceValue = GetCurrent().GetLastFenceValue();
+		
+		DX12Rendering::Commands::GetCommandManager(fenceValue.commandList)->WaitOnFence(fenceValue);
+	}
+
 	void TLASManager::AddInstance(const dxHandle_t& entityId, const dxHandle_t& blasId, const float transform[16], const ACCELERATION_INSTANCE_TYPE instanceTypes, ACCELLERATION_INSTANCE_MASK instanceMask)
 	{
-		DX12Rendering::WriteLock instanceLock(m_instanceLock);
 		const BottomLevelAccelerationStructure* blas = m_blasManager->GetBLAS(blasId);
 		if (blas == nullptr)
 		{
 			return;
 		}
 
-		MarkDirty();
-
-		DX12Rendering::Instance* instance;
-		if (TryGetWriteInstance(entityId, instanceTypes, &instance))
 		{
-			instance->blasId = blasId;
-			instance->mask = instanceMask;
+			DX12Rendering::WriteLock instanceLock(m_instanceLock);
 
-			memcpy(instance->transformation, transform, sizeof(float[3][4]));
-			return;
-		}
+			const UINT frameIndex = GetNextFrameIndex();
 
-		UINT hitShaderIndex = 0; /* TODO: Find the hit group index containing the normal map of the surface. */
-		if ((instanceTypes && INSTANCE_TYPE_STATIC) != 0)
-		{
-			m_staticInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask);
-		}
-		else if ((instanceTypes && INSTANCE_TYPE_DYNAMIC) != 0)
-		{
-			m_dynamicInstances.emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask);
+			MarkDirty();
+
+			DX12Rendering::Instance* instance;
+			if (TryGetWriteInstance(frameIndex, entityId, instanceTypes, &instance))
+			{
+				instance->blasId = blasId;
+				instance->mask = instanceMask;
+
+				memcpy(instance->transformation, transform, sizeof(float[3][4]));
+				return;
+			}
+
+			UINT hitShaderIndex = 0; /* TODO: Find the hit group index containing the normal map of the surface. */
+			m_instances[frameIndex].emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask, instanceTypes);
 		}
 	}
 
-	const bool TLASManager::TryGetWriteInstance(const dxHandle_t& index, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance)
+	const bool TLASManager::TryGetWriteInstance(const UINT frameIndex, const dxHandle_t& index, const ACCELERATION_INSTANCE_TYPE typesMask, DX12Rendering::Instance** outInstance)
 	{
-		if ((typesMask && INSTANCE_TYPE_STATIC) != 0)
+		for (DX12Rendering::Instance& instance : m_instances[frameIndex])
 		{
-			for (auto instance : m_staticInstances) {
-				if (instance.instanceId == index)
-				{
-					*outInstance = &instance;
-					return true;
-				}
-			}
-		}
-
-		if ((typesMask && INSTANCE_TYPE_DYNAMIC) != 0)
-		{
-			for (auto instance : m_dynamicInstances) {
-				if (instance.instanceId == index)
-				{
-					*outInstance = &instance;
-					return true;
-				}
+			if (instance.instanceId == index)
+			{
+				*outInstance = &instance;
+				return true;
 			}
 		}
 
@@ -679,8 +677,7 @@ namespace DX12Rendering {
 #ifdef DEBUG_IMGUI
 	const void TLASManager::ImGuiDebug()
 	{
-		ImGui::Text("Static Instance Count: %d", m_staticInstances.size());
-		ImGui::Text("Dynamic Instance Count: %d", m_dynamicInstances.size());
+		ImGui::Text("Instance Count: %d", m_instances[GetCurrentFrameIndex()].size());
 
 		// Each TLAS
 		TopLevelAccelerationStructure& tlas = GetCurrent();

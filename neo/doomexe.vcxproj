@@ -282,11 +282,11 @@
     <ClInclude Include="renderer\DX12\debug\dx12_debug.h" />
     <ClInclude Include="renderer\DX12\dx12renderer.h" />
     <ClInclude Include="renderer\DX12\dx12_AccelerationStructure.h" />
-    <ClInclude Include="renderer\DX12\dx12_buffermap.h" />
     <ClInclude Include="renderer\DX12\dx12_CommandList.h" />
     <ClInclude Include="renderer\DX12\dx12_DeviceManager.h" />
     <ClInclude Include="renderer\DX12\dx12_Geometry.h" />
     <ClInclude Include="renderer\DX12\dx12_global.h" />
+    <ClInclude Include="renderer\DX12\dx12_HeapDescriptorManager.h" />
     <ClInclude Include="renderer\DX12\dx12_imgui.h" />
     <ClInclude Include="renderer\DX12\dx12_raytracing.h" />
     <ClInclude Include="renderer\DX12\dx12_RaytracingPipeline.h" />
@@ -545,12 +545,12 @@
     <ClCompile Include="renderer\DX12\dx12renderer.cpp" />
     <ClCompile Include="renderer\DX12\dx12_AccelerationStructure.cpp" />
     <ClCompile Include="renderer\DX12\dx12_backend.cpp" />
-    <ClCompile Include="renderer\DX12\dx12_buffermap.cpp" />
     <ClCompile Include="renderer\DX12\dx12_BufferObject.cpp" />
     <ClCompile Include="renderer\DX12\dx12_CommandList.cpp" />
     <ClCompile Include="renderer\DX12\dx12_DeviceManager.cpp" />
     <ClCompile Include="renderer\DX12\dx12_Geometry.cpp" />
     <ClCompile Include="renderer\DX12\dx12_global.cpp" />
+    <ClCompile Include="renderer\DX12\dx12_HeapDescriptorManager.cpp" />
     <ClCompile Include="renderer\DX12\dx12_imgui.cpp" />
     <ClCompile Include="renderer\DX12\dx12_raytracing.cpp" />
     <ClCompile Include="renderer\DX12\dx12_RaytracingPipeline.cpp" />
@@ -948,6 +948,22 @@
     <None Include="..\base\renderprogs\color.vertex" />
     <None Include="..\base\renderprogs\colorProcess.pixel" />
     <None Include="..\base\renderprogs\colorProcess.vertex" />
+    <FxCompile Include="..\base\renderprogs\compute_skinned_offset.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.5</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Retail|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Retail|x64'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Retail|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Retail|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">4.0</ShaderModel>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Release|x64'">Compute</ShaderType>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Release|x64'">4.0</ShaderModel>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).ccso</ObjectFileOutput>
+      <EnableDebuggingInformation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableDebuggingInformation>
+    </FxCompile>
     <FxCompile Include="..\base\renderprogs\depth.pixel">
       <FileType>Document</FileType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">Pixel</ShaderType>
@@ -1047,6 +1063,7 @@
       </EntryPointName>
       <AdditionalOptions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
       </AdditionalOptions>
+      <ShaderModel Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">6.5</ShaderModel>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\gui.pixel">
       <FileType>Document</FileType>
@@ -1111,22 +1128,26 @@
       <FileType>Document</FileType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+      <EnableDebuggingInformation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableDebuggingInformation>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\gbuffer.vertex">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
       <FileType>Document</FileType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
+      <EnableDebuggingInformation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableDebuggingInformation>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\gbuffer_skinned.pixel">
       <FileType>Document</FileType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+      <EnableDebuggingInformation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableDebuggingInformation>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\gbuffer_skinned.vertex">
       <FileType>Document</FileType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
+      <EnableDebuggingInformation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableDebuggingInformation>
     </FxCompile>
     <None Include="..\base\renderprogs\gbuffer.inc" />
     <FxCompile Include="..\base\renderprogs\gbuffer_transparent.pixel">
@@ -1289,6 +1310,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Retail|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <EnableDebuggingInformation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableDebuggingInformation>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\interaction_skinned.vertex">
       <FileType>Document</FileType>
@@ -1315,7 +1337,9 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Retail|x64'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
+      <EnableDebuggingInformation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableDebuggingInformation>
     </FxCompile>
+    <None Include="..\base\renderprogs\joints.inc" />
     <None Include="..\base\renderprogs\motionBlur.pixel" />
     <None Include="..\base\renderprogs\motionBlur.vertex" />
     <None Include="..\base\renderprogs\postprocess.pixel" />
