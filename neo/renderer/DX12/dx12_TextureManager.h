@@ -80,7 +80,7 @@ namespace DX12Rendering
 
 		// Data management
 		void StartTextureWrite(TextureBuffer* buffer);
-		const DX12Rendering::Commands::FenceValue EndTextureWrite(TextureBuffer* buffer);
+		bool EndTextureWrite(TextureBuffer* buffer);
 
 		/// <summary>
 		/// Generates a texture to be stored in video memory

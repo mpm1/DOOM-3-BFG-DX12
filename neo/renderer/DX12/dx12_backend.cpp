@@ -3216,6 +3216,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			// Fill the GBuffer
 			const DX12Rendering::Commands::FenceValue fence = RB_DrawGBuffer(drawSurfs, numDrawSurfs);
 
+			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(fence);
+
 			// Copy the depth buffer to a texture
 			auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
 			//viewDepth->fence.Wait();
@@ -3223,34 +3225,36 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			// TODO: Make a system to perform multiple copies
 			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 			DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
-			viewDepth->CopySurfaceToTexture(depthTexture, textureManager, fence);
+			viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
 
 			// Copy the albedo
 			auto albedo = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo);
 			DX12Rendering::TextureBuffer* albedoTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
-			albedo->CopySurfaceToTexture(albedoTexture, textureManager, fence);
+			albedo->CopySurfaceToTexture(albedoTexture, textureManager);
 
 			// Copy the specular
 			auto specular = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor);
 			DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
-			specular->CopySurfaceToTexture(specularTexture, textureManager, fence);
+			specular->CopySurfaceToTexture(specularTexture, textureManager);
 
 			// Copy the flat normal map to a texture
 			auto normalFlatMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal);
 			DX12Rendering::TextureBuffer* normalFlatTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_FLAT_NORMALS);
-			normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager, fence);
+			normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager);
 
 			// Copy the normal map to a texture
 			auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);
 			DX12Rendering::TextureBuffer* normalTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
-			normalMap->CopySurfaceToTexture(normalTexture, textureManager, fence);
+			normalMap->CopySurfaceToTexture(normalTexture, textureManager);
+
+			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
 
 			// TODO: Find a better place to reset this.
 			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Reset();
 		}
 	}
 
-	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); 
+	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); // TODO: wait on the previous copy fence before casting the rays.
 	if (raytraceUpdated)
 	{
 		//-------------------------------------------------

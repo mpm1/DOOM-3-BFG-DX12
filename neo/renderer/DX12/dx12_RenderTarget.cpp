@@ -187,11 +187,11 @@ namespace DX12Rendering
 		device->CreateUnorderedAccessView(resource.Get(), nullptr, &uavDesc, uavHeap);
 	}
 
-	const DX12Rendering::Commands::FenceValue RenderSurface::CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager, const DX12Rendering::Commands::FenceValue waitOnFence)
+	bool RenderSurface::CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager)
 	{
 		if (texture == nullptr)
 		{
-			return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::COPY, 0);
+			return false;
 		}
 
 		// TODO: Put these as inputs
@@ -209,8 +209,6 @@ namespace DX12Rendering
 
 		auto commandList = commandManager->RequestNewCommandList();
 		
-		commandList->AddPreFenceWait(waitOnFence); // Wait for all drawing to complete.
-
 		textureManager->SetTextureState(texture, D3D12_RESOURCE_STATE_COPY_DEST, commandList);
 
 		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)

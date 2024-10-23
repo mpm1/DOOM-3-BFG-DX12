@@ -212,11 +212,9 @@ namespace DX12Rendering
 		commandList->Close();
 	}
 
-	const DX12Rendering::Commands::FenceValue TextureManager::EndTextureWrite(TextureBuffer* buffer) {
+	bool TextureManager::EndTextureWrite(TextureBuffer* buffer) {
 		auto copyCommands = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
 		auto commandList = copyCommands->RequestNewCommandList();
-
-		const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
 
 		DX12Rendering::CaptureEventEnd(commandList);
 		commandList->Close();
@@ -226,7 +224,7 @@ namespace DX12Rendering
 		// Clean out the temp images
 		m_tempImages.clear();
 
-		return fence;
+		return true;
 	}
 
 	byte* TextureManager::CreateTemporaryImageStorage(const UINT imageSize)

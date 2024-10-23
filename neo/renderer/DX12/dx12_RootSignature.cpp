@@ -156,10 +156,11 @@ void ComputeRootSignature::CreateRootSignature()
 
 	// Setup the descriptor table
 	{
-		CD3DX12_DESCRIPTOR_RANGE1 descriptorTableRanges[2];
+		CD3DX12_DESCRIPTOR_RANGE1 descriptorTableRanges[3];
 		descriptorTableRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, CBV_REGISTER_COUNT, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
-		descriptorTableRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, TEXTURE_REGISTER_COUNT, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, eTesxture0SRV /* First Texture */);
-		rootParameters[0].InitAsDescriptorTable(2, &descriptorTableRanges[0]);
+		descriptorTableRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, eTesxture0SRV /* First Texture */);
+		descriptorTableRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, TEXTURE_REGISTER_COUNT - 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, eTesxture0SRV + 1 /* First Texture */);
+		rootParameters[0].InitAsDescriptorTable(3, &descriptorTableRanges[0]);
 	}
 
 	// Setup the texture table

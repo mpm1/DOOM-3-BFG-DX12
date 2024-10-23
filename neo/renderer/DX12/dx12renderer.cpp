@@ -10,7 +10,7 @@
 
 extern idCVar r_swapInterval; // Used for VSync
 
-idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_useRayTraycing("r_useRayTraycing", "0", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
 
 DX12Renderer dxRenderer;
@@ -276,10 +276,11 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		ComputeConstants constants = {};
 		constants.vertCount = vertIndexCount;
 		constants.vertPerThread = vertsPerSection;
-		constants.vertOffset = offset;
+		constants.vertOffset = offset / vertStride;
 
 		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(ComputeConstants));
 		resourceManager.FillConstantBuffer(buffer, &constants);
+
 		m_computeRootSignature->SetConstantBufferView(objectIndex, 2, buffer);
 	}
 
@@ -1266,24 +1267,27 @@ bool DX12Renderer::DXR_CastRays()
 
 		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceShadowMask);
 
-		surface->CopySurfaceToTexture(lightTexture, textureManager, drawFence);
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(drawFence);
+
+		surface->CopySurfaceToTexture(lightTexture, textureManager);
 
 		// Copy the diffuse data
 		auto diffuseMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Diffuse);
 		DX12Rendering::TextureBuffer* diffuseTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE);
-		diffuseMap->CopySurfaceToTexture(diffuseTexture, textureManager, drawFence);
+		diffuseMap->CopySurfaceToTexture(diffuseTexture, textureManager);
 
 		// Copy the specular data
 		auto specularMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular);
 		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
-		auto fenceValue = specularMap->CopySurfaceToTexture(specularTexture, textureManager, drawFence);
+		specularMap->CopySurfaceToTexture(specularTexture, textureManager);
 
 		// Wait for all copies to complete.
-		/*auto directWait = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
-		directWait->AddPreFenceWait(fenceValue);
-		directWait->Close();*/
+		DX12Rendering::Commands::FenceValue fenceValue = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();
 
-		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->WaitOnFence(fenceValue);
+		auto directWait = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
+		directWait->AddPreFenceWait(fenceValue);
+		directWait->Close();
 	}
 
 	return result;

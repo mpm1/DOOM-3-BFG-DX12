@@ -264,6 +264,8 @@ public:
 
 	void WaitOnFence(const DX12Rendering::Commands::FenceValue value) { return m_fence.Wait(value); }
 	bool IsFenceCompleted(const DX12Rendering::Commands::FenceValue value) { return m_fence.IsFenceCompleted(value); }
+	void InsertFenceWait(const DX12Rendering::Commands::FenceValue value);
+	const DX12Rendering::Commands::FenceValue InsertFenceSignal();
 
 #ifdef DEBUG_GPU
 	void SetFenceCompleteEvent(UINT64 value, HANDLE completionEvent) { m_fence.SetCompletionEvent(value, completionEvent); }

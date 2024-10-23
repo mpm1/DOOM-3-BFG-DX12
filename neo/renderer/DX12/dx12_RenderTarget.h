@@ -80,7 +80,7 @@ namespace DX12Rendering {
 
 		void RenderSurface::CreateUnorderedAccessView(D3D12_CPU_DESCRIPTOR_HANDLE& uavHeap);
 
-		const DX12Rendering::Commands::FenceValue CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager, const DX12Rendering::Commands::FenceValue waitOnFence);
+		bool CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager);
 
 	private:
 		const DXGI_FORMAT m_format;

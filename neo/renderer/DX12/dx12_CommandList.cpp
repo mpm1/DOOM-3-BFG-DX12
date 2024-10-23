@@ -200,6 +200,22 @@ namespace DX12Rendering {
 			return allocatorIndex * commandListCount;
 		}
 
+		void CommandManager::InsertFenceWait(const DX12Rendering::Commands::FenceValue value)
+		{
+			CommandList* commandList = RequestNewCommandList();
+			commandList->AddPreFenceWait(value);
+			commandList->Close();
+		}
+
+		const DX12Rendering::Commands::FenceValue CommandManager::InsertFenceSignal()
+		{
+			CommandList* commandList = RequestNewCommandList();
+			FenceValue value = commandList->AddPostFenceSignal();
+			commandList->Close();
+
+			return value;
+		}
+
 		CommandList* CommandManager::RequestNewCommandList()
 		{
 #ifdef _DEBUG
