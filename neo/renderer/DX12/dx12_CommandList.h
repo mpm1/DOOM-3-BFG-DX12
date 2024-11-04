@@ -379,6 +379,24 @@ public:
 		});
 	}
 
+	// Make sure that this command list is run before adding more
+	void AddPostExecuteBarrier()
+	{
+		AddPostExecuteQueueAction([](ID3D12CommandQueue* commandQueue)
+		{
+			// Do nothing
+		});
+	}
+
+	// Make sure that all other command lists are run before this one.
+	void AddPreExecuteBarrier()
+	{
+		AddPreExecuteQueueAction([](ID3D12CommandQueue* commandQueue)
+		{
+			// Do nothing
+		});
+	}
+
 	const DX12Rendering::Commands::FenceValue AddPostFenceSignal()
 	{
 		DX12Rendering::Commands::Fence* fence = m_fence;

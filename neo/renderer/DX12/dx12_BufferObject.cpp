@@ -288,7 +288,7 @@ bool idVertexBuffer::AllocBufferObject(const void* data, int allocSize) {
 	bool allocationFailed = false;
 
 	const int numBytes = GetAllocedSize();
-	apiObject = dxRenderer.AllocVertexBuffer(numBytes, nullptr, false);
+	apiObject = dxRenderer.AllocVertexBuffer(numBytes, L"idVertexBuffer", false);
 
 
 	if (r_showBuffers.GetBool()) {

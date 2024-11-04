@@ -102,6 +102,7 @@ viewEntity_t *R_SetEntityDefViewEntity( idRenderEntityLocal *def ) {
 
 	viewEntity_t * vModel = (viewEntity_t *)R_ClearedFrameAlloc( sizeof( *vModel ), FRAME_ALLOC_VIEW_ENTITY );
 	vModel->entityDef = def;
+	vModel->entityIndex = def->index;
 
 	// the scissorRect will be expanded as the model bounds is accepted into visible portal chains
 	// It will remain clear if the model is only needed for shadows.
@@ -232,6 +233,39 @@ void idRenderWorldLocal::AddAreaViewEntities( int areaNum, const portalStack_t *
 		}
 
 		viewEntity_t * vEnt = R_SetEntityDefViewEntity( entity );
+		vEnt->blasIndex = 0;
+		vEnt->modelRenderMatrix = entity->modelRenderMatrix;
+
+		// Check if we've created the needed BLAS
+		if (dxRenderer.IsRaytracingEnabled())
+		{
+			const renderEntity_t* renderEntity = &entity->parms;
+
+			if (renderEntity == NULL)
+			{
+				continue;
+			}
+
+			if (renderEntity->hModel != NULL &&
+				(renderEntity->hModel->ModelHasInteractingSurfaces() ||
+					renderEntity->hModel->ModelHasShadowCastingSurfaces()))
+			{
+				if (renderEntity->hModel->GetJoints())
+				{
+					// This will be done in the backend in frame.
+				}
+				else
+				{
+					vEnt->blasIndex = dxRenderer.DXR_GetBLASHandle(renderEntity->hModel);
+
+					// Static model
+					if (!dxRenderer.DXR_BLASExists(vEnt->blasIndex))
+					{
+						dxRenderer.DXR_UpdateModelInBLAS(renderEntity->hModel);
+					}
+				}
+			}
+		}
 
 		// possibly expand the scissor rect
 		vEnt->scissorRect.Union( ps->rect );

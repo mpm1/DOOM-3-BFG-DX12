@@ -17,12 +17,12 @@ struct ComputeBLASConstants {
 	uint vertPerThread;
 	uint pad0;
 };
-ConstantBuffer<ComputeBLASConstants> blasConstants_ubo : register(b2);
+ConstantBuffer<ComputeBLASConstants> blasConstants : register(b2, space0);
 
 RWStructuredBuffer<BLASVertex>	vertecies_srv : register(u0);
-StructuredBuffer<BLASVertex>	inputVertecies_srv : register(t1);
+StructuredBuffer<BLASVertex>	inputVertecies_srv : register(t0);
 
-inline void Skinning(in uint startIndex, in uint endIndex)
+void Skinning(in uint startIndex, in uint endIndex)
 {
 	[loop]
 	for (int vertIndex = startIndex; vertIndex < endIndex; ++vertIndex)
@@ -40,22 +40,22 @@ inline void Skinning(in uint startIndex, in uint endIndex)
 		const float w3 = vertex.color2.w;
 
 		float4 matX, matY, matZ;	// must be float4 for vec4
-		float joint = int(vertex.color.x * 255.1 * 3);
-		matX = GetJoint(joint + 0) * w0;
-		matY = GetJoint(joint + 1) * w0;
-		matZ = GetJoint(joint + 2) * w0;
+		float joint = vertex.color.x * 255.1 * 3;
+		matX = GetJoint(int(joint + 0)) * w0;
+		matY = GetJoint(int(joint + 1)) * w0;
+		matZ = GetJoint(int(joint + 2)) * w0;
 
-		joint = int(vertex.color.y * 255.1 * 3);
+		joint = vertex.color.y * 255.1 * 3;
 		matX += GetJoint(int(joint + 0)) * w1;
 		matY += GetJoint(int(joint + 1)) * w1;
 		matZ += GetJoint(int(joint + 2)) * w1;
 
-		joint = int(vertex.color.z * 255.1 * 3);
+		joint = vertex.color.z * 255.1 * 3;
 		matX += GetJoint(int(joint + 0)) * w2;
 		matY += GetJoint(int(joint + 1)) * w2;
 		matZ += GetJoint(int(joint + 2)) * w2;
 
-		joint = int(vertex.color.w * 255.1 * 3);
+		joint = vertex.color.w * 255.1 * 3;
 		matX += GetJoint(int(joint + 0)) * w3;
 		matY += GetJoint(int(joint + 1)) * w3;
 		matZ += GetJoint(int(joint + 2)) * w3;
@@ -78,26 +78,26 @@ inline void Skinning(in uint startIndex, in uint endIndex)
 		modelPosition.z = dot4(matZ, vertex.position);
 		modelPosition.w = 1.0;
 
-		uint outputIndex = vertIndex;
-		BLASVertex outputVertex = vertecies_srv[outputIndex];
+		vertex.position = modelPosition;
+		vertex.normal.xyz = normal;
+		vertex.tangent.xyz = tangent;
 
-		outputVertex.position = modelPosition;
-		outputVertex.normal.xyz = normal;
-		outputVertex.tangent.xyz = tangent;
+		uint outputIndex = vertIndex;
+		vertecies_srv[outputIndex] = vertex; // Set the default values.
 	}
 }
 
 [numthreads(GROUP_THREADS, 1, 1)]
 void main( uint3 DTid : SV_DispatchThreadID )
 {
-	const uint start = DTid.x * blasConstants_ubo.vertPerThread;
-	const uint end = min(start + blasConstants_ubo.vertPerThread, blasConstants_ubo.vertCount);
-
-	if (start >= blasConstants_ubo.vertCount)
+	const uint start = DTid.x * blasConstants.vertPerThread;
+	const uint end = min(start + blasConstants.vertPerThread, blasConstants.vertCount);
+	
+	if (start >= blasConstants.vertCount)
 	{
 		// This vertex does not contain useful data.
 		return;
 	}
 
-	Skinning(start + blasConstants_ubo.vertOffset, end + blasConstants_ubo.vertOffset);
+	Skinning(start + blasConstants.vertOffset, end + blasConstants.vertOffset);
 }

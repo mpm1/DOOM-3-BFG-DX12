@@ -119,9 +119,12 @@ public:
 	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.
 	void DXR_UpdateAccelerationStructure();
 
+	bool DXR_BLASExists(const dxHandle_t id);
+	dxHandle_t DXR_GetBLASHandle(const idRenderModel* model);
 	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateModelInBLAS(const idRenderModel* model);
 	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments);
-	
+	UINT DXR_UpdatePendingBLAS();
+
 	void DXR_RemoveModelInBLAS(const idRenderModel* model);
 	void DXR_RemoveBLAS(const dxHandle_t id);
 
@@ -228,6 +231,7 @@ private:
 
 	const DX12Rendering::RenderSurface** GetCurrentRenderTargets(UINT& count);
 	DX12Rendering::RenderSurface* GetOutputRenderTarget() { return DX12Rendering::GetSurface(GetOutputSurface()); }
+	inline DX12Rendering::Geometry::VertexBuffer* GetCurrentDynamicVertexBuffer() { return m_dynamicVertexBuffer[DX12Rendering::GetCurrentFrameIndex()]; }
 
 #ifdef _DEBUG
 	std::vector<viewLight_t> m_debugLights;

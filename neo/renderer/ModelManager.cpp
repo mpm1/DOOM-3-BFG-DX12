@@ -673,9 +673,6 @@ void idRenderModelManagerLocal::EndLevelLoad() {
 			for ( int j = 0; j < model->NumSurfaces(); j++ ) {
 				R_CreateStaticBuffersForTri( *(model->Surface( j )->geometry) );
 			}
-
-			// Add the data to the blas structure.
-			model->GenerateBLAS();
 		}
 	}
 

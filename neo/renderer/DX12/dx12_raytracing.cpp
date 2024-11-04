@@ -71,12 +71,6 @@ namespace DX12Rendering {
 
 		m_nextDescriptorHeapIndex = 0;
 
-		if (UINT count = GetBLASManager()->Generate() > 0)
-		{
-			//TODO: Move this to a more generalized execution tract.
-			//commandList->Cycle();
-		}
-
 		CleanUpAccelerationStructure();
 	}
 

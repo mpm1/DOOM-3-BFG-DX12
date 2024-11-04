@@ -362,6 +362,11 @@ struct viewEntity_t {
 	// R_AddSingleModel will build a chain of parameters here to setup shadow volumes
 	staticShadowVolumeParms_t *		staticShadowVolumes;
 	dynamicShadowVolumeParms_t *	dynamicShadowVolumes;
+
+	// Raytracing resources
+	int entityIndex;
+	dxHandle_t blasIndex; // When creating BLAS entries for static objects, this value will be greater than 0.
+	idRenderMatrix modelRenderMatrix;
 };
 
 

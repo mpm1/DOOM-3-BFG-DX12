@@ -10,7 +10,7 @@
 
 extern idCVar r_swapInterval; // Used for VSync
 
-idCVar r_useRayTraycing("r_useRayTraycing", "0", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
+idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
 
 DX12Renderer dxRenderer;
@@ -133,7 +133,6 @@ template<>
 const dxHandle_t DX12Renderer::GetHandle<idRenderModel>(const idRenderModel* renderModel)
 {
 	//TODO: Precache the hash or have a better generation method
-
 	return std::hash<std::string>{}(renderModel->Name());
 }
 
@@ -225,7 +224,7 @@ void DX12Renderer::CreateDynamicPerFrameData()
 {
 	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex)
 	{
-		m_dynamicVertexBuffer[frameIndex] = AllocVertexBuffer(DX12_ALIGN(DYNAMIC_VERTEX_MEMORY_PER_FRAME, DYNAMIC_VERTEX_ALIGNMENT), L"Dynamic Vertex Data", true);
+		m_dynamicVertexBuffer[frameIndex] = AllocVertexBuffer(DX12_ALIGN(DYNAMIC_VERTEX_MEMORY_PER_FRAME, DYNAMIC_VERTEX_ALIGNMENT), std::wstring(L"Dynamic Vertex Data %d", frameIndex).c_str(), true);
 	}
 }
 
@@ -257,8 +256,7 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 	const UINT alignedVerts = DX12_ALIGN(vertIndexCount, 64);
 	const UINT vertsPerSection = (vertIndexCount <= 64) ? 1 : (alignedVerts >> 6);
 
-	UINT8 frameIndex = DX12Rendering::GetCurrentFrameIndex();
-	DX12Rendering::Geometry::VertexBuffer* dstBuffer = m_dynamicVertexBuffer[frameIndex];
+	DX12Rendering::Geometry::VertexBuffer* dstBuffer = GetCurrentDynamicVertexBuffer();
 
 	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::ComputeSurfaceBones");
@@ -1051,6 +1049,41 @@ void DX12Renderer::DXR_RemoveBLAS(const dxHandle_t id)
 	// TODO
 }
 
+UINT DX12Renderer::DXR_UpdatePendingBLAS()
+{
+	DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+	DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "DX12Renderer::DXR_UpdatePendingBLAS");
+
+	D3D12_RESOURCE_BARRIER barrier;
+	DX12Rendering::Geometry::VertexBuffer* dynamicBuffer = GetCurrentDynamicVertexBuffer();
+
+	if (dynamicBuffer->TryTransition(
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 
+		&barrier))
+	{
+		auto commandList = commandManager->RequestNewCommandList();
+
+		commandList->CommandResourceBarrier(1, &barrier);
+		commandList->AddPostExecuteBarrier();
+
+		commandList->Close();
+	}
+
+	const UINT result = m_raytracing->GetBLASManager()->Generate();
+
+	if (dynamicBuffer->TryTransition(D3D12_RESOURCE_STATE_COMMON, &barrier))
+	{
+		auto commandList = commandManager->RequestNewCommandList();
+
+		commandList->AddPreExecuteBarrier();
+		commandList->CommandResourceBarrier(1, &barrier);
+
+		commandList->Close();
+	}
+
+	return result;
+}
+
 DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments)
 {
 	if (!IsRaytracingEnabled()) {
@@ -1078,14 +1111,14 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 		const vertCacheHandle_t& vbHandle = geometry.vertexHandle;
 		const vertCacheHandle_t& ibHandle = geometry.indexHandle;
 
-		int vertOffsetBytes;
-		int indexOffsetBytes;
+		int vertOffsetBytes = 0;
+		int indexOffsetBytes = 0;
 
 		// Get vertex buffer
 		if (vertexCache.CacheIsStatic(vbHandle))
 		{
-			vertexBuffer = reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
-			vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+			vertexBuffer = static_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
+			vertOffsetBytes = (int)(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
 			indexBuffer = &vertexCache.staticData.indexBuffer;
 			indexOffsetBytes = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
@@ -1118,6 +1151,13 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 			//return;
 		};
 
+		// If dynamic use the precalculated bones
+		if (!isStatic)
+		{
+			vertexBuffer = GetCurrentDynamicVertexBuffer();
+		}
+
+
 		blas->AddGeometry(
 			vertexBuffer,
 			vertOffsetBytes,
@@ -1130,6 +1170,18 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 	}
 
 	return blas;
+}
+
+dxHandle_t DX12Renderer::DXR_GetBLASHandle(const idRenderModel* model)
+{
+	dxHandle_t handle = GetHandle(model);
+
+	return handle;
+}
+
+bool DX12Renderer::DXR_BLASExists(const dxHandle_t id)
+{
+	return m_raytracing->GetBLASManager()->GetBLAS(id) != nullptr;
 }
 
 DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)

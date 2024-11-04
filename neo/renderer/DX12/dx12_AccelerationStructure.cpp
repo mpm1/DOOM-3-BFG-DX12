@@ -241,8 +241,14 @@ namespace DX12Rendering {
 		BottomLevelAccelerationStructure* blas = GetBLAS(key);
 		if (blas)
 		{
-			blas->isBuilt = isBuilt;
-			return blas;
+			if (isStatic)
+			{
+				blas->isBuilt = isBuilt;
+				return blas;
+			}
+
+			// Currently dynamic objects are always new.
+			this->RemoveBLAS(key);
 		}
 
 		blas = &m_objectMap.emplace(key, BottomLevelAccelerationStructure(key, isStatic, name)).first->second;
@@ -283,9 +289,6 @@ namespace DX12Rendering {
 	UINT BLASManager::Generate()
 	{
 		// TODO: Define starting point for BLAS using m_blasIndex
-		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
-		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "BLASManager::Generate");
-
 		UINT count = 0;
 		UINT readCount = 0;
 		for (auto blasPair = m_objectMap.begin(); blasPair != m_objectMap.end(); ++blasPair)
@@ -641,7 +644,7 @@ namespace DX12Rendering {
 		{
 			DX12Rendering::WriteLock instanceLock(m_instanceLock);
 
-			const UINT frameIndex = GetNextFrameIndex();
+			const UINT frameIndex = GetCurrentFrameIndex();
 
 			MarkDirty();
 

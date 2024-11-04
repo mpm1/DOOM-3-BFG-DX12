@@ -256,8 +256,6 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 	while ( entityHandle >= entityDefs.Num() ) {
 		entityDefs.Append( NULL );
 	}
-
-	bool shouldAddTLAS = re->hModel != NULL && (re->hModel->ModelHasInteractingSurfaces() || re->hModel->ModelHasShadowCastingSurfaces());
 	
 	UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
 	{
@@ -296,11 +294,6 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 					c_callbackUpdate++;
 					R_ClearEntityDefDynamicModel( def );
 					def->parms = *re;
-
-					if (shouldAddTLAS)
-					{
-						def->parms.hModel->UseTLASInFrame(entityHandle, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
-					}
 
 					return;
 				}
@@ -344,11 +337,6 @@ void idRenderWorldLocal::UpdateEntityDef( qhandle_t entityHandle, const renderEn
 	// based on the model bounds, add references in each area
 	// that may contain the updated surface
 	R_CreateEntityRefs( def );	
-
-	if (shouldAddTLAS)
-	{
-		def->parms.hModel->UseTLASInFrame(entityHandle, def->modelRenderMatrix[0], def->dynamicModel ? DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC : DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC, static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
-	}
 }
 
 /*

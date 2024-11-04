@@ -2984,15 +2984,16 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
 	const bool useGBuffer = raytracedEnabled;
 
-	// Copy Vertex data for drawing dynamic objects
-	/*{
-		idVertexBuffer* vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
-		dxRenderer.CopyDynamicVertexData(reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject()), vertexBuffer->GetOffset(), vertexBuffer->GetSize());
-	}*/
-
+	// Update all surfaces and bones as needed
 	{
 		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_DrawViewInternal::ComputeBones");
+
+		// Entity definitions are gouped together. This way we can put them into a single blas
+		const viewEntity_t* lastEntity = nullptr;
+		dxHandle_t blasHandle = 1;
+		std::vector<DX12Rendering::RaytracingGeometryArgument> rtGeometry;
+		rtGeometry.reserve(16);
 
 		for (int i = 0; i < numDrawSurfs; i++) {
 			const drawSurf_t* ds = viewDef->drawSurfs[i];
@@ -3000,12 +3001,47 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 				const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
 			}
 
+			if (ds->space != lastEntity)
+			{
+				if (rtGeometry.size() > 0)
+				{
+					// Add the BLAS and TLAS
+					dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
+					Mark start here. Why is our dynamic buffer not working. Are we building the right bone locations?
+					UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+					{
+						// Calculate the instance mask
+						if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: find a better way to mark these as shadow casting.
+						{
+							instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+						}
+					}
+
+					dxRenderer.DXR_AddBLASToTLAS(
+						lastEntity->entityIndex,
+						blasHandle,
+						lastEntity->modelRenderMatrix[0], // TODO: Find thre right one
+						DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
+						static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
+					);
+
+					++blasHandle;
+					rtGeometry.clear();
+				}
+
+				lastEntity = ds->space;
+			}
+
 			if (ds->jointCache)
 			{
+				
 				// get vertex buffer
 				idVertexBuffer* const vertexBuffer = GetVertexBuffer(ds->ambientCache);
 				const int vertOffset = GetVertexBufferOffset(ds->ambientCache);
 				const UINT vertSize = GetVertexBufferSize(ds->ambientCache);
+				const UINT vertIndexCount = vertSize / sizeof(idDrawVert);
+
+				UINT checkSize = (int)(ds->ambientCache >> VERTCACHE_SIZE_SHIFT) & VERTCACHE_SIZE_MASK;
 
 				if (vertexBuffer == nullptr)
 				{
@@ -3021,13 +3057,84 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 					idLib::Warning("BackEnd ComputeSurfaceBones, jointBuffer == NULL");
 					return;
 				}
-
+				
 				DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
 
 				// Update the vert structure.
 				dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
+
+				if (raytracedEnabled)
+				{
+					const dxHandle_t handle = i;
+					const UINT entityIndex = i << 16;
+
+					DX12Rendering::RaytracingGeometryArgument dxArguments = {};
+					dxArguments.vertexHandle = ds->ambientCache;
+					dxArguments.vertCounts = vertIndexCount;
+
+					dxArguments.indexHandle = ds->indexCache;
+					dxArguments.indexCounts = ds->numIndexes;
+
+					dxArguments.jointsHandle = ds->jointCache;
+
+					// Add to the list of entities
+					rtGeometry.push_back(dxArguments);
+				}
 			}
 		}
+
+		// If there are any dynamic BLAS objects being created. Finish them here.
+		if (rtGeometry.size() > 0)
+		{
+			// Add the BLAS and TLAS
+			dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
+
+			UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+			{
+				// Calculate the instance mask
+				if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: fix this
+				{
+					instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+				}
+			}
+
+			dxRenderer.DXR_AddBLASToTLAS(
+				lastEntity->entityIndex,
+				blasHandle,
+				lastEntity->modelRenderMatrix[0],
+				DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
+				static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
+			);
+		}
+	}
+
+	// Update/Create the BLASa and create a list for the TLAS structure 
+	UINT blasResult = 0;
+	if (raytracedEnabled) {
+		viewEntity_t* viewEntity = viewDef->viewEntitys;
+		for (; viewEntity != NULL; viewEntity = viewEntity->next)
+		{
+			if (viewEntity->blasIndex > 0) // Dynamic objects will not set this value, so we know it's static.
+			{
+				UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+				{
+					// Calculate the instance mask
+					if (true || viewEntity->staticShadowVolumes != nullptr || viewEntity->dynamicShadowVolumes != nullptr) // TODO: Fix this
+					{
+						instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+					}
+				}
+
+				dxRenderer.DXR_AddBLASToTLAS(
+					viewEntity->entityIndex,
+					viewEntity->blasIndex,
+					viewEntity->modelRenderMatrix[0],
+					DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC,
+					static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
+			}
+		}
+
+		blasResult = dxRenderer.DXR_UpdatePendingBLAS();
 	}
 
 	//-------------------------------------------------
