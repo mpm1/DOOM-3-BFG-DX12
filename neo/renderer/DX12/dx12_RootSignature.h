@@ -47,6 +47,8 @@ namespace DX12Rendering
 		void SetConstantBufferView(const UINT objectIndex, const UINT constantIndex, const ConstantBuffer& buffer);
 
 		void SetUnorderedAccessView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource);
+		void SetUnorderedAccessView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource, D3D12_UNORDERED_ACCESS_VIEW_DESC& view);
+
 		void SetShaderResourceView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource);
 
 		DX12Rendering::TextureBuffer* SetTextureRegisterIndex(UINT objectIndex, UINT textureIndex, DX12Rendering::TextureBuffer* texture, DX12Rendering::Commands::CommandList* commandList);

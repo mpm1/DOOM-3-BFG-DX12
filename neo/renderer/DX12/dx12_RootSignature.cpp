@@ -53,13 +53,18 @@ void DX12RootSignature::SetConstantBufferView(const UINT objectIndex, const UINT
 	m_device->CreateConstantBufferView(&buffer.bufferLocation, descriptorHandle);
 }
 
-void DX12RootSignature::SetUnorderedAccessView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource)
+void DX12RootSignature::SetUnorderedAccessView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource, D3D12_UNORDERED_ACCESS_VIEW_DESC& view)
 {
 	UINT heapIndex = GetHeapIndex(objectIndex, constantIndex);
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle = GetDescriptorManager()->GetCPUDescriptorHandle(GetCBVHeapPartition(), heapIndex);
 
 	m_device->CreateUnorderedAccessView(resource->resource.Get(), nullptr, resource->GetUavDescriptorView(), descriptorHandle);
+}
+
+void DX12RootSignature::SetUnorderedAccessView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource)
+{
+	SetUnorderedAccessView(objectIndex, constantIndex, resource, *resource->GetUavDescriptorView());
 }
 
 void DX12RootSignature::SetShaderResourceView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource)
@@ -159,7 +164,7 @@ void ComputeRootSignature::CreateRootSignature()
 		CD3DX12_DESCRIPTOR_RANGE1 descriptorTableRanges[3];
 		descriptorTableRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, CBV_REGISTER_COUNT, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
 		descriptorTableRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, eTesxture0SRV /* First Texture */);
-		descriptorTableRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, TEXTURE_REGISTER_COUNT - 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, eTesxture0SRV + 1 /* First Texture */);
+		descriptorTableRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, TEXTURE_REGISTER_COUNT - 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, eTesxture0SRV + 1 /* Second Texture */);
 		rootParameters[0].InitAsDescriptorTable(3, &descriptorTableRanges[0]);
 	}
 

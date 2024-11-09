@@ -32,7 +32,9 @@ namespace DX12Rendering
 
 		private:
 			D3D12_VERTEX_BUFFER_VIEW m_vertexBufferView;
+
 			D3D12_UNORDERED_ACCESS_VIEW_DESC m_uavBufferView;
+
 			D3D12_SHADER_RESOURCE_VIEW_DESC m_srvBufferView;
 		};
 

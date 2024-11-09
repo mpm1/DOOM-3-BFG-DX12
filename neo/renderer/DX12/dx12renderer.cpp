@@ -275,6 +275,7 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		constants.vertCount = vertIndexCount;
 		constants.vertPerThread = vertsPerSection;
 		constants.vertOffset = offset / vertStride;
+		constants.pad0 = offset;
 
 		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(ComputeConstants));
 		resourceManager.FillConstantBuffer(buffer, &constants);
@@ -292,10 +293,10 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 	}
 
 	{
-		// Setup the input buffer
+		// Setup the output buffer
 		m_computeRootSignature->SetUnorderedAccessView(objectIndex, 3, dstBuffer);
 
-		// Setup the output buffer
+		// Setup the input buffer
 		m_computeRootSignature->SetShaderResourceView(objectIndex, 4, srcBuffer);
 	}
 

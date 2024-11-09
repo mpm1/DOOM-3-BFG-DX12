@@ -3007,7 +3007,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 				{
 					// Add the BLAS and TLAS
 					dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
-					Mark start here. Why is our dynamic buffer not working. Are we building the right bone locations?
+					
 					UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
 					{
 						// Calculate the instance mask
