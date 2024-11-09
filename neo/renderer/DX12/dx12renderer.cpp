@@ -241,14 +241,14 @@ void DX12Renderer::ResetDynamicPerFrameData()
 	m_nextDynamicVertexIndex = 0;
 }
 
-UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT offset /* assume srcBuffer and dstBuffer are the same layout */, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset)
+UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT inputOffset, UINT outputOffset, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset)
 {
 	struct 	ComputeConstants
 	{
 		UINT vertCount;
-		UINT vertOffset;
 		UINT vertPerThread;
-		UINT pad0;
+		UINT inputOffset;
+		UINT outputOffset;
 	};
 
 	constexpr UINT vertStride = sizeof(idDrawVert);
@@ -274,8 +274,8 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		ComputeConstants constants = {};
 		constants.vertCount = vertIndexCount;
 		constants.vertPerThread = vertsPerSection;
-		constants.vertOffset = offset / vertStride;
-		constants.pad0 = offset;
+		constants.inputOffset = inputOffset / vertStride;
+		constants.outputOffset = outputOffset / vertStride;
 
 		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(ComputeConstants));
 		resourceManager.FillConstantBuffer(buffer, &constants);
@@ -326,7 +326,7 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		}
 	});
 
-	return objectIndex;
+	return vertBytes;
 }
 
 bool DX12Renderer::CreateBackBuffer() {
@@ -1156,6 +1156,7 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 		if (!isStatic)
 		{
 			vertexBuffer = GetCurrentDynamicVertexBuffer();
+			vertOffsetBytes = geometry.vertexOffset;
 		}
 
 

@@ -98,7 +98,7 @@ public:
 	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
 	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
 
-	UINT ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT offset /* assume srcBuffer and dstBuffer are the same layout */, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset);
+	UINT ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT inputOffset, UINT outputOffset, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset);
 
 	// Textures
 	void SetActiveTextureRegister(UINT8 index);

@@ -13,9 +13,9 @@ struct BLASVertex { // TODO: modify this to take our entire structure properly
 
 struct ComputeBLASConstants {
 	uint vertCount;
-	uint vertOffset;
 	uint vertPerThread;
-	uint pad0;
+	uint inputOffset;
+	uint outputOffset;
 };
 ConstantBuffer<ComputeBLASConstants> blasConstants : register(b2, space0);
 
@@ -37,7 +37,7 @@ uint PackR8G8B8A8(float4 inputValue)
 	return ((values.x & 0xFF) << 24) | ((values.y & 0xFF) << 16) | ((values.z & 0xFF) << 8) | (values.w & 0xFF);
 }
 
-void Skinning(in uint startIndex, in uint endIndex)
+void Skinning(in uint startIndex, in uint endIndex, in uint outputIndex)
 {
 	[loop]
 	for (int vertIndex = startIndex; vertIndex < endIndex; ++vertIndex)
@@ -101,7 +101,9 @@ void Skinning(in uint startIndex, in uint endIndex)
 		vertex.normal = PackR8G8B8A8(float4(normal, 0.0));
 		vertex.tangent = PackR8G8B8A8(float4(tangent, 0.0));
 
-		vertecies_uav[vertIndex] = vertex;
+		vertecies_uav[outputIndex] = vertex;
+
+		++outputIndex;
 	}
 }
 
@@ -117,5 +119,5 @@ void main( uint3 DTid : SV_DispatchThreadID )
 		return;
 	}
 
-	Skinning(start + blasConstants.vertOffset, end + blasConstants.vertOffset);
+	Skinning(start + blasConstants.inputOffset, end + blasConstants.inputOffset, start + blasConstants.outputOffset);
 }

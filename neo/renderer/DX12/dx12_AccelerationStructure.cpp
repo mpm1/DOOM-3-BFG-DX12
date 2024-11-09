@@ -288,6 +288,8 @@ namespace DX12Rendering {
 
 	UINT BLASManager::Generate()
 	{
+		m_scratchBuffer.Reset();
+
 		// TODO: Define starting point for BLAS using m_blasIndex
 		UINT count = 0;
 		UINT readCount = 0;

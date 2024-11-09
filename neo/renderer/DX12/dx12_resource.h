@@ -81,6 +81,11 @@ namespace DX12Rendering {
 
 		bool IsFenceCompleted();
 		void WaitForLastFenceToComplete();
+		
+		/// <summary>
+		/// Resets the scratch buffer to a 0 index;
+		/// </summary>
+		void Reset(); 
 
 	private:
 		UINT64 m_currentIndex; // The next available space to fill the scratch buffer.

@@ -2984,6 +2984,13 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
 	const bool useGBuffer = raytracedEnabled;
 
+	for (int i = 0; i < numDrawSurfs; i++) {
+		const drawSurf_t* ds = viewDef->drawSurfs[i];
+		if (ds->material != NULL) {
+			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
+		}
+	}
+
 	// Update all surfaces and bones as needed
 	{
 		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
@@ -2995,11 +3002,10 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		std::vector<DX12Rendering::RaytracingGeometryArgument> rtGeometry;
 		rtGeometry.reserve(16);
 
+		UINT outVertexBufferOffset = 0;
+
 		for (int i = 0; i < numDrawSurfs; i++) {
 			const drawSurf_t* ds = viewDef->drawSurfs[i];
-			if (ds->material != NULL) {
-				const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
-			}
 
 			if (ds->space != lastEntity)
 			{
@@ -3061,9 +3067,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 				DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
 
 				// Update the vert structure.
-				dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
+				size_t bufferOffset = dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, outVertexBufferOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
 
-				if (raytracedEnabled)
+				if (raytracedEnabled && ds->material && ds->material->SurfaceCastsShadow() /* Only allow shadow casting surfaces */)
 				{
 					const dxHandle_t handle = i;
 					const UINT entityIndex = i << 16;
@@ -3071,6 +3077,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 					DX12Rendering::RaytracingGeometryArgument dxArguments = {};
 					dxArguments.vertexHandle = ds->ambientCache;
 					dxArguments.vertCounts = vertIndexCount;
+					dxArguments.vertexOffset = outVertexBufferOffset;
 
 					dxArguments.indexHandle = ds->indexCache;
 					dxArguments.indexCounts = ds->numIndexes;
@@ -3080,6 +3087,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 					// Add to the list of entities
 					rtGeometry.push_back(dxArguments);
 				}
+
+				outVertexBufferOffset += bufferOffset;
 			}
 		}
 
