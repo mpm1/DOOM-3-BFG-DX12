@@ -292,7 +292,7 @@ namespace DX12Rendering {
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RayTracing::CastShadowRays");
 
 		//Update the resources
-		m_constantBuffer.depthTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::VIEW_DEPTH)->GetTextureIndex();
+		m_constantBuffer.positionTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::POSITION)->GetTextureIndex();
 		m_constantBuffer.flatNormalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS)->GetTextureIndex();
 		m_constantBuffer.normalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)->GetTextureIndex();
 		m_constantBuffer.diffuseTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO)->GetTextureIndex();

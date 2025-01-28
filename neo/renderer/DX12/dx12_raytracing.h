@@ -96,7 +96,7 @@ namespace DX12Rendering {
 		UINT diffuseTextureIndex;
 		UINT specularTextureIndex;
 
-		UINT depthTextureIndex;
+		UINT positionTextureIndex;
 		UINT flatNormalIndex;
 		UINT normalIndex;
 		UINT raysPerLight; // Number of shadow rays cast per light per pixel

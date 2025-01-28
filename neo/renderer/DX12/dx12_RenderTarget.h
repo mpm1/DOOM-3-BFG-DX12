@@ -26,7 +26,7 @@ namespace DX12Rendering {
 		// GBuffer
 		Normal, // Normals in the world space. This can be used for Raytracing.
 		FlatNormal, // Normals before normal mapping is applied.
-		ViewDepth, // The depth in view space
+		Position, // The depth in view space
 		Albedo, // Albedo texture used for lighting
 		SpecularColor, // Specular color used for lighting.
 
@@ -49,7 +49,7 @@ namespace DX12Rendering {
 	{
 		eRenderSurface::Normal,
 		eRenderSurface::FlatNormal,
-		eRenderSurface::ViewDepth,
+		eRenderSurface::Position,
 		eRenderSurface::Albedo,
 		eRenderSurface::SpecularColor,
 

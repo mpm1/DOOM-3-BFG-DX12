@@ -10,7 +10,7 @@ namespace DX12Rendering
 	enum eGlobalTexture
 	{
 		DEPTH_TEXTURE,
-		VIEW_DEPTH,
+		POSITION,
 		ALBEDO,
 		SPECULAR_COLOR,
 		WORLD_NORMALS,
@@ -71,6 +71,7 @@ namespace DX12Rendering
 		~TextureManager();
 
 		void Initialize(uint screenWidth, uint screenHeight);
+		void ResizeGlobalTextures(uint screenWidth, uint screenHeight);
 		void Clear();
 
 		// State Control
@@ -103,8 +104,12 @@ namespace DX12Rendering
 
 		// PipelineFunctions
 		const D3D12_DESCRIPTOR_RANGE1* GetDescriptorRanges() { return m_descriptorRanges; }
+
+		const bool IsInitialized() { return m_isInitialized; }
 	private:
 		ScratchBuffer m_textureUploadHeap;
+
+		bool m_isInitialized;
 		
 		CD3DX12_DESCRIPTOR_RANGE1 m_descriptorRanges[TEXTURE_SPACE_COUNT];
 

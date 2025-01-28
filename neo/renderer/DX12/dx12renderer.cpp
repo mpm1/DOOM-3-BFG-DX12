@@ -9,6 +9,8 @@
 #include <type_traits>
 
 extern idCVar r_swapInterval; // Used for VSync
+extern idCVar r_windowWidth; // Used to calculate resize
+extern idCVar r_windowHeight; // Used to calculate resize
 
 idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
@@ -561,10 +563,17 @@ void DX12Renderer::BeginDraw() {
 		return;
 	}
 
+	// Evaluate if we need to update or  resolution
+	if (r_windowWidth.GetInteger() != this->m_width || r_windowHeight.GetInteger() != this->m_height)
+	{
+		//TODO: add fullscreen update
+		this->SetScreenParams(r_windowWidth.GetInteger(), r_windowHeight.GetInteger(), false);
+	}
+
 	DX12Rendering::UpdateFrameIndex(m_swapChain.Get());
 	ResetDynamicPerFrameData();
 
-	WaitForPreviousFrame();
+	//WaitForPreviousFrame();
 
 #ifdef _DEBUG
 	DebugClearLights();
@@ -894,7 +903,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal)->Resize(width, height);
-			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor)->Resize(width, height);
 
@@ -907,7 +916,15 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 		}*/
 
 		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
-		textureManager->Initialize(m_width, m_height);
+
+		if (textureManager->IsInitialized())
+		{
+			textureManager->ResizeGlobalTextures(m_width, m_height);
+		}
+		else
+		{
+			textureManager->Initialize(m_width, m_height);
+		}
 
 		if (m_raytracing != nullptr) {
 			m_raytracing->Resize(m_width, m_height);

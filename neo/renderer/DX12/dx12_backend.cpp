@@ -1874,7 +1874,7 @@ static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** dra
 	constexpr UINT surfaceCount = 5;
 	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 		DX12Rendering::eRenderSurface::FlatNormal,
-		DX12Rendering::eRenderSurface::ViewDepth,
+		DX12Rendering::eRenderSurface::Position,
 		DX12Rendering::eRenderSurface::Normal,
 		DX12Rendering::eRenderSurface::Albedo,
 		DX12Rendering::eRenderSurface::SpecularColor
@@ -2970,26 +2970,10 @@ void RB_DrawCombinedGBufferResults()
 	}
 }
 
-void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
-	renderLog.OpenBlock("RB_DrawViewInternal");
-
-	//-------------------------------------------------
-	// guis can wind up referencing purged images that need to be loaded.
-	// this used to be in the gui emit code, but now that it can be running
-	// in a separate thread, it must not try to load images, so do it here.
-	//-------------------------------------------------
+void RB_CalculateDynamicObjects(const viewDef_t* viewDef, const bool raytracedEnabled)
+{
 	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
 	const int numDrawSurfs = viewDef->numDrawSurfs;
-
-	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
-	const bool useGBuffer = raytracedEnabled;
-
-	for (int i = 0; i < numDrawSurfs; i++) {
-		const drawSurf_t* ds = viewDef->drawSurfs[i];
-		if (ds->material != NULL) {
-			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
-		}
-	}
 
 	// Update all surfaces and bones as needed
 	{
@@ -3013,7 +2997,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 				{
 					// Add the BLAS and TLAS
 					dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
-					
+
 					UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
 					{
 						// Calculate the instance mask
@@ -3040,7 +3024,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 			if (ds->jointCache)
 			{
-				
+
 				// get vertex buffer
 				idVertexBuffer* const vertexBuffer = GetVertexBuffer(ds->ambientCache);
 				const int vertOffset = GetVertexBufferOffset(ds->ambientCache);
@@ -3063,7 +3047,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 					idLib::Warning("BackEnd ComputeSurfaceBones, jointBuffer == NULL");
 					return;
 				}
-				
+
 				DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
 
 				// Update the vert structure.
@@ -3145,6 +3129,28 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 		blasResult = dxRenderer.DXR_UpdatePendingBLAS();
 	}
+}
+
+void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
+	renderLog.OpenBlock("RB_DrawViewInternal");
+
+	//-------------------------------------------------
+	// guis can wind up referencing purged images that need to be loaded.
+	// this used to be in the gui emit code, but now that it can be running
+	// in a separate thread, it must not try to load images, so do it here.
+	//-------------------------------------------------
+	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
+	const int numDrawSurfs = viewDef->numDrawSurfs;
+
+	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
+	const bool useGBuffer = raytracedEnabled;
+
+	for (int i = 0; i < numDrawSurfs; i++) {
+		const drawSurf_t* ds = viewDef->drawSurfs[i];
+		if (ds->material != NULL) {
+			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
+		}
+	}
 
 	//-------------------------------------------------
 	// RB_BeginDrawingView
@@ -3181,7 +3187,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	{
 		const float zeroClear[4] = { 0, 0, 0, 0 };
 		const DX12Rendering::eRenderSurface clearSurfaces[] = {
-			DX12Rendering::eRenderSurface::ViewDepth,
+			DX12Rendering::eRenderSurface::Position,
 			DX12Rendering::eRenderSurface::Normal,
 			DX12Rendering::eRenderSurface::FlatNormal,
 			DX12Rendering::eRenderSurface::RaytraceShadowMask,
@@ -3310,6 +3316,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		}
 	}
 
+	RB_CalculateDynamicObjects(viewDef, raytracedEnabled);
+
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	bool raytraceUpdated = false;
 	if (backEnd.viewDef->viewEntitys != NULL) {
@@ -3335,13 +3343,13 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(fence);
 
 			// Copy the depth buffer to a texture
-			auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
+			auto position = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position);
 			//viewDepth->fence.Wait();
 
 			// TODO: Make a system to perform multiple copies
 			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
-			DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
-			viewDepth->CopySurfaceToTexture(depthTexture, textureManager);
+			DX12Rendering::TextureBuffer* positionTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::POSITION);
+			position->CopySurfaceToTexture(positionTexture, textureManager);
 
 			// Copy the albedo
 			auto albedo = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo);
