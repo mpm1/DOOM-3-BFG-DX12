@@ -119,6 +119,11 @@ struct SceneConstants {
 	float4 rpOverbright;
 	float4 rpEnableSkinning;
 	float4 rpAlphaTest;
+
+	float4 rpPrevMVPmatrixX;
+	float4 rpPrevMVPmatrixY;
+	float4 rpPrevMVPmatrixZ;
+	float4 rpPrevMVPmatrixW;
 };
 ConstantBuffer<SceneConstants> sceneConstants : register(b0, space0);
 

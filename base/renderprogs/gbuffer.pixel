@@ -1,5 +1,6 @@
 #define PIXEL_SHADER
 #define SKINNED
 #define WRITE_LOCATION_DATA
+#define WRITE_VELOCITY
 
 #include "gbuffer.inc"

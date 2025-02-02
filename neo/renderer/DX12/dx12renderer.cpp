@@ -179,7 +179,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	}
 #endif
 
-	ComPtr<IDXGIFactory4> factory;
+	ComPtr<IDXGIFactory6> factory;
 	DX12Rendering::ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
 
 	DX12Rendering::Device::InitializeDevice(factory.Get());

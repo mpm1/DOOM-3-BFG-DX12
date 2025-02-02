@@ -103,7 +103,7 @@ struct RaytracedSceneConstants {
     uint diffuseTextureIndex;
     uint specularTexureIndex;
 
-    uint depthTextureIndex;
+    uint positionTextureIndex;
 	uint flatNormalIndex;
     uint normalIndex;
     uint raysPerLight;

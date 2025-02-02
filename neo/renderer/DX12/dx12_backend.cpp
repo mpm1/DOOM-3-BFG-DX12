@@ -74,17 +74,20 @@ idVertexBuffer* GetVertexBuffer(const vertCacheHandle_t vbHandle)
 
 bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 {
-	// TODO: Implement
-	for (int i = 0; i <= displayNum; ++i) {
+	bool displayFound = DX12Rendering::Device::GetAllSupportedResolutions(displayNum, [&modeList](UINT monitor, UINT subIndex, UINT width, UINT height, UINT refreshNumerator, UINT refreshDenominator) -> void
+	{
 		vidMode_t mode;
-		mode.displayHz = 60;
-		mode.height = 1080;
-		mode.width = 1920;
+
+		assert(refreshDenominator != 0);
+
+		mode.displayHz = refreshNumerator / refreshDenominator;
+		mode.height = height;
+		mode.width = width;
 
 		modeList.Append(mode);
-	}
+	});
 
-	return true;
+	return displayFound;
 }
 
 /*

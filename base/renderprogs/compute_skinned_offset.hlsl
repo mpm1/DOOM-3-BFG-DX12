@@ -16,10 +16,13 @@ struct ComputeBLASConstants {
 	uint vertPerThread;
 	uint inputOffset;
 	uint outputOffset;
+
+	//uint lastInputOffset;
 };
 ConstantBuffer<ComputeBLASConstants> blasConstants : register(b2, space0);
 
 RWStructuredBuffer<BLASVertex>	vertecies_uav : register(u0);
+//RWStructuredBuffer<BLASVertex>  lastVertecies_uav : register(u1); Mark we need to allow this value for input and set it.
 
 StructuredBuffer<BLASVertex>	inputVertecies_srv : register(t0);
 
@@ -39,6 +42,8 @@ uint PackR8G8B8A8(float4 inputValue)
 
 void Skinning(in uint startIndex, in uint endIndex, in uint outputIndex)
 {
+	uint index = 0;
+
 	[loop]
 	for (int vertIndex = startIndex; vertIndex < endIndex; ++vertIndex)
 	{
@@ -97,13 +102,20 @@ void Skinning(in uint startIndex, in uint endIndex, in uint outputIndex)
 		modelPosition.z = dot4(matZ, vertPosition);
 		modelPosition.w = 1.0;
 
+		// Calculate velocity
+		/*float4 velocity = float4(modelPosition.xyz - lastVertecies_uav[blasConstants.lastInputOffset].position.xyz, 0.0);
+		velocity.w = distance(velocity.xyz); Mark we need to make this a value between 0 and 1.
+		velocity.xyz = normalize(velocity.xyz);*/
+
 		vertex.position = modelPosition;
 		vertex.normal = PackR8G8B8A8(float4(normal, 0.0));
 		vertex.tangent = PackR8G8B8A8(float4(tangent, 0.0));
+		//vertex.color = PackR8G8B8A8(velocity);
 
 		vertecies_uav[outputIndex] = vertex;
 
 		++outputIndex;
+		++index;
 	}
 }
 

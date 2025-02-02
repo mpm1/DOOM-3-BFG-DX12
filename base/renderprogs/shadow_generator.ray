@@ -179,11 +179,7 @@ void HandlePointLight(
 }
 
 [shader("raygeneration")]
-void RayGen() {
-	uint resultMask = 0x00000000;
-	float3 resultDiffuse = float3(0.0, 0.0, 0.0);
-	float3 resultSpecular = float3(0.0, 0.0, 0.0);
-
+void RayGen() {	
 	// Get the ray location on the screen
 	float2 lerpValues = ((float2)DispatchRaysIndex() + 0.0) / (float2)DispatchRaysDimensions();
 	float3 screenLocation = float3(
@@ -193,64 +189,61 @@ void RayGen() {
 	
 	uint lightCounts = min(sceneConstants.lightCount, MAX_SHADOW_LIGHTS);
 
+	float3 resultDiffuse = float3(0.0, 0.0, 0.0);
+	float3 resultSpecular = float3(0.0, 0.0, 0.0);
+
 	// Get the depth buffer location
-	float depth = GetBindlessTexture1f(sceneConstants.depthTextureIndex).GatherRed(pointSampler, lerpValues.xy).r;
+	float3 worldPosition = GetBindlessTexture4f(sceneConstants.positionTextureIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz;
+	float3 flatNormal = normalize((GetBindlessTexture4f(sceneConstants.flatNormalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
+	float3 normal = normalize((GetBindlessTexture4f(sceneConstants.normalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
+	float3 diffuse = GetBindlessTexture4f(sceneConstants.diffuseTextureIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz;
+	float3 specular = GetBindlessTexture4f(sceneConstants.specularTexureIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz;
 
-	if(depth != 0) // A depth of absolute 0 is considered invalid.
+	// Calculate the offset from the ray start we'd like to use.
+	// This is done to help with precision errors the further away our surface is.
+	float depth = distance(worldPosition, sceneConstants.rp.globalEyePos.xyz);
+	float rayStartDistance = lerp(0.001, 1.0, depth / 100.0f);
+	
+	float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
+
+	Plane surfacePlane = GeneratePlane(flatNormal, worldPosition);
+
+	for(uint lightIndex = 0; lightIndex < lightCounts; ++lightIndex)
 	{
-		// Calculate the offset from the ray start we'd like to use.
-		// This is done to help with precision errors the further away our surface is.
-		float rayStartDistance = lerp(0.0, 20.0, depth / 1000.0f);
+		SceneLight light = sceneConstants.lights[lightIndex];
 
-		float3 flatNormal = normalize((GetBindlessTexture4f(sceneConstants.flatNormalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
-		float3 normal = normalize((GetBindlessTexture4f(sceneConstants.normalIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz * 2.0) - 1.0);
-		float3 diffuse = GetBindlessTexture4f(sceneConstants.diffuseTextureIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz;
-		float3 specular = GetBindlessTexture4f(sceneConstants.specularTexureIndex).SampleLevel(pointSampler, lerpValues.xy, 0).xyz;
+		if (IsInsideViewport(screenLocation.xy, light.scissor))
+		{
+			bool castsShadows = (light.flags & LIGHT_FLAG_CASTS_SHADOWS) > 0;
+			uint lightRayCount = castsShadows ? sceneConstants.raysPerLight : 1; // Only use 1 for non shadow surfaces
+					
+			float3 localDiffuse = float3(0.0, 0.0, 0.0);
+			float3 localSpecular = float3(0.0, 0.0, 0.0);
 
-		{		
-			float3 worldPosition = GetWorldPointFromDepth(depth, lerpValues, sceneConstants).xyz + (k_minSurfaceDistance * flatNormal);
-			float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
-
-			Plane surfacePlane = GeneratePlane(flatNormal, worldPosition);
-
-			for(uint lightIndex = 0; lightIndex < sceneConstants.lightCount; ++lightIndex)
+			if((light.flags & LIGHT_FLAG_AMBIENT_LIGHT) > 0)
 			{
-				SceneLight light = sceneConstants.lights[lightIndex];
-
-				if (IsInsideViewport(screenLocation.xy, light.scissor))
-				{
-					bool castsShadows = (light.flags & LIGHT_FLAG_CASTS_SHADOWS) > 0;
-					uint lightRayCount = castsShadows ? sceneConstants.raysPerLight : 1; // Only one point is needed if we're not creating soft shadows.
-					
-
-					float3 localDiffuse = float3(0.0, 0.0, 0.0);
-					float3 localSpecular = float3(0.0, 0.0, 0.0);
-
-					if((light.flags & LIGHT_FLAG_AMBIENT_LIGHT) > 0)
-					{
-						HandleAmbientLight(
-							lightIndex, light, 
-							worldPosition, normal, pointToEye,
-							diffuse, specular,
-							localDiffuse, localSpecular);
-					}
-					else if((light.flags & LIGHT_FLAG_POINT_LIGHT) > 0)
-					{
-						HandlePointLight(
-							lightIndex, light, lightRayCount, 
-							castsShadows, surfacePlane, normal,
-							pointToEye, worldPosition, lerpValues,
-							rayStartDistance, diffuse, specular,
-							localDiffuse, localSpecular);
-					}
-					
-					resultDiffuse += localDiffuse;
-					resultSpecular += localSpecular;
-				} 
+				HandleAmbientLight(
+					lightIndex, light, 
+					worldPosition, normal, pointToEye,
+					diffuse, specular,
+					localDiffuse, localSpecular);
 			}
+			else if((light.flags & LIGHT_FLAG_POINT_LIGHT) > 0)
+			{
+				HandlePointLight(
+					lightIndex, light, lightRayCount, 
+					castsShadows, surfacePlane, normal,
+					pointToEye, worldPosition, lerpValues,
+					rayStartDistance, diffuse, specular,
+					localDiffuse, localSpecular);
+			}
+					
+			resultDiffuse += float4(localDiffuse, 1.0);
+			resultDiffuse += float4(localSpecular, 1.0);
 		}
 	}
-	
+
+	// Send to the output buffers
 	shadowMask[DispatchRaysIndex().xy] = uint4(255, 0, 0, 255); //TODO: Remove completely from system.
 	diffuseResult[DispatchRaysIndex().xy] = float4(saturate(resultDiffuse.rgb), 1.0);
 	specularResult[DispatchRaysIndex().xy] = float4(saturate(resultSpecular.rgb), 1.0);

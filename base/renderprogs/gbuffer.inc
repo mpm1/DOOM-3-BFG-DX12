@@ -24,10 +24,12 @@ struct VS_IN {
 	float2 texcoord : TEXCOORD0;
 	float4 normal : NORMAL;
 	float4 tangent : TANGENT;
-	float4 color : COLOR0;
 #ifdef SKINNED
-	float4 color2 : COLOR1;
-#endif // end SKINNED
+	float4 color : COLOR0;
+	float4 color2 : COLOR1; // The location of skinning
+#elif  defined(USE_VELOCITY_OFFSET)
+	float4 velocity : COLOR0; // For skinned objects computed on the GPU, this will contain the velocity vector.
+#endif
 };
 
 struct VS_OUT {
@@ -39,6 +41,7 @@ struct VS_OUT {
 	float3 tangent		: TEXCOORD4_centroid;
 	float3 binormal		: TEXCOORD5_centroid;
 	float4 viewPosition	: TEXCOORD6;
+	float4 lastPosition	: TEXCOORD7; // Position during the last frame.
 };
 
 float3 applyNormalTransform(float3 inVector)
@@ -127,15 +130,22 @@ void main( VS_IN vertex, out VS_OUT result ) {
 #endif // end SKINNED
 
 	// Calculate the fragment position
-	result.viewPosition.x = dot4( modelPosition, sceneConstants.rpModelViewMatrixX );
-	result.viewPosition.y = dot4( modelPosition, sceneConstants.rpModelViewMatrixY );
-	result.viewPosition.z = dot4( modelPosition, sceneConstants.rpModelViewMatrixZ );
-	result.viewPosition.w = dot4( modelPosition, sceneConstants.rpModelViewMatrixW );
+	result.viewPosition.x = dot4( modelPosition, sceneConstants.rpModelMatrixX );
+	result.viewPosition.y = dot4( modelPosition, sceneConstants.rpModelMatrixY );
+	result.viewPosition.z = dot4( modelPosition, sceneConstants.rpModelMatrixZ );
+	result.viewPosition.w = dot4( modelPosition, sceneConstants.rpModelMatrixW );
 
 	result.position.x = dot4( modelPosition, sceneConstants.rpMVPmatrixX );
 	result.position.y = dot4( modelPosition, sceneConstants.rpMVPmatrixY );
 	result.position.z = dot4( modelPosition, sceneConstants.rpMVPmatrixZ );
 	result.position.w = dot4( modelPosition, sceneConstants.rpMVPmatrixW );
+
+#ifdef WRITE_VELOCITY
+	result.lastPosition.x = dot4( modelPosition, sceneConstants.rpPrevMVPmatrixX );
+	result.lastPosition.y = dot4( modelPosition, sceneConstants.rpPrevMVPmatrixY );
+	result.lastPosition.z = dot4( modelPosition, sceneConstants.rpPrevMVPmatrixZ );
+	result.lastPosition.w = dot4( modelPosition, sceneConstants.rpPrevMVPmatrixW );
+#endif
 	
 	// Generate normal space
 	result.normal = applyNormalTransform(normal);
@@ -175,17 +185,36 @@ struct PS_IN {
 	half3 binormal	: TEXCOORD5_centroid; // Binormal
 
 	float4 viewPosition : TEXCOORD6;
+	half4 lastPosition	: TEXCOORD7; // Position during the last frame.
 };
 
 struct PS_OUT {
 #ifdef WRITE_LOCATION_DATA
 	half3 flatNormal	: SV_TARGET0;
-	float viewDepth		: SV_TARGET1;
+	float3 viewDepth	: SV_TARGET1;
 	half3 normal		: SV_TARGET2;
 #endif
 	half4 albedo		: SV_TARGET3;
 	half4 specularColor	: SV_TARGET4;
+#ifdef WRITE_VELOCITY
+	float4 velocity		: SV_TARGET5;
+#endif
 };
+
+#ifdef WRITE_VELOCITY
+float4 CalculateVelocity(const float4 lastPosition, const float4 position)
+{ 
+	//TODO: Our velocity buffer is broken and not writing the correct data
+	const float velocityScale = 8.0; // TODO: Pass in this value.
+	float3 pOld = lastPosition.xyz / lastPosition.w;
+	float3 pNew = position.xyz / position.w;
+
+	float2 velocity = (pNew - pOld) * velocityScale;
+	return float4(
+		(velocity / max(length(velocity), 1.0)) * 0.5 + 0.5,
+		1.0, 0);
+}
+#endif
 
 void main( PS_IN fragment, out PS_OUT result ) {
 	half4 bumpMap =	GetBindlessTexture4f(gbufferConstants.bumpMapIndex).Sample(baseSampler, fragment.texcoord0.xy );
@@ -195,8 +224,12 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	
 	result.albedo.rgb = ConvertYCoCgToRGB( YCoCG ); //we need the diffuse modifier constant?
 
+#ifdef WRITE_VELOCITY
+	result.velocity = CalculateVelocity(fragment.lastPosition, fragment.position);
+#endif
+
 #ifdef WRITE_LOCATION_DATA
-	result.viewDepth = length(fragment.viewPosition.xyz);// / fragment.viewPosition.w); // The depth going into the view space. Note, z will be negitive
+	result.viewDepth = fragment.viewPosition.xyz;//length(fragment.viewPosition.xyz);// / fragment.viewPosition.w); // The depth going into the view space. Note, z will be negitive
 
 	result.flatNormal = (normalize(fragment.normal) + 1.0) / 2.0f;
 

@@ -3,5 +3,6 @@ Used for storing render data into a gbuffer which can be used later to calcuate 
 */
 #define VERTEX_SHADER
 #define SKINNED
+#define WRITE_VELOCITY
 
 #include "gbuffer.inc"
