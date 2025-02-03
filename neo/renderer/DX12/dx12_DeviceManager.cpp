@@ -87,7 +87,7 @@ namespace DX12Rendering
 		return m_managerInstance; 
 	}
 
-	bool Device::GetAllSupportedResolutions(const UINT monitor, Device::DeviceResolutionFunc resolutionCallback)
+	bool Device::GetDeviceOutput(const UINT monitor, IDXGIOutput** pOutput)
 	{
 		ComPtr<IDXGIFactory6> factory;
 		DX12Rendering::ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
@@ -95,8 +95,13 @@ namespace DX12Rendering
 		ComPtr<IDXGIAdapter1> hardwareAdapter;
 		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
 
+		return hardwareAdapter->EnumOutputs(monitor, pOutput) == S_OK;
+	}
+
+	bool Device::GetAllSupportedResolutions(const UINT monitor, Device::DeviceResolutionFunc resolutionCallback)
+	{
 		IDXGIOutput* pOutput;
-		if (hardwareAdapter->EnumOutputs(monitor, &pOutput) != S_OK)
+		if (!GetDeviceOutput(monitor, &pOutput))
 		{
 			return false;
 		}
@@ -105,7 +110,6 @@ namespace DX12Rendering
 		pOutput->GetDisplayModeList(DXGI_FORMAT_R8G8B8A8_UNORM, 0, &modeCount, nullptr);
 
 		DXGI_MODE_DESC* displayModes = new DXGI_MODE_DESC[modeCount];
-
 		pOutput->GetDisplayModeList(DXGI_FORMAT_R8G8B8A8_UNORM, 0, &modeCount, displayModes);
 
 		for (UINT index = 0; index < modeCount; ++index)

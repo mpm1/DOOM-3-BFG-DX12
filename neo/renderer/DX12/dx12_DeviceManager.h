@@ -29,6 +29,7 @@ namespace DX12Rendering
 		ID3D12Device5* GetDevice();
 
 		bool GetAllSupportedResolutions(const UINT monitor, Device::DeviceResolutionFunc resolutionCallback);
+		bool GetDeviceOutput(const UINT monitor, IDXGIOutput** pOutput);
 
 #ifdef DEBUG_GPU
 		void __stdcall OnDeviceRemoved(PVOID context, BOOLEAN);

@@ -11,6 +11,7 @@
 extern idCVar r_swapInterval; // Used for VSync
 extern idCVar r_windowWidth; // Used to calculate resize
 extern idCVar r_windowHeight; // Used to calculate resize
+extern idCVar r_fullscreen; // Used to calculate resize
 
 idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
@@ -200,7 +201,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
 	swapChainDesc.OutputWindow = hWnd;
 	swapChainDesc.SampleDesc.Count = 1;
-	swapChainDesc.Flags = 0; // Todo enable when in fullscreen DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+	swapChainDesc.Flags = 0; // TODO: enable when in fullscreen DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 	swapChainDesc.Windowed = TRUE; //TODO: Change to option
 
 	ComPtr<IDXGISwapChain> swapChain;
@@ -564,7 +565,8 @@ void DX12Renderer::BeginDraw() {
 	}
 
 	// Evaluate if we need to update or  resolution
-	if (r_windowWidth.GetInteger() != this->m_width || r_windowHeight.GetInteger() != this->m_height)
+	if (r_fullscreen.GetInteger() == 0 && // We transferred to fullscreen mode, this will be handled by R_SetNewMode
+		(r_windowWidth.GetInteger() != this->m_width || r_windowHeight.GetInteger() != this->m_height))
 	{
 		//TODO: add fullscreen update
 		this->SetScreenParams(r_windowWidth.GetInteger(), r_windowHeight.GetInteger(), false);
@@ -740,13 +742,17 @@ void DX12Renderer::PresentBackbuffer() {
 
 	UINT presentProperties = 0;
 	UINT syncInterval = 1;
+
+	DXGI_PRESENT_PARAMETERS presentParams = {};
+	presentParams.DirtyRectsCount = 0;
 	
-	bool inWindow = false; // TODO: Implement
+	const bool inWindow = m_fullScreen <= 0;
 	if (inWindow)
 	{
 		if (r_swapInterval.GetInteger() == 0)
 		{
-			presentProperties |= DXGI_PRESENT_ALLOW_TEARING;
+			//TODO: fix no vsync
+			//presentProperties |= DXGI_PRESENT_ALLOW_TEARING;
 			syncInterval = 0;
 		}
 		else if (r_swapInterval.GetInteger() == 1)
@@ -755,7 +761,7 @@ void DX12Renderer::PresentBackbuffer() {
 		}
 	}
 
-	DX12Rendering::ThrowIfFailed(m_swapChain->Present(syncInterval, presentProperties));
+	DX12Rendering::ThrowIfFailed(m_swapChain->Present1(syncInterval, presentProperties, &presentParams));
 
 	//SignalNextFrame();
 	//WaitForPreviousFrame(); It looks like it's the vertex buffer. We should have a render one between frames. Mark figure out why we need this here.Our buffers are being corupted way too soon.
@@ -858,18 +864,12 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-	/*if (m_width == width && m_height == height && m_fullScreen == fullscreen) {
-		return true;
-	}*/
-	// TODO: Resize buffers as needed.
+	const bool updateFullscreen = m_fullScreen != fullscreen;
 
 	m_width = width;
 	m_height = height;
 	m_fullScreen = fullscreen;
 	m_aspectRatio = static_cast<FLOAT>(width) / static_cast<FLOAT>(height);
-
-	// TODO: Find the correct window.
-	//m_swapChain->SetFullscreenState(true, NULL);
 
 	// TODO: HANDLE THIS WHILE DRAWING.
 	if (device && m_swapChain) {
@@ -879,6 +879,26 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::Commands::EndFrame();
 		}
 
+		UINT swapChainFlags = 0;
+
+		if (updateFullscreen)
+		{
+			if (m_fullScreen <= 0)
+			{
+				m_swapChain->SetFullscreenState(FALSE, NULL);
+			}
+			else
+			{
+				IDXGIOutput* pOutput;
+				if (DX12Rendering::Device::GetDeviceOutput(m_fullScreen - 1, &pOutput))
+				{
+					m_swapChain->SetFullscreenState(TRUE, pOutput);
+				}
+
+				//swapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+			}
+		}
+		
 		// Resize Swapchain
 		{
 			// This will be updated during the swap chain.
@@ -886,7 +906,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Release();
 		}
 
-		if (FAILED(m_swapChain->ResizeBuffers(DX12_FRAME_COUNT, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, NULL))) {
+		if (FAILED(m_swapChain->ResizeBuffers(DX12_FRAME_COUNT, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, swapChainFlags))) {
 			return false;
 		}
 

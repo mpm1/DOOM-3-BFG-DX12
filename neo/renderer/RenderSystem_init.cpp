@@ -321,6 +321,9 @@ void R_SetNewMode( const bool fullInit ) {
 			GLimp_Init(parms);
 		}
 		if ( dxRenderer.SetScreenParams( parms.width, parms.height, parms.fullScreen ) ) {
+			glConfig.nativeScreenWidth = parms.width;
+			glConfig.nativeScreenHeight = parms.height;
+
 			// it worked
 			break;
 		}
