@@ -27,9 +27,7 @@ using namespace Microsoft::WRL;
 
 class idRenderModel;
 
-#ifdef _DEBUG
 struct viewLight_t;
-#endif
 
 constexpr int DYNAMIC_VERTEX_MEMORY_PER_FRAME = 31 * 1024 * 1024; // Matches VERTCACHE_VERTEX_MEMORY_PER_FRAME
 constexpr int DYNAMIC_VERTEX_ALIGNMENT = 32; // Matches VERTEX_CACHE_ALIGN

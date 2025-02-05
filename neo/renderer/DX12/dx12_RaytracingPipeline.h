@@ -4,7 +4,7 @@
 #include "./dx12_global.h"
 #include "./dx12_shader.h"
 
-#include <unordered_set>;
+#include <unordered_set>
 
 namespace DX12Rendering {
 	struct RootSignatureAssociation {

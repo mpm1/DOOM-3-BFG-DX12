@@ -333,8 +333,6 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 }
 
 bool DX12Renderer::CreateBackBuffer() {
-	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-
 	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
 		DX12Rendering::RenderSurface& renderTarget = *DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + frameIndex);
 
@@ -480,7 +478,6 @@ void DX12Renderer::SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, 
 }
 
 void DX12Renderer::SignalNextFrame() {
-	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
 
 	auto commandList = commandManager->RequestNewCommandList();
@@ -566,7 +563,7 @@ void DX12Renderer::BeginDraw() {
 
 	// Evaluate if we need to update or  resolution
 	if (r_fullscreen.GetInteger() == 0 && // We transferred to fullscreen mode, this will be handled by R_SetNewMode
-		(r_windowWidth.GetInteger() != this->m_width || r_windowHeight.GetInteger() != this->m_height))
+		(static_cast<UINT>(r_windowWidth.GetInteger()) != this->m_width || static_cast<UINT>(r_windowHeight.GetInteger()) != this->m_height))
 	{
 		//TODO: add fullscreen update
 		this->SetScreenParams(r_windowWidth.GetInteger(), r_windowHeight.GetInteger(), false);
@@ -1252,7 +1249,7 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 	std::vector<DX12Rendering::RaytracingGeometryArgument> geometry = {};
 	geometry.reserve(model->NumSurfaces());
 
-	for (UINT surfaceIndex = 0; surfaceIndex < model->NumSurfaces(); ++surfaceIndex)
+	for (UINT surfaceIndex = 0; surfaceIndex < static_cast<UINT>(model->NumSurfaces()); ++surfaceIndex)
 	{
 		const modelSurface_t& surf = *model->Surface(surfaceIndex);
 		if (surf.shader->Coverage() == MC_TRANSLUCENT)
@@ -1288,14 +1285,14 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 		if (!isStatic || surf.geometry->staticModelWithJoints != NULL)
 		{
 			// Code taken from tr_frontend_addmodels.cpp R_SetupDrawSurgJoints
-			idRenderModelStatic* model = surf.geometry->staticModelWithJoints;
-			assert(model->jointsInverted != NULL);
+			idRenderModelStatic* jointModel = surf.geometry->staticModelWithJoints;
+			assert(jointModel->jointsInverted != NULL);
 
-			if (!vertexCache.CacheIsCurrent(model->jointsInvertedBuffer)) {
+			if (!vertexCache.CacheIsCurrent(jointModel->jointsInvertedBuffer)) {
 				const int alignment = glConfig.uniformBufferOffsetAlignment;
-				model->jointsInvertedBuffer = vertexCache.AllocJoint(model->jointsInverted, ALIGN(model->numInvertedJoints * sizeof(idJointMat), alignment));
+				jointModel->jointsInvertedBuffer = vertexCache.AllocJoint(jointModel->jointsInverted, ALIGN(jointModel->numInvertedJoints * sizeof(idJointMat), alignment));
 			}
-			geo.jointsHandle = model->jointsInvertedBuffer;
+			geo.jointsHandle = jointModel->jointsInvertedBuffer;
 		}
 
 		geometry.emplace_back(geo);
@@ -1514,7 +1511,7 @@ void DX12Renderer::SetRenderTargets(const DX12Rendering::eRenderSurface* surface
 	assert(count <= MAX_RENDER_TARGETS);
 	
 	m_activeRenderTargets = count;
-	for (int index = 0; index < count; ++index)
+	for (UINT index = 0; index < count; ++index)
 	{
 		m_renderTargets[index] = DX12Rendering::GetSurface(surfaces[index]);
 	}

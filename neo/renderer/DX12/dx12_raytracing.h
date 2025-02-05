@@ -27,9 +27,9 @@ namespace DX12Rendering {
 	DEFINE_ENUM_FLAG_OPERATORS(DXR_LIGHT_TYPE);
 
 	// Making these caches 256x more than their in frame size
-	const UINT VERTCACHE_INDEX_MEMORY = 31 * 1024 * 1024 * 256;
-	const UINT VERTCACHE_VERTEX_MEMORY = 31 * 1024 * 1024 * 256;
-	const UINT VERTCACHE_JOINT_MEMORY= 256 * 1024 * 256;
+	const UINT VERTCACHE_INDEX_MEMORY = 31U * 1024U * 1024U * 256U;
+	const UINT VERTCACHE_VERTEX_MEMORY = 31U * 1024U * 1024U * 256U;
+	const UINT VERTCACHE_JOINT_MEMORY= 256U * 1024U * 256U;
 
 	const UINT DESCRIPTOR_HEAP_SIZE = 4 /* basic entries */;
 
@@ -68,7 +68,7 @@ namespace DX12Rendering {
 				bool isAmbientLight : 1;
 				bool isFogLight : 1;
 				bool flagPad[sizeof(UINT) - 2];
-			};
+			} flagValue;
 		};
 		UINT pad1;
 		UINT pad2;
@@ -104,7 +104,7 @@ namespace DX12Rendering {
 		dxr_lightData_t lights[MAX_SCENE_LIGHTS];
 	};
 
-	class TopLevelAccelerationStructure;
+	struct TopLevelAccelerationStructure;
 
 	class Raytracing;
 }
