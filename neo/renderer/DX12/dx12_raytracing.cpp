@@ -219,23 +219,23 @@ namespace DX12Rendering {
 
 		m_constantBuffer.lights[index].flags = 0;
 
-		m_constantBuffer.lights[index].castsShadows = castsShadows;
+		m_constantBuffer.lights[index].flagValue.castsShadows = castsShadows;
 
 		{
 			// Calculate type properties
 			if ((type & DXR_LIGHT_TYPE_AMBIENT) > 0)
 			{
-				m_constantBuffer.lights[index].isAmbientLight = true;
+				m_constantBuffer.lights[index].flagValue.isAmbientLight = true;
 			}
 			else
 			{
 				// All lights that are not ambient are point lights
-				m_constantBuffer.lights[index].isPointLight = true;
+				m_constantBuffer.lights[index].flagValue.isPointLight = true;
 			}
 
 			if ((type & DXR_LIGHT_TYPE_FOG) > 0)
 			{
-				m_constantBuffer.lights[index].isFogLight = true;
+				m_constantBuffer.lights[index].flagValue.isFogLight = true;
 			}
 		}
 

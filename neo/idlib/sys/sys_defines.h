@@ -189,6 +189,13 @@ bulk of the codebase, so it is the best place for analyze pragmas.
 
 #pragma warning( disable: 4499 )	// warning C4499: 'extern': an explicit specialization cannot have a storage class (ignored) [DX12\neo\idlib\math\Math.h]
 
+#pragma warning( disable: 4459 )	// warning C4459: declaration of 'tr' hides global declaration
+
+#pragma warning ( disable: 4456 )	// warning C4456: declaration of 'axis' hides previous local declaration
+
+#pragma warning ( disable: 4457 )	// warning C4457: declaration of 'dir' hides function parameter
+
+
 // checking format strings catches a LOT of errors
 #include <CodeAnalysis\SourceAnnotations.h>
 

@@ -201,7 +201,7 @@ void idBitMsg::WriteString( const char * s, int maxLength, bool make7Bit ) {
 idBitMsg::WriteData
 ========================
 */
-void idBitMsg::WriteData( const void *data, int length ) {
+void idBitMsg::WriteData( const void *data, size_t length ) {
 	memcpy( GetByteSpace( length ), data, length );
 }
 
@@ -393,7 +393,7 @@ int idBitMsg::ReadString( idStr & str ) const {
 idBitMsg::ReadData
 ========================
 */
-int idBitMsg::ReadData( void *data, int length ) const {
+int idBitMsg::ReadData( void *data, size_t length ) const {
 	int cnt;
 
 	ReadByteAlign();

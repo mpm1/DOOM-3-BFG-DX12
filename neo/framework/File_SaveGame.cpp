@@ -623,7 +623,7 @@ Modifies:
 	uncompressedProducedBytes
 ============================
 */
-int idFile_SaveGamePipelined::Write( const void * buffer, int length ) {
+int idFile_SaveGamePipelined::Write( const void * buffer, size_t length ) {
 	if ( buffer == NULL || length <= 0 ) {
 		return 0;
 	}
@@ -640,23 +640,24 @@ int idFile_SaveGamePipelined::Write( const void * buffer, int length ) {
 	assert( mode == WRITE );
 	size_t lengthRemaining = length;
 	const byte * buffer_p = (const byte *)buffer;
-	while ( lengthRemaining > 0 ) {
-		const size_t ofsInBuffer = uncompressedProducedBytes & ( UNCOMPRESSED_BUFFER_SIZE - 1 );
-		const size_t ofsInBlock = uncompressedProducedBytes & ( UNCOMPRESSED_BLOCK_SIZE - 1 );
+	while (lengthRemaining > 0) {
+		const size_t ofsInBuffer = uncompressedProducedBytes & (UNCOMPRESSED_BUFFER_SIZE - 1);
+		const size_t ofsInBlock = uncompressedProducedBytes & (UNCOMPRESSED_BLOCK_SIZE - 1);
 		const size_t remainingInBlock = UNCOMPRESSED_BLOCK_SIZE - ofsInBlock;
-		const size_t copyToBlock = ( lengthRemaining < remainingInBlock ) ? lengthRemaining : remainingInBlock;
+		const size_t copyToBlock = (lengthRemaining < remainingInBlock) ? lengthRemaining : remainingInBlock;
 
-		memcpy( uncompressed + ofsInBuffer, buffer_p, copyToBlock );
+		memcpy(uncompressed + ofsInBuffer, buffer_p, copyToBlock);
 		uncompressedProducedBytes += copyToBlock;
 
 		buffer_p += copyToBlock;
 		lengthRemaining -= copyToBlock;
 
-		if ( copyToBlock == remainingInBlock ) {
+		if (copyToBlock == remainingInBlock) {
 			FlushUncompressedBlock();
 		}
 	}
-	return length;
+
+	return static_cast<int>(length);
 }
 
 /*
@@ -998,7 +999,7 @@ Modifies:
 	bytesZlib
 ============================
 */
-int idFile_SaveGamePipelined::Read( void * buffer, int length ) {
+int idFile_SaveGamePipelined::Read( void * buffer, size_t length ) {
 	if ( buffer == NULL || length <= 0 ) {
 		return 0;
 	}
@@ -1012,7 +1013,7 @@ int idFile_SaveGamePipelined::Read( void * buffer, int length ) {
 		while ( bytesZlib == 0 ) {
 			PumpUncompressedBlock();
 			if ( bytesZlib == 0 && zStreamEndHit ) {
-				return ioCount;
+				return static_cast<int>(ioCount);
 			}
 		}
 
@@ -1026,7 +1027,7 @@ int idFile_SaveGamePipelined::Read( void * buffer, int length ) {
 		ioCount += copyFromBlock;
 		lengthRemaining -= copyFromBlock;
 	}
-	return ioCount;
+	return static_cast<int>(ioCount);
 }
 
 /*

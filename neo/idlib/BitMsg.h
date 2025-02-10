@@ -150,7 +150,7 @@ public:
 	void			WriteAngle16( float f );
 	void			WriteDir( const idVec3 &dir, int numBits );
 	void			WriteString( const char *s, int maxLength = -1, bool make7Bit = true );
-	void			WriteData( const void *data, int length );
+	void			WriteData( const void *data, size_t length );
 	void			WriteNetadr( const netadr_t adr );
 
 	void			WriteUNorm8( float f ) { WriteByte( idMath::Ftob( f * 255.0f ) ); }
@@ -208,7 +208,7 @@ public:
 	idVec3			ReadDir( int numBits ) const;
 	int				ReadString( char *buffer, int bufferSize ) const;
 	int				ReadString( idStr & str ) const;
-	int				ReadData( void *data, int length ) const;
+	int				ReadData( void *data, size_t length ) const;
 	void			ReadNetadr( netadr_t *adr ) const;
 
 	float			ReadUNorm8() const { return ReadByte() / 255.0f; }

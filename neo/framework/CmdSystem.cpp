@@ -545,7 +545,7 @@ void idCmdSystemLocal::InsertCommandText( const char *text ) {
 	int		len;
 	int		i;
 
-	len = strlen( text ) + 1;
+	len = static_cast<int>(strlen( text )) + 1;
 	if ( len + textLength > (int)sizeof( textBuf ) ) {
 		common->Printf( "idCmdSystemLocal::InsertText: buffer overflow\n" );
 		return;
@@ -575,9 +575,9 @@ Adds command text at the end of the buffer, does NOT add a final \n
 void idCmdSystemLocal::AppendCommandText( const char *text ) {
 	int l;
 	
-	l = strlen( text );
+	l = static_cast<int>(strlen( text ));
 
-	if ( textLength + l >= (int)sizeof( textBuf ) ) {
+	if ( textLength + l >= static_cast<int>(sizeof( textBuf )) ) {
 		common->Printf( "idCmdSystemLocal::AppendText: buffer overflow\n" );
 		return;
 	}

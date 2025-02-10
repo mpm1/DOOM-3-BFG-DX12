@@ -197,12 +197,12 @@ bool idMenuScreen_Shell_RaytracingOptions::HandleAction(idWidgetAction& action, 
 			options->SetFocusIndex(selectionIndex);
 		}
 
-		switch (parms[0].ToInteger()) {
-		default: {
+		/*switch (parms[0].ToInteger()) {
+		default: {*/
 			systemData.AdjustField(parms[0].ToInteger(), 1);
 			options->Update();
-		}
-		}
+		/*}
+		}*/
 
 		return true;
 	}
@@ -304,7 +304,7 @@ bool idMenuScreen_Shell_RaytracingOptions::idMenuDataSource_RaytracingSettings::
 	{
 		return true;
 	}
-	if (originalRaysPerPixek != s_raysCastPerLight.GetInteger())
+	if (originalRaysPerPixek != static_cast<UINT>(s_raysCastPerLight.GetInteger()))
 	{
 		return true;
 	}

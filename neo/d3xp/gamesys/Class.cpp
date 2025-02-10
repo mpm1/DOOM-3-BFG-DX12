@@ -242,7 +242,7 @@ idList<idTypeInfo *, TAG_IDCLASS>	idClass::typenums;
 
 bool	idClass::initialized	= false;
 int		idClass::typeNumBits	= 0;
-int		idClass::memused		= 0;
+size_t	idClass::memused		= 0;
 int		idClass::numobjects		= 0;
 
 /*
@@ -442,10 +442,10 @@ idClass::new
 ================
 */
 void * idClass::operator new( size_t s ) {
-	int *p;
+	size_t *p;
 
 	s += sizeof( int );
-	p = (int *)Mem_Alloc( s, TAG_IDCLASS );
+	p = (size_t *)Mem_Alloc( s, TAG_IDCLASS );
 	*p = s;
 	memused += s;
 	numobjects++;
@@ -459,10 +459,10 @@ idClass::delete
 ================
 */
 void idClass::operator delete( void *ptr ) {
-	int *p;
+	size_t *p;
 
 	if ( ptr ) {
-		p = ( ( int * )ptr ) - 1;
+		p = ( ( size_t * )ptr ) - 1;
 		memused -= *p;
 		numobjects--;
         Mem_Free( p );

@@ -623,7 +623,7 @@ void idThread::KillThread( const char *name ) {
 	if ( ptr ) {
 		len = ptr - name;
 	} else {
-		len = strlen( name );
+		len = static_cast<int>(strlen( name ));
 	}
 
 	// kill only those threads whose name matches name
@@ -1693,7 +1693,7 @@ idThread::Event_StrLen
 void idThread::Event_StrLen( const char *string ) {
 	int len;
 
-	len = strlen( string );
+	len = static_cast<int>(strlen( string ));
 	idThread::ReturnInt( len );
 }
 
@@ -1710,7 +1710,7 @@ void idThread::Event_StrLeft( const char *string, int num ) {
 		return;
 	}
 
-	len = strlen( string );
+	len = static_cast<int>(strlen( string ));
 	if ( len < num ) {
 		idThread::ReturnString( string );
 		return;
@@ -1733,7 +1733,7 @@ void idThread::Event_StrRight( const char *string, int num ) {
 		return;
 	}
 
-	len = strlen( string );
+	len = static_cast<int>(strlen( string ));
 	if ( len < num ) {
 		idThread::ReturnString( string );
 		return;
@@ -1755,7 +1755,7 @@ void idThread::Event_StrSkip( const char *string, int num ) {
 		return;
 	}
 
-	len = strlen( string );
+	len = static_cast<int>(strlen( string ));
 	if ( len < num ) {
 		idThread::ReturnString( "" );
 		return;
@@ -1780,7 +1780,7 @@ void idThread::Event_StrMid( const char *string, int start, int num ) {
 	if ( start < 0 ) {
 		start = 0;
 	}
-	len = strlen( string );
+	len = static_cast<int>(strlen( string ));
 	if ( start > len ) {
 		start = len;
 	}

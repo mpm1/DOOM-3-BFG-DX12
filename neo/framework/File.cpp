@@ -174,7 +174,7 @@ const char *idFile::GetFullPath() const {
 idFile::Read
 =================
 */
-int idFile::Read( void *buffer, int len ) {
+int idFile::Read( void *buffer, size_t len ) {
 	common->FatalError( "idFile::Read: cannot read from idFile" );
 	return 0;
 }
@@ -184,7 +184,7 @@ int idFile::Read( void *buffer, int len ) {
 idFile::Write
 =================
 */
-int idFile::Write( const void *buffer, int len ) {
+int idFile::Write( const void *buffer, size_t len ) {
 	common->FatalError( "idFile::Write: cannot write to idFile" );
 	return 0;
 }
@@ -542,7 +542,7 @@ int idFile::WriteBool( const bool value ) {
  =================
  */
 int idFile::WriteString( const char *value ) {
-	int len = strlen( value );
+	int len = static_cast<int>(strlen( value ));
 	WriteInt( len );
     return Write( value, len );
 }
@@ -710,7 +710,7 @@ idFile_Memory::~idFile_Memory() {
 idFile_Memory::Read
 =================
 */
-int idFile_Memory::Read( void *buffer, int len ) {
+int idFile_Memory::Read( void *buffer, size_t len ) {
 
 	if ( !( mode & ( 1 << FS_READ ) ) ) {
 		common->FatalError( "idFile_Memory::Read: %s not opened in read mode", name.c_str() );
@@ -722,7 +722,10 @@ int idFile_Memory::Read( void *buffer, int len ) {
 	}
 	memcpy( buffer, curPtr, len );
 	curPtr += len;
-	return len;
+
+	assert(len < std::numeric_limits<int>::max());
+
+	return static_cast<int>(len);
 }
 
 idCVar memcpyImpl( "memcpyImpl", "0", 0, "Which implementation of memcpy to use for idFile_Memory::Write() [0/1 - standard (1 eliminates branch misprediction), 2 - auto-vectorized]" );
@@ -755,7 +758,7 @@ CONSOLE_COMMAND( clearHistogram, "", 0 ) {
 	histogram.Clear();
 }
 
-int idFile_Memory::Write( const void *buffer, int len ) {
+int idFile_Memory::Write( const void *buffer, size_t len ) {
 	if ( len == 0 ) {
 		// ~4% falls into this case for some reason...
 		return 0;
@@ -766,13 +769,13 @@ int idFile_Memory::Write( const void *buffer, int len ) {
 		return 0;
 	}
 
-	int alloc = curPtr + len + 1 - filePtr - allocated; // need room for len+1
+	size_t alloc = curPtr + len + 1 - filePtr - allocated; // need room for len+1
 	if ( alloc > 0 ) {
 		if ( maxSize != 0 ) {
 			common->Error( "idFile_Memory::Write: exceeded maximum size %d", maxSize );
 			return 0;
 		}
-		int extra = granularity * ( 1 + alloc / granularity );
+		size_t extra = granularity * ( 1 + alloc / granularity );
 		char *newPtr = (char *) Mem_Alloc( allocated + extra, TAG_IDFILE );
 		if ( allocated ) {
 			memcpy( newPtr, filePtr, allocated );
@@ -810,7 +813,10 @@ int idFile_Memory::Write( const void *buffer, int len ) {
 	curPtr += len;
 	fileSize += len;
 	filePtr[ fileSize ] = 0; // len + 1
-	return len;
+
+	assert(len <= std::numeric_limits<int>::max());
+
+	return static_cast<int>(len);
 }
 
 /*
@@ -819,7 +825,9 @@ idFile_Memory::Length
 =================
 */
 int idFile_Memory::Length() const {
-	return fileSize;
+	assert(fileSize <= std::numeric_limits<int>::max());
+
+	return static_cast<int>(fileSize);
 }
 
 /*
@@ -1051,7 +1059,7 @@ idFile_BitMsg::~idFile_BitMsg() {
 idFile_BitMsg::Read
 =================
 */
-int idFile_BitMsg::Read( void *buffer, int len ) {
+int idFile_BitMsg::Read( void *buffer, size_t len ) {
 
 	if ( !( mode & ( 1 << FS_READ ) ) ) {
 		common->FatalError( "idFile_BitMsg::Read: %s not opened in read mode", name.c_str() );
@@ -1066,7 +1074,7 @@ int idFile_BitMsg::Read( void *buffer, int len ) {
 idFile_BitMsg::Write
 =================
 */
-int idFile_BitMsg::Write( const void *buffer, int len ) {
+int idFile_BitMsg::Write( const void *buffer, size_t len ) {
 
 	if ( !( mode & ( 1 << FS_WRITE ) ) ) {
 		common->FatalError( "idFile_Memory::Write: %s not opened in write mode", name.c_str() );
@@ -1175,7 +1183,7 @@ idFile_Permanent::Read
 Properly handles partial reads
 =================
 */
-int idFile_Permanent::Read( void *buffer, int len ) {
+int idFile_Permanent::Read( void *buffer, size_t len ) {
 	int		block, remaining;
 	int		read;
 	byte *	buf;
@@ -1229,7 +1237,7 @@ idFile_Permanent::Write
 Properly handles partial writes
 =================
 */
-int idFile_Permanent::Write( const void *buffer, int len ) {
+int idFile_Permanent::Write( const void *buffer, size_t len ) {
 	int		block, remaining;
 	int		written;
 	byte *	buf;
@@ -1398,7 +1406,7 @@ idFile_ReadBuffered::Read
 
 =================
 */
-int idFile_Cached::Read( void *buffer, int len ) {
+int idFile_Cached::Read( void *buffer, size_t len ) {
 	if ( internalFilePos >= bufferedStartOffset && internalFilePos + len < bufferedEndOffset ) {
 		// this is in the buffer
 		memcpy( buffer, (void*)&buffered[ internalFilePos - bufferedStartOffset ], len );
@@ -1480,7 +1488,7 @@ idFile_InZip::Read
 Properly handles partial reads
 =================
 */
-int idFile_InZip::Read( void *buffer, int len ) {
+int idFile_InZip::Read( void *buffer, size_t len ) {
 	int l = unzReadCurrentFile( z, buffer, len );
 	return l;
 }
@@ -1490,7 +1498,7 @@ int idFile_InZip::Read( void *buffer, int len ) {
 idFile_InZip::Write
 =================
 */
-int idFile_InZip::Write( const void *buffer, int len ) {
+int idFile_InZip::Write( const void *buffer, size_t len ) {
 	common->FatalError( "idFile_InZip::Write: cannot write to the zipped file %s", name.c_str() );
 	return 0;
 }
@@ -1626,7 +1634,7 @@ idFile_InnerResource::Read
 Properly handles partial reads
 =================
 */
-int idFile_InnerResource::Read( void *buffer, int len ) {
+int idFile_InnerResource::Read( void *buffer, size_t len ) {
 	if ( resourceFile == NULL ) {
 		return 0;
 	}

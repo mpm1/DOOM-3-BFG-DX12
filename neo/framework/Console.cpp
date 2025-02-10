@@ -225,7 +225,7 @@ float idConsoleLocal::DrawFPS( float y ) {
 		fps = ( fps + 500 ) / 1000;
 
 		const char * s = va( "%ifps", fps );
-		int w = strlen( s ) * BIGCHAR_WIDTH;
+		int w = static_cast<int>(strlen( s ) * BIGCHAR_WIDTH);
 
 		renderSystem->DrawBigStringExt( LOCALSAFE_RIGHT - w, idMath::Ftoi( y ) + 2, s, colorWhite, true );
 	}
@@ -471,7 +471,7 @@ void idConsoleLocal::Dump( const char *fileName ) {
 		buffer[x+1] = '\r';
 		buffer[x+2] = '\n';
 		buffer[x+3] = 0;
-		f->Write( buffer, strlen( buffer ) );
+		f->Write( buffer, static_cast<int>(strlen( buffer )) );
 	}
 
 	fileSystem->CloseFile( f );
@@ -909,7 +909,7 @@ void idConsoleLocal::DrawInput() {
 	y = vislines - ( SMALLCHAR_HEIGHT * 2 );
 
 	if ( consoleField.GetAutoCompleteLength() != 0 ) {
-		autoCompleteLength = strlen( consoleField.GetBuffer() ) - consoleField.GetAutoCompleteLength();
+		autoCompleteLength = static_cast<int>(strlen( consoleField.GetBuffer() ) - consoleField.GetAutoCompleteLength());
 
 		if ( autoCompleteLength > 0 ) {
 			renderSystem->DrawFilled( idVec4( 0.8f, 0.2f, 0.2f, 0.45f ),

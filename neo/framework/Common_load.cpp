@@ -448,7 +448,7 @@ void idCommonLocal::ExecuteMapChange() {
 	if ( mapSpawnData.savegameFile ) {
 		fileSystem->BeginLevelLoad( currentMapName, NULL, 0 );
 	} else {
-		fileSystem->BeginLevelLoad( currentMapName, saveFile.GetDataPtr(), saveFile.GetAllocated() );
+		fileSystem->BeginLevelLoad( currentMapName, saveFile.GetDataPtr(), static_cast<int>(saveFile.GetAllocated()) );
 	}
 
 	// capture the current screen and start a wipe

@@ -43,7 +43,7 @@ namespace
 
 	std::vector<D3D12_RAYTRACING_INSTANCE_DESC> BuildInstanceDescriptors(DX12Rendering::BLASManager& blasManager, const std::vector<DX12Rendering::Instance>& instances)
 	{
-		const UINT instanceCount = instances.size();
+		const size_t instanceCount = instances.size();
 		std::vector<D3D12_RAYTRACING_INSTANCE_DESC> descriptors;
 		descriptors.reserve(instanceCount);
 
@@ -158,7 +158,7 @@ namespace DX12Rendering {
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputDesc = {};
 		inputDesc.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL;
 		inputDesc.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		inputDesc.NumDescs = geometry.size();
+		inputDesc.NumDescs = static_cast<int>(geometry.size());
 		inputDesc.pGeometryDescs = geometry.data();
 		inputDesc.Flags = flags;
 
@@ -222,6 +222,8 @@ namespace DX12Rendering {
 		assert(resultFence.commandList == m_lastFenceValue.commandList);
 
 		m_lastFenceValue.value = resultFence.value;
+
+		return true;
 	}
 
 #pragma endregion
@@ -334,7 +336,7 @@ namespace DX12Rendering {
 #pragma region InstanceDescriptor
 	UINT InstanceDescriptor::Fill(UINT64 instanceDescsSize, const std::vector<D3D12_RAYTRACING_INSTANCE_DESC>& instanceDescriptors)
 	{
-		const UINT instanceCount = instanceDescriptors.size();
+		const size_t instanceCount = instanceDescriptors.size();
 
 		bool shouldCleanMemory = m_lastInstanceCount > instanceCount;
 
@@ -423,7 +425,7 @@ namespace DX12Rendering {
 
 		//TODO: build an array of descriptors first. That way we do not need to rely on the static instnces after. We'll then copy the results after.
 
-		const UINT instanceCount = instances.size();
+		const size_t instanceCount = instances.size();
 
 		if (instanceCount == 0)
 		{
@@ -439,12 +441,12 @@ namespace DX12Rendering {
 		D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputDesc = {};
 		inputDesc.Type = D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL;
 		inputDesc.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
-		inputDesc.NumDescs = instanceCount;
+		inputDesc.NumDescs = static_cast<int>(instanceCount);
 		inputDesc.Flags = flags;
 		inputDesc.InstanceDescs = NULL;
 
 		std::vector<D3D12_RAYTRACING_INSTANCE_DESC> instanceDesc = BuildInstanceDescriptors(blasManager, instances);
-		inputDesc.NumDescs = instanceDesc.size();
+		inputDesc.NumDescs = static_cast<int>(instanceDesc.size());
 
 		CacluateBufferSizes(device, &scratchSizeInBytes, &resultSizeInBytes, &instanceDescsSize, inputDesc.NumDescs, &inputDesc);
 
@@ -484,7 +486,10 @@ namespace DX12Rendering {
 		DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "TopLevelAccelerationStructure::UpdateResources");
 		
 		UINT64 scratchLocation;
-		bool spaceResult = scratchBuffer->RequestSpace(commandList, scratchSizeInBytes, scratchLocation, false);
+		if (!scratchBuffer->RequestSpace(commandList, scratchSizeInBytes, scratchLocation, false))
+		{
+			assert(false);
+		}
 		
 		ID3D12Resource* resource = this->resource.Get();
 
@@ -591,10 +596,11 @@ namespace DX12Rendering {
 	{
 		const UINT frameIndex = GetCurrentFrameIndex();
 
-		for (Instance& instance : m_instances[frameIndex])
-		{
-			// TODO
-		}
+		// TODO: Update all dynamic instances.
+		//for (Instance& instance : m_instances[frameIndex])
+		//{
+		//	// TODO
+		//}
 	}
 
 	bool TLASManager::Generate()
@@ -611,7 +617,7 @@ namespace DX12Rendering {
 				m_scratch.Build();
 			}
 
-			UINT instanceCount = m_instances[GetCurrentFrameIndex()].size();
+			const size_t instanceCount = m_instances[GetCurrentFrameIndex()].size();
 
 			result = GetCurrent().UpdateResources(*m_blasManager, m_instances[GetCurrentFrameIndex()], &m_scratch);
 
