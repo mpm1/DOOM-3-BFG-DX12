@@ -131,6 +131,8 @@ namespace DX12Rendering
 		{
 			return m_managerInstance->GetDevice();
 		}
+
+		return nullptr;
 	}
 
 	Device::DeviceManager::DeviceManager(IDXGIAdapter1* hardwareAdapter)

@@ -758,7 +758,7 @@ void idEvent::Save( idSaveGame *savefile ) {
 		savefile->WriteString( event->typeinfo->classname );
 		savefile->WriteObject( event->object );
 
-		assert(event->eventdef->GetArgSize() >= std::numeric_limits<int>::max());
+		assert(event->eventdef->GetArgSize() <= std::numeric_limits<int>::max());
 		savefile->WriteInt( static_cast<int>(event->eventdef->GetArgSize()) );
 
 		format = event->eventdef->GetArgFormat();
@@ -812,7 +812,7 @@ void idEvent::Save( idSaveGame *savefile ) {
 		savefile->WriteString( event->typeinfo->classname );
 		savefile->WriteObject( event->object );
 
-		assert(event->eventdef->GetArgSize() >= std::numeric_limits<int>::max());
+		assert(event->eventdef->GetArgSize() <= std::numeric_limits<int>::max());
 		savefile->WriteInt( static_cast<int>(event->eventdef->GetArgSize()) );
 		savefile->Write( event->data, static_cast<int>(event->eventdef->GetArgSize()) );
 

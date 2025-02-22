@@ -497,7 +497,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		}
 		indexBuffer = &vertexCache.frameData[vertexCache.drawListNum].indexBuffer;
 	}
-	const int indexOffset = (int)(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+	const UINT indexOffset = static_cast<UINT>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
 	RENDERLOG_PRINTF("Binding Buffers: %p:%i %p:%i\n", vertexBuffer, vertOffset, indexBuffer, indexOffset);
 
@@ -523,17 +523,15 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), commandList);
 	}
 
-	const triIndex_t* test = (triIndex_t*)indexOffset;
-
 	if (dxRenderer.EndSurfaceSettings(variant, surfaceConstants, surfaceConstantsSize, *commandList)) {
 		dxRenderer.DrawModel(
 			*commandList,
 			apiVertexBuffer,
-			vertOffset / ((vertexStride > 0) ? vertexStride : sizeof(idDrawVert)),
+			vertOffset / static_cast<int>(((vertexStride > 0) ? vertexStride : sizeof(idDrawVert))),
 			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
 			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
 			r_singleTriangle.GetBool() ? 3 : surf->numIndexes,
-			vertexStride);
+			static_cast<UINT>(vertexStride));
 
 		//TODO: Eventually do the creation of the acceleration structure outside of these commands.
 	}
@@ -2329,7 +2327,6 @@ static int RB_DrawShaderPasses(const drawSurf_t* const* const drawSurfs, const i
 	for (; i < numDrawSurfs; i++) {
 		const drawSurf_t* surf = drawSurfs[i];
 		const idMaterial* shader = surf->material;
-		UINT gpuIndex = -1;
 
 		if (!shader->HasAmbient()) {
 			continue;
@@ -2455,7 +2452,7 @@ static int RB_DrawShaderPasses(const drawSurf_t* const* const drawSurfs, const i
 				}
 				renderLog.OpenBlock("New Shader Stage");
 
-				gpuIndex = dxRenderer.StartSurfaceSettings();
+				const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
 				GL_State(stageGLState);
 
 				renderProgManager.BindShader(newStage->glslProgram, newStage->glslProgram);
@@ -2975,13 +2972,15 @@ void RB_DrawCombinedGBufferResults()
 
 void RB_CalculateDynamicObjects(const viewDef_t* viewDef, const bool raytracedEnabled)
 {
-	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
 	const int numDrawSurfs = viewDef->numDrawSurfs;
 
 	// Update all surfaces and bones as needed
 	{
 		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_DrawViewInternal::ComputeBones");
+
+		dxRenderer.StartComputeSurfaceBones();
+		commandManager->Execute();
 
 		// Entity definitions are gouped together. This way we can put them into a single blas
 		const viewEntity_t* lastEntity = nullptr;
@@ -3034,8 +3033,6 @@ void RB_CalculateDynamicObjects(const viewDef_t* viewDef, const bool raytracedEn
 				const UINT vertSize = GetVertexBufferSize(ds->ambientCache);
 				const UINT vertIndexCount = vertSize / sizeof(idDrawVert);
 
-				UINT checkSize = (int)(ds->ambientCache >> VERTCACHE_SIZE_SHIFT) & VERTCACHE_SIZE_MASK;
-
 				if (vertexBuffer == nullptr)
 				{
 					// An error occured when grabbing the vertex buffer data.
@@ -3054,7 +3051,7 @@ void RB_CalculateDynamicObjects(const viewDef_t* viewDef, const bool raytracedEn
 				DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
 
 				// Update the vert structure.
-				size_t bufferOffset = dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, outVertexBufferOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
+				const UINT bufferOffset = dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, outVertexBufferOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
 
 				if (raytracedEnabled && ds->material && ds->material->SurfaceCastsShadow() /* Only allow shadow casting surfaces */)
 				{
@@ -3102,6 +3099,9 @@ void RB_CalculateDynamicObjects(const viewDef_t* viewDef, const bool raytracedEn
 				static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
 			);
 		}
+
+		commandManager->Execute();
+		dxRenderer.EndComputeSurfaceBones();
 	}
 
 	// Update/Create the BLASa and create a list for the TLAS structure 
@@ -3268,8 +3268,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 		{
 			// Setup viewport coordniates for screenspace shadows. 
-			int x = backEnd.viewDef->viewport.x1;
-			int y = backEnd.viewDef->viewport.y1;
+			// TODO: Eventually add the x and y as needed
+			//int x = backEnd.viewDef->viewport.x1;
+			//int y = backEnd.viewDef->viewport.y1;
 			int	w = backEnd.viewDef->viewport.x2 - backEnd.viewDef->viewport.x1 + 1;
 			int	h = backEnd.viewDef->viewport.y2 - backEnd.viewDef->viewport.y1 + 1;
 

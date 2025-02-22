@@ -191,7 +191,7 @@ namespace DX12Rendering {
 
 	UINT Raytracing::GetLightMask(const UINT lightIndex)
 	{
-		for (int index = 0; index < m_constantBuffer.lightCount; ++index)
+		for (UINT index = 0; index < m_constantBuffer.lightCount; ++index)
 		{
 			if (m_constantBuffer.lights[index].lightIndex == lightIndex)
 			{
@@ -329,10 +329,10 @@ namespace DX12Rendering {
 		commandList->AddPreFenceWait(m_tlasManager.GetCurrent().GetLastFenceValue());
 
 		// Copy the CBV data to the heap
-		float scissorVector[4] = { scissorRect.left, scissorRect.top, scissorRect.right, scissorRect.bottom };
+		const float scissorVector[4] = { static_cast<float>(scissorRect.left), static_cast<float>(scissorRect.top), static_cast<float>(scissorRect.right), static_cast<float>(scissorRect.bottom) };
 		Uniform4f(RENDERPARAM_SCISSOR, scissorVector);
 
-		float viewportVector[4] = { viewport.TopLeftX, viewport.TopLeftY, viewport.TopLeftX + viewport.Width, viewport.TopLeftY + viewport.Height };
+		const float viewportVector[4] = { viewport.TopLeftX, viewport.TopLeftY, viewport.TopLeftX + viewport.Width, viewport.TopLeftY + viewport.Height };
 		Uniform4f(RENDERPARM_VIEWPORT, viewportVector);
 
 		SetCBVDescriptorTable(sizeof(m_constantBuffer), &m_constantBuffer, frameIndex);
@@ -469,10 +469,12 @@ namespace DX12Rendering {
 
 		assert(tableSize != 0);
 
+		auto resourceDesc = CD3DX12_RESOURCE_DESC::Buffer(tableSize);
+
 		ThrowIfFailed(device->CreateCommittedResource(
 			&kUploadHeapProps,
 			D3D12_HEAP_FLAG_NONE,
-			&CD3DX12_RESOURCE_DESC::Buffer(tableSize),
+			&resourceDesc,
 			D3D12_RESOURCE_STATE_GENERIC_READ,
 			nullptr,
 			IID_PPV_ARGS(&m_generalSBTData)

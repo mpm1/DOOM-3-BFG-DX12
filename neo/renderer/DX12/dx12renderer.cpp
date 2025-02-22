@@ -244,6 +244,40 @@ void DX12Renderer::ResetDynamicPerFrameData()
 	m_nextDynamicVertexIndex = 0;
 }
 
+void DX12Renderer::StartComputeSurfaceBones()
+{
+	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::StartComputeSurfaceBones");
+
+	DX12Rendering::Geometry::VertexBuffer* dstBuffer = GetCurrentDynamicVertexBuffer();
+
+	commandList->AddCommandAction([&dstBuffer](ID3D12GraphicsCommandList4* commandList)
+	{
+		D3D12_RESOURCE_BARRIER barrier;
+		if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &barrier))
+		{
+			commandList->ResourceBarrier(1, &barrier);
+		}
+	});
+}
+
+void DX12Renderer::EndComputeSurfaceBones()
+{
+	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::EndComputeSurfaceBones");
+
+	DX12Rendering::Geometry::VertexBuffer* dstBuffer = GetCurrentDynamicVertexBuffer();
+
+	commandList->AddCommandAction([&dstBuffer](ID3D12GraphicsCommandList4* commandList)
+	{
+		D3D12_RESOURCE_BARRIER barrier;
+		if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_COMMON, &barrier))
+		{
+			commandList->ResourceBarrier(1, &barrier);
+		}
+	});
+}
+
 UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT inputOffset, UINT outputOffset, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset)
 {
 	struct 	ComputeConstants
@@ -267,7 +301,7 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 	ID3D12PipelineState* pipelineState = m_skinnedModelShader.Get();
 	assert(pipelineState != nullptr);
 
-	UINT objectIndex = m_computeRootSignature->RequestNewObjectIndex();
+	const UINT objectIndex = m_computeRootSignature->RequestNewObjectIndex();
 
 	// Create constants
 	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
@@ -309,11 +343,11 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 	commandList->AddCommandAction([&dstBuffer](ID3D12GraphicsCommandList4* commandList)
 	{
 		{
-			D3D12_RESOURCE_BARRIER barrier;
+			/*D3D12_RESOURCE_BARRIER barrier;
 			if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &barrier))
 			{
 				commandList->ResourceBarrier(1, &barrier);
-			}
+			}*/
 		}
 
 		// TODO: Make sure we;ve setup the CBV heap correctly.
@@ -321,11 +355,11 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		commandList->Dispatch(64, 1, 1);
 
 		{
-			D3D12_RESOURCE_BARRIER barrier;
+			/*D3D12_RESOURCE_BARRIER barrier;
 			if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_COMMON, &barrier))
 			{
 				commandList->ResourceBarrier(1, &barrier);
-			}
+			}*/
 		}
 	});
 
@@ -561,6 +595,10 @@ void DX12Renderer::BeginDraw() {
 		return;
 	}
 
+	// Set the depth bounds.
+	m_zMin = 0.0f;
+	m_zMax = 1.0f;
+
 	// Evaluate if we need to update or  resolution
 	if (r_fullscreen.GetInteger() == 0 && // We transferred to fullscreen mode, this will be handled by R_SetNewMode
 		(static_cast<UINT>(r_windowWidth.GetInteger()) != this->m_width || static_cast<UINT>(r_windowHeight.GetInteger()) != this->m_height))
@@ -726,6 +764,7 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 
 	m_rootSignature->SetRootDescriptorTable(m_objectIndex, &commandList);
 
+
 	return true;
 }
 
@@ -773,13 +812,18 @@ void DX12Renderer::DrawModel(DX12Rendering::Commands::CommandList& commandList, 
 
 	const D3D12_INDEX_BUFFER_VIEW& indecies = *indexBuffer->GetView();
 
-	commandList.AddCommandAction([&indecies, &vertecies, &indexCount, &indexOffset, &vertexOffset, vertexStrideOverride](ID3D12GraphicsCommandList4* commandList)
+	FLOAT zMin = m_zMin;
+	FLOAT zMax = m_zMax;
+
+	commandList.AddCommandAction([&indecies, &vertecies, &indexCount, &indexOffset, &vertexOffset, vertexStrideOverride, zMin, zMax](ID3D12GraphicsCommandList4* commandList)
 	{
 		D3D12_VERTEX_BUFFER_VIEW vertCopy = vertecies;
 		if (vertexStrideOverride > 0)
 		{
-			vertCopy.StrideInBytes = vertexStrideOverride;
+			vertCopy.StrideInBytes = static_cast<UINT>(vertexStrideOverride);
 		}
+
+		commandList->OMSetDepthBounds(zMin, zMax);
 
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		commandList->IASetVertexBuffers(0, 1, &vertCopy);
@@ -975,23 +1019,14 @@ void DX12Renderer::UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, co
 	m_viewport.MaxDepth = maxDepth;
 }
 
-DX12Rendering::Commands::CommandList* DX12Renderer::UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth, DX12Rendering::Commands::CommandList* commandList) {
+void DX12Renderer::UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth) {
 	if (minDepth > maxDepth)
 	{
-		return commandList;
+		return;
 	}
 
-	if (m_isDrawing) {
-		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
-		{
-			commandList->OMSetDepthBounds(
-				minDepth < 0.0f ? 0.0f : minDepth, 
-				maxDepth == 0.0f ? 1.0f : maxDepth // If the max depth is 0, essentailly disable the depth test by setting it to 1.
-			);
-		});
-	}
-
-	return commandList;
+	m_zMin = minDepth < 0.0f ? 0.0f : minDepth;
+	m_zMax = maxDepth == 0.0f ? 1.0f : maxDepth; // If the max depth is 0, essentailly disable the depth test by setting it to 1.
 }
 
 void DX12Renderer::UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h) {

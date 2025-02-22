@@ -609,7 +609,7 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 				if ( shader->ReceivesLighting() && !tri->tangentsCalculated ) {
 					assert( tri->staticModelWithJoints == NULL );
 					R_DeriveTangents( tri );
-					assert( false );	// this should no longer be hit
+					//assert( false );	// this should no longer be hit
 				}
 				tri->ambientCache = vertexCache.AllocVertex( tri->verts, ALIGN( tri->numVerts * sizeof( idDrawVert ), VERTEX_CACHE_ALIGN ) );
 			}

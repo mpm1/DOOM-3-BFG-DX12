@@ -48,7 +48,7 @@ extern void Timidity_Stop(void);
 extern void Timidity_FreeSong(MidiSong *song);
 extern void Timidity_Shutdown(void);
 
-extern void *Real_Tim_Malloc( int sz );
+extern void *Real_Tim_Malloc( size_t sz );
 extern void Real_Tim_Free( void *pt );
 
 

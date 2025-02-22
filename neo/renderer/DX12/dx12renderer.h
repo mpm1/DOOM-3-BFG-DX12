@@ -74,7 +74,7 @@ public:
 
 	void UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, const FLOAT width, const FLOAT height, const FLOAT minDepth = 0.0f, const FLOAT maxDepth = 1.0f); // Used to put us into right hand depth space.
 	void UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h);
-	DX12Rendering::Commands::CommandList* UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth, DX12Rendering::Commands::CommandList* commandList);
+	void UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth);
 	void UpdateStencilRef(UINT ref);
 
 	void ReadPixels(int x, int y, int width, int height, UINT readBuffer, byte* buffer);
@@ -96,6 +96,8 @@ public:
 	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
 	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
 
+	void StartComputeSurfaceBones();
+	void EndComputeSurfaceBones();
 	UINT ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT inputOffset, UINT outputOffset, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset);
 
 	// Textures
@@ -170,6 +172,8 @@ private:
 
 	FLOAT m_aspectRatio = 1.0f;
     FLOAT m_FoV = 90.0f;
+	FLOAT m_zMin = 0.0f; // Set's the min depth bounds
+	FLOAT m_zMax = 1.0f; // Set's the max depth bounds
 
 	bool m_isDrawing = false;
 	bool m_initialized = false;

@@ -165,7 +165,7 @@ void add_to_pathlist(char *s)
 }
 
 /* Required memory management functions */
-void *Real_Tim_Malloc( int sz ) {
+void *Real_Tim_Malloc( size_t sz ) {
 	return malloc( sz );
 }
 
@@ -173,6 +173,6 @@ void Real_Tim_Free( void *pt ) {
 	free( pt );
 }
 
-void* Real_Malloc( unsigned int sz ) {
+void* Real_Malloc( size_t sz ) {
 	return malloc( sz );
 }

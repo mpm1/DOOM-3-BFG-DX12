@@ -72,7 +72,10 @@ void DX12Rendering::ThrowIfFailed(HRESULT hr)
 	if (FAILED(hr))
 	{
 		_com_error err(hr);
+
+#ifdef _DEBUG
 		auto errDesc = err.ErrorInfo();
+#endif // DEBUG
 
 		// Set a breakpoint on this line to catch DirectX API errors
 		DX12Rendering::FailMessage(err.ErrorMessage());

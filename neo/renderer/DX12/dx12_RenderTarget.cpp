@@ -248,7 +248,7 @@ namespace DX12Rendering
 		// Create RTV Heap
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-			rtvHeapDesc.NumDescriptors = ViewRenderTarget.size();
+			rtvHeapDesc.NumDescriptors = static_cast<UINT>(ViewRenderTarget.size());
 			rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 			rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
@@ -258,7 +258,7 @@ namespace DX12Rendering
 		// Create DSV Heap
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
-			dsvHeapDesc.NumDescriptors = ViewDepthStencils.size();
+			dsvHeapDesc.NumDescriptors = static_cast<UINT>(ViewDepthStencils.size());
 			dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 			dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 

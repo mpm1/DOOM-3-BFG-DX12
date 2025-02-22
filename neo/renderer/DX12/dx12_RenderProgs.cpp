@@ -273,7 +273,7 @@ void DX12_ApplyPSOVariant(D3D12_GRAPHICS_PIPELINE_STATE_DESC& psoDesc, const DX1
 
 void FillPolygonOffset(D3D12_GRAPHICS_PIPELINE_STATE_DESC& psoDesc, uint64 stateBits)
 {
-	if (stateBits & GLS_POLYGON_OFFSET > 0)
+	if ((stateBits & GLS_POLYGON_OFFSET) > 0)
 	{
 		psoDesc.RasterizerState.SlopeScaledDepthBias = backEnd.glState.polyOfsScale;
 		psoDesc.RasterizerState.DepthBias = backEnd.glState.polyOfsBias;

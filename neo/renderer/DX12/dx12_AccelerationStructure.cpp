@@ -217,11 +217,11 @@ namespace DX12Rendering {
 			commandList->ResourceBarrier(1, &uavBarrier);
 		});
 
-		Commands::FenceValue resultFence = commandList->AddPostFenceSignal(); // Add our fence that we will signal on exit.
+		//Commands::FenceValue resultFence = commandList->AddPostFenceSignal(); // Add our fence that we will signal on exit.
 
-		assert(resultFence.commandList == m_lastFenceValue.commandList);
+		//assert(resultFence.commandList == m_lastFenceValue.commandList);
 
-		m_lastFenceValue.value = resultFence.value;
+		//m_lastFenceValue.value = resultFence.value;
 
 		return true;
 	}

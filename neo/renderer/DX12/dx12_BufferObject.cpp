@@ -568,7 +568,7 @@ bool idJointBuffer::AllocBufferObject(const float* joints, int numAllocJoints) {
 
 	bool allocationFailed = false;
 
-	const int numBytes = GetAllocedSize();
+	const UINT numBytes = static_cast<UINT>(GetAllocedSize());
 
 	// TODO: Alloc buffer object.
 	/*GLuint buffer = 0;
@@ -698,8 +698,6 @@ float* idJointBuffer::MapBuffer(bufferMapType_t mapType) const {
 	assert(IsMapped() == false);
 	assert(mapType == BM_WRITE);
 	assert(apiObject != NULL);
-
-	size_t numBytes = GetAllocedSize();
 
 	void* buffer = NULL;
 	D3D12_RANGE readRange = { 0, 0 };

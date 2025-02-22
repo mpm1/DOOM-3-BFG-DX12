@@ -769,7 +769,7 @@ int idFile_Memory::Write( const void *buffer, size_t len ) {
 		return 0;
 	}
 
-	size_t alloc = curPtr + len + 1 - filePtr - allocated; // need room for len+1
+	long alloc = static_cast<long>(curPtr + len + 1 - filePtr) - static_cast<long>(allocated); // need room for len+1
 	if ( alloc > 0 ) {
 		if ( maxSize != 0 ) {
 			common->Error( "idFile_Memory::Write: exceeded maximum size %d", maxSize );
@@ -1082,7 +1082,7 @@ int idFile_BitMsg::Write( const void *buffer, size_t len ) {
 	}
 
 	msg->WriteData( buffer, len );
-	return len;
+	return static_cast<int>(len);
 }
 
 /*
@@ -1184,7 +1184,8 @@ Properly handles partial reads
 =================
 */
 int idFile_Permanent::Read( void *buffer, size_t len ) {
-	int		block, remaining;
+	size_t	block;
+	size_t	remaining;
 	int		read;
 	byte *	buf;
 	int		tries;
@@ -1205,7 +1206,7 @@ int idFile_Permanent::Read( void *buffer, size_t len ) {
 	while( remaining ) {
 		block = remaining;
 		DWORD bytesRead;
-		if ( !ReadFile( o, buf, block, &bytesRead, NULL ) ) {
+		if ( !ReadFile( o, buf, static_cast<DWORD>(block), &bytesRead, NULL ) ) {
 			idLib::Warning( "idFile_Permanent::Read failed with %d from %s", GetLastError(), name.c_str() );
 		}
 		read = bytesRead;
@@ -1216,7 +1217,7 @@ int idFile_Permanent::Read( void *buffer, size_t len ) {
 				tries = 1;
 			}
 			else {
-				return len-remaining;
+				return static_cast<int>(len-remaining);
 			}
 		}
 
@@ -1227,7 +1228,7 @@ int idFile_Permanent::Read( void *buffer, size_t len ) {
 		remaining -= read;
 		buf += read;
 	}
-	return len;
+	return static_cast<int>(len);
 }
 
 /*
@@ -1238,7 +1239,7 @@ Properly handles partial writes
 =================
 */
 int idFile_Permanent::Write( const void *buffer, size_t len ) {
-	int		block, remaining;
+	size_t	block, remaining;
 	int		written;
 	byte *	buf;
 	int		tries;
@@ -1259,7 +1260,7 @@ int idFile_Permanent::Write( const void *buffer, size_t len ) {
 	while( remaining ) {
 		block = remaining;
 		DWORD bytesWritten;
-		WriteFile( o, buf, block, &bytesWritten, NULL );
+		WriteFile( o, buf, static_cast<DWORD>(block), &bytesWritten, NULL );
 		written = bytesWritten;
 		if ( written == 0 ) {
 			if ( !tries ) {
@@ -1283,7 +1284,7 @@ int idFile_Permanent::Write( const void *buffer, size_t len ) {
 	if ( handleSync ) {
 		Flush();
 	}
-	return len;
+	return static_cast<int>(len);
 }
 
 /*
@@ -1411,7 +1412,7 @@ int idFile_Cached::Read( void *buffer, size_t len ) {
 		// this is in the buffer
 		memcpy( buffer, (void*)&buffered[ internalFilePos - bufferedStartOffset ], len );
 		internalFilePos += len;
-		return len;
+		return static_cast<int>(len);
 	}
 	int read = idFile_Permanent::Read( buffer, len );
 	if ( read != -1 ) {
@@ -1489,7 +1490,7 @@ Properly handles partial reads
 =================
 */
 int idFile_InZip::Read( void *buffer, size_t len ) {
-	int l = unzReadCurrentFile( z, buffer, len );
+	int l = unzReadCurrentFile( z, buffer, static_cast<UINT>(len) );
 	return l;
 }
 
@@ -1648,9 +1649,9 @@ int idFile_InnerResource::Read( void *buffer, size_t len ) {
 	if ( read != len ) {
 		if ( resourceBuffer != NULL ) {
 			memcpy( buffer, &resourceBuffer[ internalFilePos ], len );
-			read = len;
+			read = static_cast<int>(len);
 		} else {
-			read = fileSystem->ReadFromBGL( resourceFile, buffer, offset + internalFilePos, len );
+			read = fileSystem->ReadFromBGL( resourceFile, buffer, offset + internalFilePos, static_cast<int>(len) );
 		}
 	}
 

@@ -55,6 +55,9 @@ idCVar hud_titlesafe( "hud_titlesafe", "0.0", CVAR_GUI | CVAR_FLOAT, "fraction o
 
 extern idCVar r_skipGuiShaders;		// 1 = don't render any gui elements on surfaces
 
+constexpr size_t INVALID_OP_REGISTER = std::numeric_limits<size_t>::max();
+constexpr size_t FIXED_OP_REGISTER = std::numeric_limits<size_t>::max() - 1;
+
 //  made RegisterVars a member of idWindow
 const idRegEntry idWindow::RegisterVars[] = {
 	{ "forecolor", idRegister::VEC4 },
@@ -160,7 +163,7 @@ idWindow::Size
 */
 size_t idWindow::Size() {
 	int c = children.Num();
-	int sz = 0;
+	size_t sz = 0;
 	for (int i = 0; i < c; i++) {
 		sz += children[i]->Size();
 	}
@@ -175,7 +178,7 @@ idWindow::Allocated
 */
 size_t idWindow::Allocated() {
 	int i, c;
-	int sz = name.Allocated();
+	size_t sz = name.Allocated();
 	sz += text.Size();
 	sz += backGroundName.Size();
 
@@ -1711,7 +1714,7 @@ idWindow::GetWinVarOffset
 ================
 */
 size_t idWindow::GetWinVarOffset( idWinVar *wv, drawWin_t* owner) {
-	size_t ret = -1;
+	size_t ret = std::numeric_limits<size_t>::max();
 
 	if ( wv == &rect ) {
 		ret = (size_t)&( ( idWindow * ) 0 )->rect;
@@ -1745,7 +1748,7 @@ size_t idWindow::GetWinVarOffset( idWinVar *wv, drawWin_t* owner) {
 		ret = (size_t)&( ( idWindow * ) 0 )->rotate;
 	}
 
-	if ( ret != -1 ) {
+	if ( ret != std::numeric_limits<size_t>::max() ) {
 		owner->win = this;
 		return ret;
 	}
@@ -2767,7 +2770,7 @@ size_t idWindow::ParseTerm( idTokenParser *src,	idWinVar *var, int component ) {
 		char *p = new (TAG_OLD_UI) char[token.Length()+1];
 		strcpy(p, token);
 		a = (size_t)p;
-		b = -2;
+		b = INVALID_OP_REGISTER;
 		return EmitOp(a, b, WOP_TYPE_VAR);
 	}
 
@@ -2906,7 +2909,7 @@ void idWindow::EvaluateRegisters(float *registers) {
 
 	for ( i = 0 ; i < oc ; i++ ) {
 		op = &ops[i];
-		if (op->b == -2) {
+		if (op->b == INVALID_OP_REGISTER) {
 			continue;
 		}
 		switch( op->opType ) {
@@ -3658,35 +3661,35 @@ void idWindow::FixupTransitions() {
 		transitions[i].data = NULL;
 		if ( dw != NULL && ( dw->win != NULL || dw->simp != NULL ) ){
 			if ( dw->win != NULL ) {
-				if ( transitions[i].offset == (int)&( ( idWindow * ) 0 )->rect ) {
+				if ( transitions[i].offset == (size_t)&( ( idWindow * ) 0 )->rect ) {
 					transitions[i].data = &dw->win->rect;
-				} else if ( transitions[i].offset == (int)&( ( idWindow * ) 0 )->backColor ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idWindow * ) 0 )->backColor ) {
 					transitions[i].data = &dw->win->backColor;
-				} else if ( transitions[i].offset == (int)&( ( idWindow * ) 0 )->matColor ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idWindow * ) 0 )->matColor ) {
 					transitions[i].data = &dw->win->matColor;
-				} else if ( transitions[i].offset == (int)&( ( idWindow * ) 0 )->foreColor ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idWindow * ) 0 )->foreColor ) {
 					transitions[i].data = &dw->win->foreColor;
-				} else if ( transitions[i].offset == (int)&( ( idWindow * ) 0 )->borderColor ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idWindow * ) 0 )->borderColor ) {
 					transitions[i].data = &dw->win->borderColor;
-				} else if ( transitions[i].offset == (int)&( ( idWindow * ) 0 )->textScale ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idWindow * ) 0 )->textScale ) {
 					transitions[i].data = &dw->win->textScale;
-				} else if ( transitions[i].offset == (int)&( ( idWindow * ) 0 )->rotate ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idWindow * ) 0 )->rotate ) {
 					transitions[i].data = &dw->win->rotate;
 				}
 			} else {
-				if ( transitions[i].offset == (int)&( ( idSimpleWindow * ) 0 )->rect ) {
+				if ( transitions[i].offset == (size_t)&( ( idSimpleWindow * ) 0 )->rect ) {
 					transitions[i].data = &dw->simp->rect;
-				} else if ( transitions[i].offset == (int)&( ( idSimpleWindow * ) 0 )->backColor ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idSimpleWindow * ) 0 )->backColor ) {
 					transitions[i].data = &dw->simp->backColor;
-				} else if ( transitions[i].offset == (int)&( ( idSimpleWindow * ) 0 )->matColor ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idSimpleWindow * ) 0 )->matColor ) {
 					transitions[i].data = &dw->simp->matColor;
-				} else if ( transitions[i].offset == (int)&( ( idSimpleWindow * ) 0 )->foreColor ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idSimpleWindow * ) 0 )->foreColor ) {
 					transitions[i].data = &dw->simp->foreColor;
-				} else if ( transitions[i].offset == (int)&( ( idSimpleWindow * ) 0 )->borderColor ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idSimpleWindow * ) 0 )->borderColor ) {
 					transitions[i].data = &dw->simp->borderColor;
-				} else if ( transitions[i].offset == (int)&( ( idSimpleWindow * ) 0 )->textScale ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idSimpleWindow * ) 0 )->textScale ) {
 					transitions[i].data = &dw->simp->textScale;
-				} else if ( transitions[i].offset == (int)&( ( idSimpleWindow * ) 0 )->rotate ) {
+				} else if ( transitions[i].offset == (size_t)&( ( idSimpleWindow * ) 0 )->rotate ) {
 					transitions[i].data = &dw->simp->rotate;
 				}
 			}
@@ -3741,13 +3744,13 @@ void idWindow::FixupParms() {
 
 	c = ops.Num();
 	for (i = 0; i < c; i++) {
-		if (ops[i].b == -2) {
+		if (ops[i].b == INVALID_OP_REGISTER) {
 			// need to fix this up
 			const char *p = (const char*)(ops[i].a);
 			idWinVar *var = GetWinVarByName(p, true);
 			delete []p;
 			ops[i].a = (size_t)var;
-			ops[i].b = -1;
+			ops[i].b = FIXED_OP_REGISTER;
 		}
 	}
 	
