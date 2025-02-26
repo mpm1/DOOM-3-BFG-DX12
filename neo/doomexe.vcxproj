@@ -1853,6 +1853,7 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>
+    <None Include="..\base\renderprogs\shadow_ray_base.inc" />
     <None Include="..\base\renderprogs\simpleshade.pixel" />
     <None Include="..\base\renderprogs\simpleshade.vertex" />
     <None Include="..\base\renderprogs\skinning.inc" />

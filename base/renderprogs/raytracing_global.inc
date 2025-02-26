@@ -93,12 +93,10 @@ struct RenderParameters {
 
 };
 
-#define MAX_SHADOW_LIGHTS 128
-
 struct RaytracedSceneConstants {
     RenderParameters rp;
 
-    uint lightCount;
+    uint lightCount; // Unused. If needed we can use this for something else
     float noiseOffset;
     uint diffuseTextureIndex;
     uint specularTexureIndex;
@@ -107,8 +105,6 @@ struct RaytracedSceneConstants {
 	uint flatNormalIndex;
     uint normalIndex;
     uint raysPerLight;
-
-    SceneLight lights[MAX_SHADOW_LIGHTS];
 };
 
 inline float4 GetInverseProjection(float4 location, in RaytracedSceneConstants constants)

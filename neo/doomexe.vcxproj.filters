@@ -1508,6 +1508,9 @@
     <None Include="..\base\renderprogs\joints.inc">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\base\renderprogs\shadow_ray_base.inc">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sys\win32\rc\doom.rc">
