@@ -267,6 +267,11 @@ public:
 	void InsertFenceWait(const DX12Rendering::Commands::FenceValue value);
 	const DX12Rendering::Commands::FenceValue InsertFenceSignal();
 
+	/// <summary>
+	/// Forces the next commands to wait for the previous commands to complete.
+	/// </summary>
+	void InsertExecutionBreak();
+
 #ifdef DEBUG_GPU
 	void SetFenceCompleteEvent(UINT64 value, HANDLE completionEvent) { m_fence.SetCompletionEvent(value, completionEvent); }
 #endif
@@ -420,7 +425,7 @@ public:
 	}
 
 	/// <summary>
-	/// Generates a blank post queue command that will force this command list to be executed before all others.
+	/// Generates a blank post queue command that will force this command list to be executed before queing the next command list set.
 	/// </summary>
 	void AddPostCommandListDivider()
 	{
@@ -475,6 +480,8 @@ struct DX12Rendering::Commands::CommandManagerCycleBlock
 
 	~CommandManagerCycleBlock()
 	{
+		m_commandManager->InsertExecutionBreak();
+
 #ifdef _DEBUG
 		auto commandList = m_commandManager->RequestNewCommandList();
 

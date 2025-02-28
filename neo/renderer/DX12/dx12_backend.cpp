@@ -1935,7 +1935,6 @@ static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** dra
 		}
 		else
 		{
-			auto test = shader->GetDecalInfo();
 			// draw all the opaque surfaces and build up a list of perforated surfaces that
 			// we will defer drawing until all opaque surfaces are done
 			GL_State(GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL | GLS_STENCIL_FUNC_ALWAYS);
@@ -2109,9 +2108,8 @@ static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** dra
 		RB_DrawElementsWithCounters(surf, &surfaceConstants, sizeof(GBufferSurfaceConstants));
 	}
 
-	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
-	const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
-	commandList->Close();
+	DX12Rendering::Commands::CommandManager* commandManager = renderPassBlock.GetCommandManager();
+	const DX12Rendering::Commands::FenceValue fence = commandManager->InsertFenceSignal();
 
 	return fence;
 }

@@ -47,6 +47,8 @@ DX12Rendering::RenderPassBlock::RenderPassBlock(const std::string name, const DX
 
 DX12Rendering::RenderPassBlock::~RenderPassBlock()
 {
+	m_commandManager->InsertExecutionBreak();
+
 	auto commandList = m_commandManager->RequestNewCommandList();
 
 	UpdateRenderState(commandList, D3D12_RESOURCE_STATE_COMMON);

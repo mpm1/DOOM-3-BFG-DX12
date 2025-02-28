@@ -514,13 +514,11 @@ void DX12Renderer::SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, 
 void DX12Renderer::SignalNextFrame() {
 	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
 
-	auto commandList = commandManager->RequestNewCommandList();
+	commandManager->InsertExecutionBreak();;
 	
-	const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
+	const DX12Rendering::Commands::FenceValue fence = commandManager->InsertFenceSignal();
 	m_endFrameFence.commandList = fence.commandList;
 	m_endFrameFence.value = fence.value;
-	
-	commandList->Close();
 
 	commandManager->Execute();
 }
@@ -1408,9 +1406,7 @@ bool DX12Renderer::DXR_CastRays()
 		DX12Rendering::Commands::FenceValue fenceValue = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
 		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();
 
-		auto directWait = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
-		directWait->AddPreFenceWait(fenceValue);
-		directWait->Close();
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->InsertFenceWait(fenceValue);
 	}
 
 	return result;

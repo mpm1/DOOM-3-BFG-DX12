@@ -200,6 +200,13 @@ namespace DX12Rendering {
 			return allocatorIndex * commandListCount;
 		}
 
+		void CommandManager::InsertExecutionBreak()
+		{
+			CommandList* commandList = RequestNewCommandList();
+			commandList->AddPostCommandListDivider();
+			commandList->Close();
+		}
+
 		void CommandManager::InsertFenceWait(const DX12Rendering::Commands::FenceValue value)
 		{
 			CommandList* commandList = RequestNewCommandList();
