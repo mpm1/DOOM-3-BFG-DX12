@@ -277,10 +277,13 @@ namespace DX12Rendering {
 					commandList->GetAllPreExecuteActions(m_queuedAction);
 
 					// Add the command list to the queue
-					QueuedAction action = {};
-					action.type = dx12_queuedAction_t::COMMAND_LIST;
-					action.commandList = commandList->GetCommandList();
-					m_queuedAction.emplace_back(action);
+					if (!commandList->IsCommandListEmpty())
+					{
+						QueuedAction action = {};
+						action.type = dx12_queuedAction_t::COMMAND_LIST;
+						action.commandList = commandList->GetCommandList();
+						m_queuedAction.emplace_back(action);
+					}
 
 					// Add the post queued functions then the post queued transitions
 					commandList->GetAllPostExecuteActions(m_queuedAction);
@@ -527,6 +530,11 @@ namespace DX12Rendering {
 			}
 
 			return false;
+		}
+
+		bool CommandList::IsCommandListEmpty() const
+		{
+			return m_commandCount == 0;
 		}
 
 		bool CommandList::HasRemainingActions() const { 

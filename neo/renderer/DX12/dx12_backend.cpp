@@ -2239,7 +2239,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 
 
 		if (vLight->translucentInteractions != NULL && !r_skipTranslucent.GetBool()) {
-			DX12Rendering::Commands::CommandManagerCycleBlock childBlock(renderPassBlock.GetCommandManager(), "Global Light Interactions");
+			//DX12Rendering::Commands::CommandManagerCycleBlock childBlock(renderPassBlock.GetCommandManager(), "Global Light Interactions");
 
 			renderLog.OpenBlock("Translucent Interactions");
 

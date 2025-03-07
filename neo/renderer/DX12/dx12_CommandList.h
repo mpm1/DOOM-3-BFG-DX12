@@ -343,6 +343,7 @@ public:
 	bool HasRemainingActions() const;
 	bool IsExecutable() const;
 	bool IsAvailable() const;
+	bool IsCommandListEmpty() const; // Tells us that we are only using Command Queue actions.
 	bool IsOpen() const { return m_state == OPEN; }
 
 	ID3D12GraphicsCommandList4* GetCommandList(){ return m_commandList.Get(); }
