@@ -741,6 +741,7 @@ void R_ReadTiledPixels( int width, int height, byte *buffer, renderView_t *ref =
 
 				// issue the commands to the GPU
 				tr.RenderCommandBuffers( cmd );
+				renderSystem->PresentFrame();
 			} else {
 				const bool captureToImage = false;
 				common->UpdateScreen( captureToImage );

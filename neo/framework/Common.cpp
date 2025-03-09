@@ -767,6 +767,7 @@ void idCommonLocal::RenderSplash() {
 
 	const emptyCommand_t * cmd = renderSystem->SwapCommandBuffers( &time_frontend, &time_backend, &time_shadows, &time_gpu );
 	renderSystem->RenderCommandBuffers( cmd );
+	renderSystem->PresentFrame();
 }
 
 /*
@@ -793,6 +794,7 @@ void idCommonLocal::RenderBink( const char * path ) {
 		renderSystem->DrawStretchPic( chop, 0, imageWidth, SCREEN_HEIGHT, 0, 0, 1, 1, material );
 		const emptyCommand_t * cmd = renderSystem->SwapCommandBuffers( &time_frontend, &time_backend, &time_shadows, &time_gpu );
 		renderSystem->RenderCommandBuffers( cmd );
+		renderSystem->PresentFrame(); // TODO: Let's change this up.
 		Sys_GenerateEvents();
 		Sys_Sleep( 10 );
 	}

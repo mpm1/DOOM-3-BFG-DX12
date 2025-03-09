@@ -1904,7 +1904,7 @@ static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** dra
 		const drawSurf_t* surf = drawSurfs[surfNum];
 		const idMaterial* shader = surf->material;
 
-		if (!shader->ReceivesLighting())
+		if (!shader->ReceivesLighting()) // Removed !shader->ReceivesLighting() to obtain more of the scene.
 		{
 			// The GBuffer is only used to calculate light interactions. No point in adding these objects
 			continue;
@@ -3594,8 +3594,7 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 	// TODO: reset the color mask
 
 	// stop rendering on this thread
-	dxRenderer.EndDraw();
-	dxRenderer.PresentBackbuffer();
+	dxRenderer.EndDraw();	
 
 	const uint64 backEndFinishTime = Sys_Microseconds();
 	backEnd.pc.totalMicroSec = backEndFinishTime - backEndStartTime;

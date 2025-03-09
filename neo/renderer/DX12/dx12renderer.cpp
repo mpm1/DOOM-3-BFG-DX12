@@ -198,7 +198,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	swapChainDesc.BufferDesc.Height = m_height;
 	swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // TODO: Look into changing this for HDR
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 	swapChainDesc.OutputWindow = hWnd;
 	swapChainDesc.SampleDesc.Count = 1;
 	swapChainDesc.Flags = 0; // TODO: enable when in fullscreen DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
@@ -597,6 +597,8 @@ void DX12Renderer::BeginDraw() {
 	m_zMin = 0.0f;
 	m_zMax = 1.0f;
 
+	WaitForPreviousFrame();
+
 	// Evaluate if we need to update or  resolution
 	if (r_fullscreen.GetInteger() == 0 && // We transferred to fullscreen mode, this will be handled by R_SetNewMode
 		(static_cast<UINT>(r_windowWidth.GetInteger()) != this->m_width || static_cast<UINT>(r_windowHeight.GetInteger()) != this->m_height))
@@ -706,6 +708,7 @@ void DX12Renderer::EndDraw() {
 		m_raytracing->EndFrame();
 	}
 
+	DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
 	SignalNextFrame();
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
 }
@@ -771,34 +774,32 @@ bool DX12Renderer::IsScissorWindowValid() {
 }
 
 void DX12Renderer::PresentBackbuffer() {
-	// Present the frame
-	WaitForPreviousFrame();
+	WaitForPreviousFrame(); // Wait for everything to catch up on the GPU.
 
 	UINT presentProperties = 0;
 	UINT syncInterval = 1;
 
 	DXGI_PRESENT_PARAMETERS presentParams = {};
 	presentParams.DirtyRectsCount = 0;
-	
+
 	const bool inWindow = m_fullScreen <= 0;
 	if (inWindow)
 	{
 		if (r_swapInterval.GetInteger() == 0)
 		{
 			//TODO: fix no vsync
-			//presentProperties |= DXGI_PRESENT_ALLOW_TEARING;
-			syncInterval = 0;
+			//presentProperties |= DXGI_PRESENT_DO_NOT_WAIT;
+			syncInterval = 1;
 		}
 		else if (r_swapInterval.GetInteger() == 1)
 		{
-			syncInterval = 0;
+			syncInterval = 1;
 		}
 	}
 
 	DX12Rendering::ThrowIfFailed(m_swapChain->Present1(syncInterval, presentProperties, &presentParams));
 
-	//SignalNextFrame();
-	//WaitForPreviousFrame(); It looks like it's the vertex buffer. We should have a render one between frames. Mark figure out why we need this here.Our buffers are being corupted way too soon.
+	SignalNextFrame();
 }
 
 void DX12Renderer::DrawModel(DX12Rendering::Commands::CommandList& commandList, DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride) {
@@ -1291,7 +1292,7 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 			continue;
 		}
 
-		if (!surf.shader->LightCastsShadows())
+		if (!surf.shader->ReceivesLighting()) // Removed !surf.shader->ReceivesLighting() to obtain more of the scene.
 		{
 			// If we dont cast shadows, drop it.
 			continue;

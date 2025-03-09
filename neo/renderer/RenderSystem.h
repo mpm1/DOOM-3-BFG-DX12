@@ -282,6 +282,12 @@ public:
 	// so new scenes and GUIs can be built up in parallel with the rendering.
 	virtual void			RenderCommandBuffers( const emptyCommand_t * commandBuffers ) = 0;
 
+	/// <summary>
+	/// Draws the final frame image after all command buffers are complete.
+	/// This is moved outside the RenderCommandBuffers call as it allows us to run commands asynchornously on the GPU.
+	/// </summary>
+	virtual void			PresentFrame() = 0;
+
 	// aviDemo uses this.
 	// Will automatically tile render large screen shots if necessary
 	// Samples is the number of jittered frames for anti-aliasing
