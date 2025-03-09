@@ -1904,7 +1904,7 @@ static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** dra
 		const drawSurf_t* surf = drawSurfs[surfNum];
 		const idMaterial* shader = surf->material;
 
-		if (!shader->ReceivesLighting()) // Removed !shader->ReceivesLighting() to obtain more of the scene.
+		if (!shader->ReceivesLighting())
 		{
 			// The GBuffer is only used to calculate light interactions. No point in adding these objects
 			continue;

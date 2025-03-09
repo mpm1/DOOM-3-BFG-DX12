@@ -1260,8 +1260,8 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 		return nullptr;
 	}
 
-	// For now we are only supporting objects that can receive shadows.
-	if (!model->ModelHasShadowCastingSurfaces())
+	// If an object can cast shadows or receive shadows, we will count it as having Opaque surfaces.
+	if (!model->ModelHasShadowCastingSurfaces() && !model->ModelHasInteractingSurfaces())
 	{
 		return nullptr;
 	}
@@ -1292,7 +1292,7 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 			continue;
 		}
 
-		if (!surf.shader->ReceivesLighting()) // Removed !surf.shader->ReceivesLighting() to obtain more of the scene.
+		if (!surf.shader->ReceivesLighting() && !surf.shader->LightCastsShadows()) // We're assuming all light receiving objects cast shadows in this model.
 		{
 			// If we dont cast shadows, drop it.
 			continue;
