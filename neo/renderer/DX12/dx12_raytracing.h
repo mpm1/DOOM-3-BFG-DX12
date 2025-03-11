@@ -27,11 +27,14 @@ namespace DX12Rendering {
 	DEFINE_ENUM_FLAG_OPERATORS(DXR_LIGHT_TYPE);
 
 	// Making these caches 256x more than their in frame size
-	const UINT VERTCACHE_INDEX_MEMORY = 31 * 1024 * 1024 * 256;
-	const UINT VERTCACHE_VERTEX_MEMORY = 31 * 1024 * 1024 * 256;
-	const UINT VERTCACHE_JOINT_MEMORY= 256 * 1024 * 256;
+	const UINT VERTCACHE_INDEX_MEMORY = 31U * 1024U * 1024U * 256U;
+	const UINT VERTCACHE_VERTEX_MEMORY = 31U * 1024U * 1024U * 256U;
+	const UINT VERTCACHE_JOINT_MEMORY= 256U * 1024U * 256U;
 
-	const UINT DESCRIPTOR_HEAP_SIZE = 4 /* basic entries */;
+	const UINT DESCRIPTOR_HEAP_SIZE = 6 /* basic entries */;
+	const UINT DESCRIPTOR_OBJECT_TOTAL = MAX_SCENE_LIGHTS;
+	const UINT DESCRIPTOR_OBJECT_TOTAL_FRAMES = DX12_FRAME_COUNT * DESCRIPTOR_OBJECT_TOTAL;
+	const UINT DESCRIPTOR_HEAP_TOTAL = DESCRIPTOR_HEAP_SIZE * DESCRIPTOR_OBJECT_TOTAL;
 
 	enum dxr_renderParm_t {
 		RENDERPARM_GLOBALEYEPOS = 0,
@@ -68,7 +71,7 @@ namespace DX12Rendering {
 				bool isAmbientLight : 1;
 				bool isFogLight : 1;
 				bool flagPad[sizeof(UINT) - 2];
-			};
+			} flagValue;
 		};
 		UINT pad1;
 		UINT pad2;
@@ -91,20 +94,18 @@ namespace DX12Rendering {
 	{
 		XMFLOAT4 renderParameters[DX12Rendering::dxr_renderParm_t::COUNT];
 
-		UINT lightCount;
+		UINT lightCount; // Note: This is no longer needed and can be changed if we would like.
 		float noiseOffset;
 		UINT diffuseTextureIndex;
 		UINT specularTextureIndex;
 
-		UINT depthTextureIndex;
+		UINT positionTextureIndex;
 		UINT flatNormalIndex;
 		UINT normalIndex;
 		UINT raysPerLight; // Number of shadow rays cast per light per pixel
-
-		dxr_lightData_t lights[MAX_SCENE_LIGHTS];
 	};
 
-	class TopLevelAccelerationStructure;
+	struct TopLevelAccelerationStructure;
 
 	class Raytracing;
 }
@@ -144,21 +145,6 @@ public:
 	);
 
 	/// <summary>
-	/// Cast rays into the scene through the general TLAS.
-	/// </summary>
-	/// <param name="commandList">The command list to use for casting.</param>
-	/// <param name="viewport">The viewport size.</param>
-	/// <param name="scissorRect">Any scissor rectable size.</param>
-	/// <returns></returns>
-	const DX12Rendering::Commands::FenceValue CastRays(
-		const UINT frameIndex,
-		const CD3DX12_VIEWPORT& viewport,
-		const CD3DX12_RECT& scissorRect,
-		const DX12Rendering::eRenderSurface* renderTargetList,
-		const UINT renderTargetCount
-	);
-
-	/// <summary>
 	/// Adds the desired object to the various top level acceleration structures.
 	/// </summary>
 	void AddObjectToAllTopLevelAS(); //TODO: Add matrix and bone information.
@@ -188,16 +174,20 @@ private:
 	ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
 	dxr_sceneConstants_t m_constantBuffer;
+	dxr_lightData_t m_activeLight; // Used to send the light to the shader
+	dxr_lightData_t m_lights[MAX_SCENE_LIGHTS];
 
 	TLASManager m_tlasManager;
 	BLASManager m_blasManager;
 
 	ComPtr<ID3D12DescriptorHeap> m_generalUavHeaps;
-	ComPtr<ID3D12Resource> m_generalSBTData;
+	ComPtr<ID3D12Resource> m_generalSBTData[DESCRIPTOR_OBJECT_TOTAL_FRAMES];
 	UINT m_nextDescriptorHeapIndex;
 	UINT m_cbvHeapIncrementor;
 
 	ShaderBindingTable m_generalSBTDesc;
+
+	UINT m_nextObjectIndex;
 
 	// Pipeline
 	void CreateShadowPipeline();
@@ -205,15 +195,44 @@ private:
 	void CreateShaderResourceHeap();
 
 	void CreateShaderBindingTables();
-	void CreateShadowBindingTable();
+	ID3D12Resource* CreateShadowBindingTable(UINT frameIndex, UINT objectIndex);
 
-	void SetOutputTexture(DX12Rendering::eRenderSurface renderSurface, DX12Rendering::e_RaytracingHeapIndex uav);
+	void SetOutputTexture(DX12Rendering::eRenderSurface renderSurface, UINT frameIndex, UINT objectIndex, DX12Rendering::e_RaytracingHeapIndex uav);
 
 	void CreateCBVHeap(const size_t constantBufferSize);
 	D3D12_CONSTANT_BUFFER_VIEW_DESC SetCBVDescriptorTable(
 		const size_t constantBufferSize, 
 		const void* constantBuffer,
-		const UINT frameIndex);
+		const UINT frameIndex,
+		const UINT objectIndex,
+		const DX12Rendering::e_RaytracingHeapIndex heapIndex);
+
+	void UpdateTlasDescriptor(UINT frameIndex, UINT objectIndex);
+
+
+	D3D12_CPU_DESCRIPTOR_HANDLE GetDescriptorHandle(
+		const UINT frameIndex,
+		const UINT objectIndex,
+		const DX12Rendering::e_RaytracingHeapIndex heapIndex);
+
+	D3D12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptorHandle(
+		const UINT frameIndex,
+		const UINT objectIndex);
+
+	/// <summary>
+	/// Cast rays into the scene through the general TLAS.
+	/// </summary>
+	/// <param name="commandList">The command list to use for casting.</param>
+	/// <param name="viewport">The viewport size.</param>
+	/// <param name="scissorRect">Any scissor rectable size.</param>
+	/// <returns></returns>
+	const void CastRays(
+		const UINT frameIndex,
+		const UINT objectIndex,
+		const CD3DX12_VIEWPORT& viewport,
+		const CD3DX12_RECT& scissorRect,
+		DX12Rendering::RenderPassBlock& renderPass
+	);
 
 	// Acceleration Structure
 
@@ -224,5 +243,13 @@ private:
 	ID3D12RootSignature* GetGlobalRootSignature();
 
 	ID3D12DescriptorHeap* GetUavHeap() { return m_generalUavHeaps.Get(); }
+
+	const UINT RequestNewObjectIndex() {
+		UINT result = m_nextObjectIndex;
+
+		if ((++m_nextObjectIndex) >= DESCRIPTOR_OBJECT_TOTAL) { m_nextObjectIndex = 0; }
+
+		return result;
+	}
 };
 #endif

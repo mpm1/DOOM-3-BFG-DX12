@@ -777,7 +777,7 @@ void idVarDef::PrintInfo( idFile *file, uintptr_t instructionPointer ) const {
 			switch( etype ) {
 			case ev_string :
 				file->Printf( "\"" );
-				len = strlen( value.stringPtr );
+				len = static_cast<int>(strlen( value.stringPtr ));
 				ch = value.stringPtr;
 				for( i = 0; i < len; i++, ch++ ) {
 					if ( idStr::CharIsPrintable( *ch ) ) {
@@ -899,7 +899,7 @@ idScriptObject::Save
 ================
 */
 void idScriptObject::Save( idSaveGame *savefile ) const {
-	size_t size;
+	int size;
 
 	if ( type == &type_object && data == NULL ) {
 		// Write empty string for uninitialized object
@@ -1706,11 +1706,11 @@ called after all files are compiled to report memory usage.
 ==============
 */
 void idProgram::CompileStats() {
-	int	memused;
-	int	memallocated;
+	size_t	memused;
+	size_t	memallocated;
 	int	numdefs;
 	int	stringspace;
-	int funcMem;
+	size_t funcMem;
 	int	i;
 
 	gameLocal.Printf( "---------- Compile stats ----------\n" );
@@ -1721,7 +1721,7 @@ void idProgram::CompileStats() {
 		gameLocal.DPrintf( "   %s\n", fileList[ i ].c_str() );
 		stringspace += fileList[ i ].Allocated();
 	}
-	stringspace += fileList.Size();
+	stringspace += static_cast<int>(fileList.Size());
 
 	numdefs = varDefs.Num();
 	memused = varDefs.Num() * sizeof( idVarDef );

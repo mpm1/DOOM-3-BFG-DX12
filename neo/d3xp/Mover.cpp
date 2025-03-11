@@ -347,6 +347,8 @@ void idMover::Spawn() {
 	dest_position = GetPhysics()->GetOrigin();
 	dest_angles = GetPhysics()->GetAxis().ToAngles();
 
+	assert(!std::isnan(dest_angles.yaw));
+
 	physicsObj.SetSelf( this );
 	physicsObj.SetClipModel( new (TAG_PHYSICS_CLIP_MOVER) idClipModel( GetPhysics()->GetClipModel() ), 1.0f );
 	physicsObj.SetOrigin( GetPhysics()->GetOrigin() );
@@ -1235,6 +1237,8 @@ void idMover::Event_RotateDownTo( int axis, float angle ) {
 
 	physicsObj.GetLocalAngles( ang );
 
+	assert(!std::isnan(angle));
+
 	dest_angles[ axis ] = angle;
 	if ( dest_angles[ axis ] > ang[ axis ] ) {
 		dest_angles[ axis ] -= 360;
@@ -1249,6 +1253,8 @@ idMover::Event_RotateUpTo
 ================
 */
 void idMover::Event_RotateUpTo( int axis, float angle ) {
+	assert(!std::isnan(angle));
+
 	idAngles ang;
 
 	if ( ( axis < 0 ) || ( axis > 2 ) ) {
@@ -1272,6 +1278,9 @@ idMover::Event_RotateTo
 */
 void idMover::Event_RotateTo( idAngles &angles ) {
 	dest_angles = angles;
+
+	assert(!std::isnan(dest_angles.yaw));
+
 	BeginRotation( idThread::CurrentThread(), true );
 }
 
@@ -1290,6 +1299,8 @@ void idMover::Event_Rotate( idAngles &angles ) {
 	physicsObj.GetLocalAngles( ang );
 	dest_angles = ang + angles * ( move_time - ( acceltime + deceltime ) / 2 ) * 0.001f;
 
+	assert(!std::isnan(dest_angles.yaw));
+
 	BeginRotation( idThread::CurrentThread(), false );
 }
 
@@ -1307,6 +1318,14 @@ void idMover::Event_RotateOnce( idAngles &angles ) {
 
 	physicsObj.GetLocalAngles( ang );
 	dest_angles = ang + angles;
+
+	//assert(!std::isnan(dest_angles.yaw));
+	if (std::isnan(dest_angles.yaw))
+	{
+		// TODO: This is a hack. Find the actual issue.
+		dest_angles.yaw = 1.0f; //It looks like the lift in the seconf level is the culprit.
+			// check this error: ERROR: script/map_mc_underground.script(783): Thread 'map_mc_underground::lilfrm_move': runaway loop error
+	}
 
 	BeginRotation( idThread::CurrentThread(), true );
 }
@@ -1700,7 +1719,7 @@ void idElevator::Spawn() {
 	returnTime = spawnArgs.GetFloat( "returnTime" );
 	returnFloor = spawnArgs.GetInt( "returnFloor" );
 
-	len1 = strlen( "floorPos_" );
+	len1 = static_cast<int>(strlen( "floorPos_" ));
 	const idKeyValue *kv = spawnArgs.MatchPrefix( "floorPos_", NULL );
 	while( kv ) {
 		str = kv->GetKey().Right( kv->GetKey().Length() - len1 );

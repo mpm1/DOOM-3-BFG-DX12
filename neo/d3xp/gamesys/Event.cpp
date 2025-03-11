@@ -76,7 +76,7 @@ idEventDef::idEventDef( const char *command, const char *formatspec, char return
 	this->formatspec = formatspec;
 	this->returnType = returnType;
 
-	numargs = strlen( formatspec );
+	numargs = static_cast<int>(strlen( formatspec ));
 	assert( numargs <= D_EVENT_MAXARGS );
 	if ( numargs > D_EVENT_MAXARGS ) {
 		eventError = true;
@@ -283,7 +283,7 @@ idEvent *idEvent::Alloc( const idEventDef *evdef, int numargs, va_list args ) {
 		switch( format[ i ] ) {
 		case D_EVENT_FLOAT :
 		case D_EVENT_INTEGER :
-			*reinterpret_cast<int *>( dataPtr ) = arg->value;
+			*reinterpret_cast<size_t *>( dataPtr ) = arg->value;
 			break;
 
 		case D_EVENT_VECTOR :
@@ -490,7 +490,7 @@ void idEvent::ServiceEvents() {
 	idEvent		*event;
 	int			num;
 	idEventArgPtr args[ D_EVENT_MAXARGS ];
-	int			offset;
+	size_t		offset;
 	int			i;
 	int			numargs;
 	const char	*formatspec;
@@ -591,7 +591,7 @@ void idEvent::ServiceFastEvents() {
 	idEvent	*event;
 	int		num;
 	idEventArgPtr args[ D_EVENT_MAXARGS ];
-	int			offset;
+	size_t		offset;
 	int			i;
 	int			numargs;
 	const char	*formatspec;
@@ -757,7 +757,10 @@ void idEvent::Save( idSaveGame *savefile ) {
 		savefile->WriteString( event->eventdef->GetName() );
 		savefile->WriteString( event->typeinfo->classname );
 		savefile->WriteObject( event->object );
-		savefile->WriteInt( event->eventdef->GetArgSize() );
+
+		assert(event->eventdef->GetArgSize() <= std::numeric_limits<int>::max());
+		savefile->WriteInt( static_cast<int>(event->eventdef->GetArgSize()) );
+
 		format = event->eventdef->GetArgFormat();
 		for ( i = 0, size = 0; i < event->eventdef->GetNumArgs(); ++i) {
 			dataPtr = &event->data[ event->eventdef->GetArgOffset( i ) ];
@@ -808,8 +811,10 @@ void idEvent::Save( idSaveGame *savefile ) {
 		savefile->WriteString( event->eventdef->GetName() );
 		savefile->WriteString( event->typeinfo->classname );
 		savefile->WriteObject( event->object );
-		savefile->WriteInt( event->eventdef->GetArgSize() );
-		savefile->Write( event->data, event->eventdef->GetArgSize() );
+
+		assert(event->eventdef->GetArgSize() <= std::numeric_limits<int>::max());
+		savefile->WriteInt( static_cast<int>(event->eventdef->GetArgSize()) );
+		savefile->Write( event->data, static_cast<int>(event->eventdef->GetArgSize()) );
 
 		event = event->eventNode.Next();
 	}

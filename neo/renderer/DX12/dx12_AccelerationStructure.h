@@ -54,6 +54,9 @@ namespace DX12Rendering
 		
 		dxHandle_t vertexHandle;
 		UINT vertCounts;
+
+		// Used only if we are creating a dynamic BLAS
+		UINT vertexOffset;
 		
 		dxHandle_t indexHandle;
 		UINT indexCounts;

@@ -653,7 +653,7 @@ void idCommonLocal::FilterLangList( idStrList* list, idStr lang ) {
 	idStr temp;
 	for( int i = 0; i < list->Num(); i++ ) {
 		temp = (*list)[i];
-		temp = temp.Right(temp.Length()-strlen("strings/"));
+		temp = temp.Right(temp.Length()- static_cast<int>(strlen("strings/")));
 		temp = temp.Left(lang.Length());
 		if(idStr::Icmp(temp, lang) != 0) {
 			list->RemoveIndex(i);
@@ -767,6 +767,7 @@ void idCommonLocal::RenderSplash() {
 
 	const emptyCommand_t * cmd = renderSystem->SwapCommandBuffers( &time_frontend, &time_backend, &time_shadows, &time_gpu );
 	renderSystem->RenderCommandBuffers( cmd );
+	renderSystem->PresentFrame();
 }
 
 /*
@@ -793,6 +794,7 @@ void idCommonLocal::RenderBink( const char * path ) {
 		renderSystem->DrawStretchPic( chop, 0, imageWidth, SCREEN_HEIGHT, 0, 0, 1, 1, material );
 		const emptyCommand_t * cmd = renderSystem->SwapCommandBuffers( &time_frontend, &time_backend, &time_shadows, &time_gpu );
 		renderSystem->RenderCommandBuffers( cmd );
+		renderSystem->PresentFrame(); // TODO: Let's change this up.
 		Sys_GenerateEvents();
 		Sys_Sleep( 10 );
 	}
@@ -1013,7 +1015,7 @@ void idCommonLocal::Init( int argc, const char * const * argv, const char *cmdli
 		stringsFile.SetNameAndType( SAVEGAME_STRINGS_FILENAME, SAVEGAMEFILE_BINARY );
 		stringsFile.PreAllocate( MAX_SAVEGAME_STRING_TABLE_SIZE );
 
-		fileSystem->BeginLevelLoad( "_startup", saveFile.GetDataPtr(), saveFile.GetAllocated() );
+		fileSystem->BeginLevelLoad( "_startup", saveFile.GetDataPtr(), static_cast<int>(saveFile.GetAllocated()) );
 
 		// initialize the declaration manager
 		declManager->Init();

@@ -291,7 +291,7 @@ ID_INLINE void idCVar::Init( const char *name, const char *value, int flags, con
 	this->integerValue = 0;
 	this->floatValue = 0.0f;
 	this->internalVar = this;
-	if ( staticVars != (idCVar *)0xFFFFFFFF ) {
+	if ( staticVars != (idCVar *)SIZE_MAX) {
 		this->next = staticVars;
 		staticVars = this;
 	} else {
@@ -300,11 +300,11 @@ ID_INLINE void idCVar::Init( const char *name, const char *value, int flags, con
 }
 
 ID_INLINE void idCVar::RegisterStaticVars() {
-	if ( staticVars != (idCVar *)0xFFFFFFFF ) {
+	if ( staticVars != (idCVar *)SIZE_MAX ) {
 		for ( idCVar *cvar = staticVars; cvar; cvar = cvar->next ) {
 			cvarSystem->Register( cvar );
 		}
-		staticVars = (idCVar *)0xFFFFFFFF;
+		staticVars = (idCVar *)SIZE_MAX;
 	}
 }
 

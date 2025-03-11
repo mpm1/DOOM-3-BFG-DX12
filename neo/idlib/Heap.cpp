@@ -42,7 +42,7 @@ If you have questions concerning this license or the applicable additional terms
 Mem_Alloc16
 ==================
 */
-void * Mem_Alloc16( const int size, const memTag_t tag ) {
+void * Mem_Alloc16( const size_t size, const memTag_t tag ) {
 	if ( !size ) {
 		return NULL;
 	}

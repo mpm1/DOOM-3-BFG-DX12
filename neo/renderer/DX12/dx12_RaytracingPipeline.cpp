@@ -58,7 +58,7 @@ namespace DX12Rendering {
 		for (LibraryDescription& libDesc : m_libDesc)
 		{
 			libDesc.m_libDesc.DXILLibrary = { libDesc.m_shader.data, libDesc.m_shader.size };
-			libDesc.m_libDesc.NumExports = libDesc.m_symbolDesc.size();
+			libDesc.m_libDesc.NumExports = static_cast<UINT>(libDesc.m_symbolDesc.size());
 			libDesc.m_libDesc.pExports = (D3D12_EXPORT_DESC*)libDesc.m_symbolDesc.data();
 
 			D3D12_STATE_SUBOBJECT libObject = {};
@@ -97,7 +97,7 @@ namespace DX12Rendering {
 
 		const WCHAR** symbolExports = exportedSymbolPointers.data();
 		D3D12_SUBOBJECT_TO_EXPORTS_ASSOCIATION payloadAssociation = {};
-		payloadAssociation.NumExports = exportedSymbolPointers.size();
+		payloadAssociation.NumExports = static_cast<UINT>(exportedSymbolPointers.size());
 		payloadAssociation.pExports = symbolExports;
 		payloadAssociation.pSubobjectToAssociate = &subObjects[currentIndex - 1];
 

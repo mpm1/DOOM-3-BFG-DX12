@@ -473,7 +473,7 @@ void idImage::Bind() {
 
 	const int texUnit = backEnd.glState.currenttmu;
 
-	tmu_t* tmu = &backEnd.glState.tmu[texUnit];
+	//tmu_t* tmu = &backEnd.glState.tmu[texUnit];
 	// TODO: bind the texture
 	if (opts.textureType == TT_2D) {
 		dxRenderer.SetTexture(static_cast<DX12Rendering::TextureBuffer*>(textureResource));

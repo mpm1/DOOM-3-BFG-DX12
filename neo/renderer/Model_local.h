@@ -53,10 +53,6 @@ public:
 	virtual void				WriteBinaryModel( idFile * file, ID_TIME_T *_timeStamp = NULL ) const;
 	virtual bool				SupportsBinaryModel() { return true; }
 
-	virtual void				GenerateBLAS();
-	virtual void				DestroyBLAS();
-	virtual void				UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
-
 	virtual void				PartialInitFromFile( const char *fileName );
 	virtual void				PurgeModel();
 	virtual void				Reset() {};
@@ -205,11 +201,6 @@ public:
 	virtual int					NearestJoint( int surfaceNum, int a, int b, int c ) const;
 
 	virtual bool				SupportsBinaryModel() { return true; }
-
-	virtual void				GenerateBLAS();
-	virtual void				UpdateBLASData(dxHandle_t id);
-	virtual void				DestroyBLAS();
-	virtual void				UseTLASInFrame(const uint entityIndex, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask);
 
 private:
 	idList<idMD5Joint, TAG_MODEL>	joints;

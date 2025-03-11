@@ -151,7 +151,7 @@ public:
 					// load a script from the given memory with the given length and a specified line offset,
 					// so source strings extracted from a file can still refer to proper line numbers in the file
 					// NOTE: the ptr is expected to point at a valid C string: ptr[length] == '\0'
-	int				LoadMemory( const char *ptr, int length, const char *name, int startLine = 1 );
+	int				LoadMemory( const char *ptr, size_t length, const char *name, int startLine = 1 );
 					// free the script
 	void			FreeSource();
 					// returns true if a script is loaded

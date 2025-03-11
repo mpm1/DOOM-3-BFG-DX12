@@ -321,6 +321,9 @@ void R_SetNewMode( const bool fullInit ) {
 			GLimp_Init(parms);
 		}
 		if ( dxRenderer.SetScreenParams( parms.width, parms.height, parms.fullScreen ) ) {
+			glConfig.nativeScreenWidth = parms.width;
+			glConfig.nativeScreenHeight = parms.height;
+
 			// it worked
 			break;
 		}
@@ -738,6 +741,7 @@ void R_ReadTiledPixels( int width, int height, byte *buffer, renderView_t *ref =
 
 				// issue the commands to the GPU
 				tr.RenderCommandBuffers( cmd );
+				renderSystem->PresentFrame();
 			} else {
 				const bool captureToImage = false;
 				common->UpdateScreen( captureToImage );

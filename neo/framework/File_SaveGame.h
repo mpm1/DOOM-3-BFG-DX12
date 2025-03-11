@@ -128,11 +128,11 @@ public:
 
 	virtual const char *	GetName() const { return name.c_str(); }
 	virtual const char *	GetFullPath() const	{ return name.c_str(); }
-	virtual int				Read( void * buffer, int len );
-	virtual int				Write( const void * buffer, int len );
+	virtual int				Read( void * buffer, size_t len );
+	virtual int				Write( const void * buffer, size_t len );
 
 	// this file is strictly streaming, you can't seek at all
-	virtual int				Length() const  { return compressedLength; }
+	virtual int				Length() const  { return static_cast<int>(compressedLength); }
 	virtual void			SetLength( size_t len ) { compressedLength = len; }
 	virtual int				Tell() const { assert( 0 ); return 0; }
 	virtual int				Seek( long offset, fsOrigin_t origin ) { assert( 0 ); return 0; }

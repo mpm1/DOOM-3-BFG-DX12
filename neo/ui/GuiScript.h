@@ -58,7 +58,7 @@ public:
 	}
 	void FixupParms(idWindow *win);
 	size_t Size() {
-		int sz = sizeof(*this);
+		size_t sz = sizeof(*this);
 		for (int i = 0; i < parms.Num(); i++) {
 			sz += parms[i].var->Size();
 		}
@@ -69,7 +69,7 @@ public:
 	void ReadFromSaveGame( idFile *savefile );
 
 protected:
-	int conditionReg;
+	size_t conditionReg;
 	idGuiScriptList *ifList;
 	idGuiScriptList *elseList;
 	idList<idGSWinVar, TAG_OLD_UI> parms;
@@ -88,7 +88,7 @@ public:
 		list.Append(gs);
 	}
 	size_t Size() {
-		int sz = sizeof(*this);
+		size_t sz = sizeof(*this);
 		for (int i = 0; i < list.Num(); i++) {
 			sz += list[i]->Size();
 		}

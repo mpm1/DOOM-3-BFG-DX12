@@ -47,6 +47,8 @@ DX12Rendering::RenderPassBlock::RenderPassBlock(const std::string name, const DX
 
 DX12Rendering::RenderPassBlock::~RenderPassBlock()
 {
+	m_commandManager->InsertExecutionBreak();
+
 	auto commandList = m_commandManager->RequestNewCommandList();
 
 	UpdateRenderState(commandList, D3D12_RESOURCE_STATE_COMMON);
@@ -74,7 +76,7 @@ void DX12Rendering::RenderPassBlock::UpdateRenderState(DX12Rendering::Commands::
 		std::vector<D3D12_RESOURCE_BARRIER> transitions;
 		transitions.reserve(renderTargetCount);
 
-		for (int index = 0; index < renderTargetCount; ++index)
+		for (UINT index = 0; index < renderTargetCount; ++index)
 		{
 			DX12Rendering::RenderSurface* outputSurface = DX12Rendering::GetSurface(surfaceList[index]);
 
@@ -87,7 +89,7 @@ void DX12Rendering::RenderPassBlock::UpdateRenderState(DX12Rendering::Commands::
 
 		if (transitions.size() > 0)
 		{
-			commandList->ResourceBarrier(transitions.size(), transitions.data());
+			commandList->ResourceBarrier(static_cast<UINT>(transitions.size()), transitions.data());
 		}
 	});
 }

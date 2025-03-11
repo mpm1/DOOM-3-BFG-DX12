@@ -59,7 +59,7 @@ namespace DX12Rendering {
 
 		ScratchBuffer(UINT64 size, UINT alignment, D3D12_HEAP_PROPERTIES heapProps, D3D12_RESOURCE_FLAGS flags, D3D12_RESOURCE_STATES resourceState, LPCWSTR name) :
 			Resource(name),
-			m_size(DX12_ALIGN(size, alignment)),
+			m_size(DX12_ALIGN(size, static_cast<UINT64>(alignment))),
 			m_currentIndex(0),
 			m_alignment(alignment),
 			m_heapProps(heapProps),
@@ -81,6 +81,11 @@ namespace DX12Rendering {
 
 		bool IsFenceCompleted();
 		void WaitForLastFenceToComplete();
+		
+		/// <summary>
+		/// Resets the scratch buffer to a 0 index;
+		/// </summary>
+		void Reset(); 
 
 	private:
 		UINT64 m_currentIndex; // The next available space to fill the scratch buffer.

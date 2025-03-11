@@ -74,17 +74,20 @@ idVertexBuffer* GetVertexBuffer(const vertCacheHandle_t vbHandle)
 
 bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 {
-	// TODO: Implement
-	for (int i = 0; i <= displayNum; ++i) {
+	bool displayFound = DX12Rendering::Device::GetAllSupportedResolutions(displayNum, [&modeList](UINT monitor, UINT subIndex, UINT width, UINT height, UINT refreshNumerator, UINT refreshDenominator) -> void
+	{
 		vidMode_t mode;
-		mode.displayHz = 60;
-		mode.height = 1080;
-		mode.width = 1920;
+
+		assert(refreshDenominator != 0);
+
+		mode.displayHz = refreshNumerator / refreshDenominator;
+		mode.height = height;
+		mode.width = width;
 
 		modeList.Append(mode);
-	}
+	});
 
-	return true;
+	return displayFound;
 }
 
 /*
@@ -494,7 +497,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		}
 		indexBuffer = &vertexCache.frameData[vertexCache.drawListNum].indexBuffer;
 	}
-	const int indexOffset = (int)(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+	const UINT indexOffset = static_cast<UINT>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
 	RENDERLOG_PRINTF("Binding Buffers: %p:%i %p:%i\n", vertexBuffer, vertOffset, indexBuffer, indexOffset);
 
@@ -520,17 +523,15 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), commandList);
 	}
 
-	const triIndex_t* test = (triIndex_t*)indexOffset;
-
 	if (dxRenderer.EndSurfaceSettings(variant, surfaceConstants, surfaceConstantsSize, *commandList)) {
 		dxRenderer.DrawModel(
 			*commandList,
 			apiVertexBuffer,
-			vertOffset / ((vertexStride > 0) ? vertexStride : sizeof(idDrawVert)),
+			vertOffset / static_cast<int>(((vertexStride > 0) ? vertexStride : sizeof(idDrawVert))),
 			reinterpret_cast<DX12Rendering::Geometry::IndexBuffer*>(indexBuffer->GetAPIObject()),
 			indexOffset >> 1, // TODO: Figure out why we need to divide by 2. Is it because we are going from an int to a short?
 			r_singleTriangle.GetBool() ? 3 : surf->numIndexes,
-			vertexStride);
+			static_cast<UINT>(vertexStride));
 
 		//TODO: Eventually do the creation of the acceleration structure outside of these commands.
 	}
@@ -1874,7 +1875,7 @@ static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** dra
 	constexpr UINT surfaceCount = 5;
 	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 		DX12Rendering::eRenderSurface::FlatNormal,
-		DX12Rendering::eRenderSurface::ViewDepth,
+		DX12Rendering::eRenderSurface::Position,
 		DX12Rendering::eRenderSurface::Normal,
 		DX12Rendering::eRenderSurface::Albedo,
 		DX12Rendering::eRenderSurface::SpecularColor
@@ -1934,7 +1935,6 @@ static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** dra
 		}
 		else
 		{
-			auto test = shader->GetDecalInfo();
 			// draw all the opaque surfaces and build up a list of perforated surfaces that
 			// we will defer drawing until all opaque surfaces are done
 			GL_State(GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL | GLS_STENCIL_FUNC_ALWAYS);
@@ -2108,9 +2108,8 @@ static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** dra
 		RB_DrawElementsWithCounters(surf, &surfaceConstants, sizeof(GBufferSurfaceConstants));
 	}
 
-	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
-	const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
-	commandList->Close();
+	DX12Rendering::Commands::CommandManager* commandManager = renderPassBlock.GetCommandManager();
+	const DX12Rendering::Commands::FenceValue fence = commandManager->InsertFenceSignal();
 
 	return fence;
 }
@@ -2240,7 +2239,7 @@ static void RB_DrawInteractions(const bool useRaytracing) {
 
 
 		if (vLight->translucentInteractions != NULL && !r_skipTranslucent.GetBool()) {
-			DX12Rendering::Commands::CommandManagerCycleBlock childBlock(renderPassBlock.GetCommandManager(), "Global Light Interactions");
+			//DX12Rendering::Commands::CommandManagerCycleBlock childBlock(renderPassBlock.GetCommandManager(), "Global Light Interactions");
 
 			renderLog.OpenBlock("Translucent Interactions");
 
@@ -2326,7 +2325,6 @@ static int RB_DrawShaderPasses(const drawSurf_t* const* const drawSurfs, const i
 	for (; i < numDrawSurfs; i++) {
 		const drawSurf_t* surf = drawSurfs[i];
 		const idMaterial* shader = surf->material;
-		UINT gpuIndex = -1;
 
 		if (!shader->HasAmbient()) {
 			continue;
@@ -2452,7 +2450,7 @@ static int RB_DrawShaderPasses(const drawSurf_t* const* const drawSurfs, const i
 				}
 				renderLog.OpenBlock("New Shader Stage");
 
-				gpuIndex = dxRenderer.StartSurfaceSettings();
+				const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
 				GL_State(stageGLState);
 
 				renderProgManager.BindShader(newStage->glslProgram, newStage->glslProgram);
@@ -2970,42 +2968,68 @@ void RB_DrawCombinedGBufferResults()
 	}
 }
 
-void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
-	renderLog.OpenBlock("RB_DrawViewInternal");
-
-	//-------------------------------------------------
-	// guis can wind up referencing purged images that need to be loaded.
-	// this used to be in the gui emit code, but now that it can be running
-	// in a separate thread, it must not try to load images, so do it here.
-	//-------------------------------------------------
-	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
+void RB_CalculateDynamicObjects(const viewDef_t* viewDef, const bool raytracedEnabled)
+{
 	const int numDrawSurfs = viewDef->numDrawSurfs;
 
-	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
-	const bool useGBuffer = raytracedEnabled;
-
-	// Copy Vertex data for drawing dynamic objects
-	/*{
-		idVertexBuffer* vertexBuffer = &vertexCache.frameData[vertexCache.drawListNum].vertexBuffer;
-		dxRenderer.CopyDynamicVertexData(reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject()), vertexBuffer->GetOffset(), vertexBuffer->GetSize());
-	}*/
-
+	// Update all surfaces and bones as needed
 	{
 		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_DrawViewInternal::ComputeBones");
 
+		dxRenderer.StartComputeSurfaceBones();
+		commandManager->Execute();
+
+		// Entity definitions are gouped together. This way we can put them into a single blas
+		const viewEntity_t* lastEntity = nullptr;
+		dxHandle_t blasHandle = 1;
+		std::vector<DX12Rendering::RaytracingGeometryArgument> rtGeometry;
+		rtGeometry.reserve(16);
+
+		UINT outVertexBufferOffset = 0;
+
 		for (int i = 0; i < numDrawSurfs; i++) {
 			const drawSurf_t* ds = viewDef->drawSurfs[i];
-			if (ds->material != NULL) {
-				const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
+
+			if (ds->space != lastEntity)
+			{
+				if (rtGeometry.size() > 0)
+				{
+					// Add the BLAS and TLAS
+					dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
+
+					UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+					{
+						// Calculate the instance mask
+						if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: find a better way to mark these as shadow casting.
+						{
+							instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+						}
+					}
+
+					dxRenderer.DXR_AddBLASToTLAS(
+						lastEntity->entityIndex,
+						blasHandle,
+						lastEntity->modelRenderMatrix[0], // TODO: Find thre right one
+						DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
+						static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
+					);
+
+					++blasHandle;
+					rtGeometry.clear();
+				}
+
+				lastEntity = ds->space;
 			}
 
 			if (ds->jointCache)
 			{
+
 				// get vertex buffer
 				idVertexBuffer* const vertexBuffer = GetVertexBuffer(ds->ambientCache);
 				const int vertOffset = GetVertexBufferOffset(ds->ambientCache);
 				const UINT vertSize = GetVertexBufferSize(ds->ambientCache);
+				const UINT vertIndexCount = vertSize / sizeof(idDrawVert);
 
 				if (vertexBuffer == nullptr)
 				{
@@ -3025,8 +3049,107 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 				DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
 
 				// Update the vert structure.
-				dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
+				const UINT bufferOffset = dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, outVertexBufferOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
+
+				if (raytracedEnabled && ds->material && ds->material->SurfaceCastsShadow() /* Only allow shadow casting surfaces */)
+				{
+					const dxHandle_t handle = i;
+					const UINT entityIndex = i << 16;
+
+					DX12Rendering::RaytracingGeometryArgument dxArguments = {};
+					dxArguments.vertexHandle = ds->ambientCache;
+					dxArguments.vertCounts = vertIndexCount;
+					dxArguments.vertexOffset = outVertexBufferOffset;
+
+					dxArguments.indexHandle = ds->indexCache;
+					dxArguments.indexCounts = ds->numIndexes;
+
+					dxArguments.jointsHandle = ds->jointCache;
+
+					// Add to the list of entities
+					rtGeometry.push_back(dxArguments);
+				}
+
+				outVertexBufferOffset += bufferOffset;
 			}
+		}
+
+		// If there are any dynamic BLAS objects being created. Finish them here.
+		if (rtGeometry.size() > 0)
+		{
+			// Add the BLAS and TLAS
+			dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
+
+			UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+			{
+				// Calculate the instance mask
+				if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: fix this
+				{
+					instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+				}
+			}
+
+			dxRenderer.DXR_AddBLASToTLAS(
+				lastEntity->entityIndex,
+				blasHandle,
+				lastEntity->modelRenderMatrix[0],
+				DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
+				static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
+			);
+		}
+
+		commandManager->Execute();
+		dxRenderer.EndComputeSurfaceBones();
+	}
+
+	// Update/Create the BLASa and create a list for the TLAS structure 
+	UINT blasResult = 0;
+	if (raytracedEnabled) {
+		viewEntity_t* viewEntity = viewDef->viewEntitys;
+		for (; viewEntity != NULL; viewEntity = viewEntity->next)
+		{
+			if (viewEntity->blasIndex > 0) // Dynamic objects will not set this value, so we know it's static.
+			{
+				UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+				{
+					// Calculate the instance mask
+					if (true || viewEntity->staticShadowVolumes != nullptr || viewEntity->dynamicShadowVolumes != nullptr) // TODO: Fix this
+					{
+						instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+					}
+				}
+
+				dxRenderer.DXR_AddBLASToTLAS(
+					viewEntity->entityIndex,
+					viewEntity->blasIndex,
+					viewEntity->modelRenderMatrix[0],
+					DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC,
+					static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
+			}
+		}
+
+		blasResult = dxRenderer.DXR_UpdatePendingBLAS();
+	}
+}
+
+void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
+	renderLog.OpenBlock("RB_DrawViewInternal");
+
+	//-------------------------------------------------
+	// guis can wind up referencing purged images that need to be loaded.
+	// this used to be in the gui emit code, but now that it can be running
+	// in a separate thread, it must not try to load images, so do it here.
+	//-------------------------------------------------
+	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
+	const int numDrawSurfs = viewDef->numDrawSurfs;
+
+	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
+	const bool useGBuffer = raytracedEnabled;
+
+	for (int i = 0; i < numDrawSurfs; i++) {
+		const drawSurf_t* ds = viewDef->drawSurfs[i];
+		if (ds->material != NULL) {
+			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
 		}
 	}
 
@@ -3065,7 +3188,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	{
 		const float zeroClear[4] = { 0, 0, 0, 0 };
 		const DX12Rendering::eRenderSurface clearSurfaces[] = {
-			DX12Rendering::eRenderSurface::ViewDepth,
+			DX12Rendering::eRenderSurface::Position,
 			DX12Rendering::eRenderSurface::Normal,
 			DX12Rendering::eRenderSurface::FlatNormal,
 			DX12Rendering::eRenderSurface::RaytraceShadowMask,
@@ -3143,8 +3266,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 		{
 			// Setup viewport coordniates for screenspace shadows. 
-			int x = backEnd.viewDef->viewport.x1;
-			int y = backEnd.viewDef->viewport.y1;
+			// TODO: Eventually add the x and y as needed
+			//int x = backEnd.viewDef->viewport.x1;
+			//int y = backEnd.viewDef->viewport.y1;
 			int	w = backEnd.viewDef->viewport.x2 - backEnd.viewDef->viewport.x1 + 1;
 			int	h = backEnd.viewDef->viewport.y2 - backEnd.viewDef->viewport.y1 + 1;
 
@@ -3194,6 +3318,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		}
 	}
 
+	RB_CalculateDynamicObjects(viewDef, raytracedEnabled);
+
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	bool raytraceUpdated = false;
 	if (backEnd.viewDef->viewEntitys != NULL) {
@@ -3216,41 +3342,45 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			// Fill the GBuffer
 			const DX12Rendering::Commands::FenceValue fence = RB_DrawGBuffer(drawSurfs, numDrawSurfs);
 
+			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(fence);
+
 			// Copy the depth buffer to a texture
-			auto viewDepth = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth);
+			auto position = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position);
 			//viewDepth->fence.Wait();
 
 			// TODO: Make a system to perform multiple copies
 			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
-			DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::VIEW_DEPTH);
-			viewDepth->CopySurfaceToTexture(depthTexture, textureManager, fence);
+			DX12Rendering::TextureBuffer* positionTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::POSITION);
+			position->CopySurfaceToTexture(positionTexture, textureManager);
 
 			// Copy the albedo
 			auto albedo = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo);
 			DX12Rendering::TextureBuffer* albedoTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
-			albedo->CopySurfaceToTexture(albedoTexture, textureManager, fence);
+			albedo->CopySurfaceToTexture(albedoTexture, textureManager);
 
 			// Copy the specular
 			auto specular = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor);
 			DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
-			specular->CopySurfaceToTexture(specularTexture, textureManager, fence);
+			specular->CopySurfaceToTexture(specularTexture, textureManager);
 
 			// Copy the flat normal map to a texture
 			auto normalFlatMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal);
 			DX12Rendering::TextureBuffer* normalFlatTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_FLAT_NORMALS);
-			normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager, fence);
+			normalFlatMap->CopySurfaceToTexture(normalFlatTexture, textureManager);
 
 			// Copy the normal map to a texture
 			auto normalMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal);
 			DX12Rendering::TextureBuffer* normalTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
-			normalMap->CopySurfaceToTexture(normalTexture, textureManager, fence);
+			normalMap->CopySurfaceToTexture(normalTexture, textureManager);
+
+			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
 
 			// TODO: Find a better place to reset this.
 			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Reset();
 		}
 	}
 
-	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); 
+	raytraceUpdated = raytraceUpdated && dxRenderer.DXR_CastRays(); // TODO: wait on the previous copy fence before casting the rays.
 	if (raytraceUpdated)
 	{
 		//-------------------------------------------------
@@ -3464,8 +3594,7 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 	// TODO: reset the color mask
 
 	// stop rendering on this thread
-	dxRenderer.EndDraw();
-	dxRenderer.PresentBackbuffer();
+	dxRenderer.EndDraw();	
 
 	const uint64 backEndFinishTime = Sys_Microseconds();
 	backEnd.pc.totalMicroSec = backEndFinishTime - backEndStartTime;

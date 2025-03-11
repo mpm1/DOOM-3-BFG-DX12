@@ -129,6 +129,12 @@ namespace DX12Rendering {
 		}
 	}
 
+	void ScratchBuffer::Reset()
+	{
+		WaitForLastFenceToComplete();
+		m_currentIndex = 0;
+	}
+
 	bool ScratchBuffer::IsFenceCompleted()
 	{
 		if (m_lastFenceValue.value > 0)

@@ -27,9 +27,7 @@ using namespace Microsoft::WRL;
 
 class idRenderModel;
 
-#ifdef _DEBUG
 struct viewLight_t;
-#endif
 
 constexpr int DYNAMIC_VERTEX_MEMORY_PER_FRAME = 31 * 1024 * 1024; // Matches VERTCACHE_VERTEX_MEMORY_PER_FRAME
 constexpr int DYNAMIC_VERTEX_ALIGNMENT = 32; // Matches VERTEX_CACHE_ALIGN
@@ -76,7 +74,7 @@ public:
 
 	void UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, const FLOAT width, const FLOAT height, const FLOAT minDepth = 0.0f, const FLOAT maxDepth = 1.0f); // Used to put us into right hand depth space.
 	void UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h);
-	DX12Rendering::Commands::CommandList* UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth, DX12Rendering::Commands::CommandList* commandList);
+	void UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth);
 	void UpdateStencilRef(UINT ref);
 
 	void ReadPixels(int x, int y, int width, int height, UINT readBuffer, byte* buffer);
@@ -98,7 +96,9 @@ public:
 	void FreeJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer);
 	void SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, UINT jointOffset, DX12Rendering::Commands::CommandList* commandList);
 
-	UINT ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT offset /* assume srcBuffer and dstBuffer are the same layout */, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset);
+	void StartComputeSurfaceBones();
+	void EndComputeSurfaceBones();
+	UINT ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT inputOffset, UINT outputOffset, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset);
 
 	// Textures
 	void SetActiveTextureRegister(UINT8 index);
@@ -119,9 +119,12 @@ public:
 	void DXR_ResetAccelerationStructure(); // Resets the acceleration structure to an empty state.
 	void DXR_UpdateAccelerationStructure();
 
+	bool DXR_BLASExists(const dxHandle_t id);
+	dxHandle_t DXR_GetBLASHandle(const idRenderModel* model);
 	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateModelInBLAS(const idRenderModel* model);
 	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments);
-	
+	UINT DXR_UpdatePendingBLAS();
+
 	void DXR_RemoveModelInBLAS(const idRenderModel* model);
 	void DXR_RemoveBLAS(const dxHandle_t id);
 
@@ -169,6 +172,8 @@ private:
 
 	FLOAT m_aspectRatio = 1.0f;
     FLOAT m_FoV = 90.0f;
+	FLOAT m_zMin = 0.0f; // Set's the min depth bounds
+	FLOAT m_zMax = 1.0f; // Set's the max depth bounds
 
 	bool m_isDrawing = false;
 	bool m_initialized = false;
@@ -228,6 +233,7 @@ private:
 
 	const DX12Rendering::RenderSurface** GetCurrentRenderTargets(UINT& count);
 	DX12Rendering::RenderSurface* GetOutputRenderTarget() { return DX12Rendering::GetSurface(GetOutputSurface()); }
+	inline DX12Rendering::Geometry::VertexBuffer* GetCurrentDynamicVertexBuffer() { return m_dynamicVertexBuffer[DX12Rendering::GetCurrentFrameIndex()]; }
 
 #ifdef _DEBUG
 	std::vector<viewLight_t> m_debugLights;

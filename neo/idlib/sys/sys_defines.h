@@ -181,6 +181,21 @@ bulk of the codebase, so it is the best place for analyze pragmas.
 // win32 needs this, but 360 doesn't
 #pragma warning( disable: 6540 )	// warning C6540: The use of attribute annotations on this function will invalidate all of its existing __declspec annotations [D:\tech5\engine\engine-10.vcxproj]
 
+#pragma warning( disable: 4467 )	// warning C4467: usage of ATL attributes is deprecate
+
+#pragma warning( disable: 4458 )	// warning C4458: declaration of '<variable> hides class member
+
+#pragma warning( disable: 4595 )	// warning C4595: 'operator new': non - member operator new or delete functions may not be declared inline [Heap.h]
+
+#pragma warning( disable: 4499 )	// warning C4499: 'extern': an explicit specialization cannot have a storage class (ignored) [DX12\neo\idlib\math\Math.h]
+
+#pragma warning( disable: 4459 )	// warning C4459: declaration of 'tr' hides global declaration
+
+#pragma warning ( disable: 4456 )	// warning C4456: declaration of 'axis' hides previous local declaration
+
+#pragma warning ( disable: 4457 )	// warning C4457: declaration of 'dir' hides function parameter
+
+
 // checking format strings catches a LOT of errors
 #include <CodeAnalysis\SourceAnnotations.h>
 

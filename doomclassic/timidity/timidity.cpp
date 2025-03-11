@@ -37,7 +37,7 @@ Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
 #include "tables.h"
 
 
-//void *Real_Tim_Malloc( int sz );
+//void *Real_Tim_Malloc( size_t sz );
 //void Real_Tim_Free( void *pt );
 
 void (*s32tobuf)(void *dp,  int32_t *lp,  int32_t c);

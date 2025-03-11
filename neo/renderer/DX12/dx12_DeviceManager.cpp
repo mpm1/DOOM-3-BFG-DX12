@@ -35,12 +35,12 @@ namespace DX12Rendering
 	}
 #endif
 
-	void GetHardwareAdapter(IDXGIFactory4* pFactory, IDXGIAdapter1** ppAdapter) {
+	void GetHardwareAdapter(IDXGIFactory6* pFactory, IDXGIAdapter1** ppAdapter) {
 		*ppAdapter = nullptr;
 
 		for (UINT adapterIndex = 0; ; ++adapterIndex) {
 			IDXGIAdapter1* pAdapter = nullptr;
-			if (DXGI_ERROR_NOT_FOUND == pFactory->EnumAdapters1(adapterIndex, &pAdapter)) {
+			if (DXGI_ERROR_NOT_FOUND == pFactory->EnumAdapterByGpuPreference(adapterIndex, DXGI_GPU_PREFERENCE_HIGH_PERFORMANCE, IID_PPV_ARGS(&pAdapter))) {
 				// No more adapters.
 				break;
 			}
@@ -61,7 +61,7 @@ namespace DX12Rendering
 
 	Device::DeviceManager* m_managerInstance = nullptr;
 
-	void Device::InitializeDevice(IDXGIFactory4* factory)
+	void Device::InitializeDevice(IDXGIFactory6* factory)
 	{
 		if (m_managerInstance == nullptr)
 		{
@@ -87,6 +87,42 @@ namespace DX12Rendering
 		return m_managerInstance; 
 	}
 
+	bool Device::GetDeviceOutput(const UINT monitor, IDXGIOutput** pOutput)
+	{
+		ComPtr<IDXGIFactory6> factory;
+		DX12Rendering::ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
+
+		ComPtr<IDXGIAdapter1> hardwareAdapter;
+		GetHardwareAdapter(factory.Get(), &hardwareAdapter);
+
+		return hardwareAdapter->EnumOutputs(monitor, pOutput) == S_OK;
+	}
+
+	bool Device::GetAllSupportedResolutions(const UINT monitor, Device::DeviceResolutionFunc resolutionCallback)
+	{
+		IDXGIOutput* pOutput;
+		if (!GetDeviceOutput(monitor, &pOutput))
+		{
+			return false;
+		}
+
+		UINT modeCount = 0;
+		pOutput->GetDisplayModeList(DXGI_FORMAT_R8G8B8A8_UNORM, 0, &modeCount, nullptr);
+
+		DXGI_MODE_DESC* displayModes = new DXGI_MODE_DESC[modeCount];
+		pOutput->GetDisplayModeList(DXGI_FORMAT_R8G8B8A8_UNORM, 0, &modeCount, displayModes);
+
+		for (UINT index = 0; index < modeCount; ++index)
+		{
+			resolutionCallback(monitor, index, displayModes[index].Width, displayModes[index].Height, displayModes[index].RefreshRate.Numerator, displayModes[index].RefreshRate.Denominator);
+		}
+
+		delete[] displayModes;
+		pOutput->Release();
+
+		return true;
+	}
+
 	ID3D12Device5* Device::GetDevice()
 	{
 		const Device::DeviceManager* manager = Device::GetDeviceManager();
@@ -95,6 +131,8 @@ namespace DX12Rendering
 		{
 			return m_managerInstance->GetDevice();
 		}
+
+		return nullptr;
 	}
 
 	Device::DeviceManager::DeviceManager(IDXGIAdapter1* hardwareAdapter)

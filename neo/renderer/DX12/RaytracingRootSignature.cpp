@@ -30,7 +30,7 @@ namespace DX12Rendering {
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_CBV /*Camera constant buffer*/,
-				1,
+				2,
 				0 /*b0*/,
 				0,
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,

@@ -187,11 +187,11 @@ namespace DX12Rendering
 		device->CreateUnorderedAccessView(resource.Get(), nullptr, &uavDesc, uavHeap);
 	}
 
-	const DX12Rendering::Commands::FenceValue RenderSurface::CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager, const DX12Rendering::Commands::FenceValue waitOnFence)
+	bool RenderSurface::CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager)
 	{
 		if (texture == nullptr)
 		{
-			return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::COPY, 0);
+			return false;
 		}
 
 		// TODO: Put these as inputs
@@ -209,8 +209,6 @@ namespace DX12Rendering
 
 		auto commandList = commandManager->RequestNewCommandList();
 		
-		commandList->AddPreFenceWait(waitOnFence); // Wait for all drawing to complete.
-
 		textureManager->SetTextureState(texture, D3D12_RESOURCE_STATE_COPY_DEST, commandList);
 
 		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
@@ -250,7 +248,7 @@ namespace DX12Rendering
 		// Create RTV Heap
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC rtvHeapDesc = {};
-			rtvHeapDesc.NumDescriptors = ViewRenderTarget.size();
+			rtvHeapDesc.NumDescriptors = static_cast<UINT>(ViewRenderTarget.size());
 			rtvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 			rtvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
@@ -260,7 +258,7 @@ namespace DX12Rendering
 		// Create DSV Heap
 		{
 			D3D12_DESCRIPTOR_HEAP_DESC dsvHeapDesc = {};
-			dsvHeapDesc.NumDescriptors = ViewDepthStencils.size();
+			dsvHeapDesc.NumDescriptors = static_cast<UINT>(ViewDepthStencils.size());
 			dsvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 			dsvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 
@@ -286,7 +284,7 @@ namespace DX12Rendering
 			
 			m_surfaces.emplace_back(L"Normal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Normal, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"FlatNormal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::FlatNormal, RENDER_SURFACE_FLAG_NONE, clearValue);
-			m_surfaces.emplace_back(L"ViewDepth", DXGI_FORMAT_R32_FLOAT, eRenderSurface::ViewDepth, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"Position", DXGI_FORMAT_R32G32B32A32_FLOAT, eRenderSurface::Position, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"Albedo", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Albedo, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"SpecularColor", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::SpecularColor, RENDER_SURFACE_FLAG_NONE, clearValue);
 

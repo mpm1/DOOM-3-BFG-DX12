@@ -250,7 +250,7 @@ private:
 	static idList<idTypeInfo *, TAG_IDCLASS>	types;
 	static idList<idTypeInfo *, TAG_IDCLASS>	typenums;
 	static int					typeNumBits;
-	static int					memused;
+	static size_t				memused;
 	static int					numobjects;
 };
 

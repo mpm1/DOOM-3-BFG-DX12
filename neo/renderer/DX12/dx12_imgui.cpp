@@ -1,5 +1,6 @@
 #pragma hdrstop
 
+#ifdef DEBUG_IMGUI
 #include "dx12_imgui.h"
 #include "./dx12_CommandList.h"
 #include "./dx12_RenderTarget.h"
@@ -60,3 +61,4 @@ namespace DX12Rendering
 		}
 	}
 }
+#endif

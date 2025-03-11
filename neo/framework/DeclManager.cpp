@@ -1638,9 +1638,9 @@ void idDeclManagerLocal::ListDecls_f( const idCmdArgs &args ) {
 
 		size = 0;
 		for ( j = 0; j < num; j++ ) {
-			size += declManagerLocal.linearLists[i][j]->Size();
+			size += static_cast<int>(declManagerLocal.linearLists[i][j]->Size());
 			if ( declManagerLocal.linearLists[i][j]->self != NULL ) {
-				size += declManagerLocal.linearLists[i][j]->self->Size();
+				size += static_cast<int>(declManagerLocal.linearLists[i][j]->self->Size());
 			}
 		}
 		totalStructs += size;
@@ -2272,7 +2272,7 @@ void idDeclLocal::MakeDefault() {
 	self->FreeData();
 
 	// parse
-	self->Parse( defaultText, strlen( defaultText ), false );
+	self->Parse( defaultText, static_cast<int>(strlen( defaultText )), false );
 
 	// we could still eventually hit the recursion if we have enough Error() calls inside Parse...
 	--recursionLevel;

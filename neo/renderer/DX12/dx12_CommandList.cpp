@@ -18,7 +18,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 
-				m_commandManagers.emplace_back(&queueDesc, Commands::DIRECT, true, L"Direct", 20);
+				m_commandManagers.emplace_back(&queueDesc, Commands::DIRECT, true, L"Direct", 100);
 			}
 
 			// Copy Commands
@@ -36,7 +36,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_DISABLE_GPU_TIMEOUT;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COMPUTE;
 
-				m_commandManagers.emplace_back(&queueDesc, Commands::COMPUTE, true, L"Compute", 10);
+				m_commandManagers.emplace_back(&queueDesc, Commands::COMPUTE, true, L"Compute", 30);
 			}
 		}
 
@@ -86,7 +86,7 @@ namespace DX12Rendering {
 			const UINT frameCount = resetPerFrame ? DX12_FRAME_COUNT : 1;
 			m_commandLists.reserve(commandListCount * frameCount); // We need to keep our pointers
 
-			for (int frame = 0; frame < frameCount; ++frame) {
+			for (UINT frame = 0; frame < frameCount; ++frame) {
 				WCHAR nameDest[64];
 				wsprintfW(nameDest, L"%s Command Allocator %d", name, frame);
 
@@ -96,7 +96,7 @@ namespace DX12Rendering {
 				// Create the command lists
 				CommandList* commandListStart = nullptr;
 
-				for (int index = 0; index < commandListCount; ++index) {
+				for (UINT index = 0; index < commandListCount; ++index) {
 					WCHAR listName[64];
 					wsprintfW(listName, L"%s Command List %d:%d", name, frame, index);
 
@@ -131,7 +131,7 @@ namespace DX12Rendering {
 
 			// Clear the command allocators
 			const UINT frameCount = resetPerFrame ? DX12_FRAME_COUNT : 1;
-			for (int frame = 0; frame < frameCount; ++frame) {
+			for (UINT frame = 0; frame < frameCount; ++frame) {
 				m_commandAllocator[frame] = nullptr;
 			}
 
@@ -200,6 +200,29 @@ namespace DX12Rendering {
 			return allocatorIndex * commandListCount;
 		}
 
+		void CommandManager::InsertExecutionBreak()
+		{
+			CommandList* commandList = RequestNewCommandList();
+			commandList->AddPostCommandListDivider();
+			commandList->Close();
+		}
+
+		void CommandManager::InsertFenceWait(const DX12Rendering::Commands::FenceValue value)
+		{
+			CommandList* commandList = RequestNewCommandList();
+			commandList->AddPreFenceWait(value);
+			commandList->Close();
+		}
+
+		const DX12Rendering::Commands::FenceValue CommandManager::InsertFenceSignal()
+		{
+			CommandList* commandList = RequestNewCommandList();
+			FenceValue value = commandList->AddPostFenceSignal();
+			commandList->Close();
+
+			return value;
+		}
+
 		CommandList* CommandManager::RequestNewCommandList()
 		{
 #ifdef _DEBUG
@@ -254,10 +277,13 @@ namespace DX12Rendering {
 					commandList->GetAllPreExecuteActions(m_queuedAction);
 
 					// Add the command list to the queue
-					QueuedAction action = {};
-					action.type = dx12_queuedAction_t::COMMAND_LIST;
-					action.commandList = commandList->GetCommandList();
-					m_queuedAction.emplace_back(action);
+					if (!commandList->IsCommandListEmpty())
+					{
+						QueuedAction action = {};
+						action.type = dx12_queuedAction_t::COMMAND_LIST;
+						action.commandList = commandList->GetCommandList();
+						m_queuedAction.emplace_back(action);
+					}
 
 					// Add the post queued functions then the post queued transitions
 					commandList->GetAllPostExecuteActions(m_queuedAction);
@@ -279,7 +305,7 @@ namespace DX12Rendering {
 					if (lastActionType == COMMAND_LIST)
 					{
 						// Execute all currently waiting commandlists
-						m_commandQueue->ExecuteCommandLists(commandLists.size(), commandLists.data());
+						m_commandQueue->ExecuteCommandLists(static_cast<UINT>(commandLists.size()), commandLists.data());
 						commandLists.clear();
 					}
 					else if (lastActionType == RESOURCE_BARRIER)
@@ -310,7 +336,7 @@ namespace DX12Rendering {
 			// Execute any remaining actions
 			if (commandLists.size() > 0)
 			{
-				m_commandQueue->ExecuteCommandLists(commandLists.size(), commandLists.data());
+				m_commandQueue->ExecuteCommandLists(static_cast<UINT>(commandLists.size()), commandLists.data());
 			}
 
 			if (barriers.size() > 0)
@@ -343,13 +369,15 @@ namespace DX12Rendering {
 
 #pragma region CommandList
 		CommandList::CommandList(D3D12_COMMAND_LIST_TYPE type, ID3D12CommandAllocator* allocator, DX12Rendering::Commands::Fence* fence, const LPCWSTR name)
-			: m_state(UNKNOWN),
+			: 
+#ifdef _DEBUG
+			m_name(std::wstring(name)),
+#endif
+			m_state(UNKNOWN),
 			m_commandCount(0),
 			m_chunkDepth(0),
-			m_fence(fence),
-#ifdef _DEBUG
-			m_name(std::wstring(name))
-#endif
+			m_fence(fence)
+
 		{
 			ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
@@ -502,6 +530,11 @@ namespace DX12Rendering {
 			}
 
 			return false;
+		}
+
+		bool CommandList::IsCommandListEmpty() const
+		{
+			return m_commandCount == 0;
 		}
 
 		bool CommandList::HasRemainingActions() const { 

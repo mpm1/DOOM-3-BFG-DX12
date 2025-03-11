@@ -264,6 +264,13 @@ public:
 
 	void WaitOnFence(const DX12Rendering::Commands::FenceValue value) { return m_fence.Wait(value); }
 	bool IsFenceCompleted(const DX12Rendering::Commands::FenceValue value) { return m_fence.IsFenceCompleted(value); }
+	void InsertFenceWait(const DX12Rendering::Commands::FenceValue value);
+	const DX12Rendering::Commands::FenceValue InsertFenceSignal();
+
+	/// <summary>
+	/// Forces the next commands to wait for the previous commands to complete.
+	/// </summary>
+	void InsertExecutionBreak();
 
 #ifdef DEBUG_GPU
 	void SetFenceCompleteEvent(UINT64 value, HANDLE completionEvent) { m_fence.SetCompletionEvent(value, completionEvent); }
@@ -336,6 +343,7 @@ public:
 	bool HasRemainingActions() const;
 	bool IsExecutable() const;
 	bool IsAvailable() const;
+	bool IsCommandListEmpty() const; // Tells us that we are only using Command Queue actions.
 	bool IsOpen() const { return m_state == OPEN; }
 
 	ID3D12GraphicsCommandList4* GetCommandList(){ return m_commandList.Get(); }
@@ -377,6 +385,24 @@ public:
 		});
 	}
 
+	// Make sure that this command list is run before adding more
+	void AddPostExecuteBarrier()
+	{
+		AddPostExecuteQueueAction([](ID3D12CommandQueue* commandQueue)
+		{
+			// Do nothing
+		});
+	}
+
+	// Make sure that all other command lists are run before this one.
+	void AddPreExecuteBarrier()
+	{
+		AddPreExecuteQueueAction([](ID3D12CommandQueue* commandQueue)
+		{
+			// Do nothing
+		});
+	}
+
 	const DX12Rendering::Commands::FenceValue AddPostFenceSignal()
 	{
 		DX12Rendering::Commands::Fence* fence = m_fence;
@@ -400,7 +426,7 @@ public:
 	}
 
 	/// <summary>
-	/// Generates a blank post queue command that will force this command list to be executed before all others.
+	/// Generates a blank post queue command that will force this command list to be executed before queing the next command list set.
 	/// </summary>
 	void AddPostCommandListDivider()
 	{
@@ -455,6 +481,8 @@ struct DX12Rendering::Commands::CommandManagerCycleBlock
 
 	~CommandManagerCycleBlock()
 	{
+		m_commandManager->InsertExecutionBreak();
+
 #ifdef _DEBUG
 		auto commandList = m_commandManager->RequestNewCommandList();
 

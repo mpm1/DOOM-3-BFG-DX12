@@ -316,6 +316,7 @@ void idCommonLocal::UpdateScreen( bool captureToImage ) {
 
 	// get the GPU busy with new commands
 	renderSystem->RenderCommandBuffers( cmd );
+	renderSystem->PresentFrame();
 
 	insideUpdateScreen = false;
 }
@@ -692,6 +693,8 @@ void idCommonLocal::Frame() {
 			Printf( Sys_FPU_GetState() );
 			FatalError( "idCommon::Frame: the FPU stack is not empty at the end of the frame\n" );
 		}
+
+		renderSystem->PresentFrame();
 
 		mainFrameTiming = frameTiming;
 

@@ -1764,7 +1764,7 @@ int idLexer::LoadFile( const char *filename, bool OSPath ) {
 idLexer::LoadMemory
 ================
 */
-int idLexer::LoadMemory( const char *ptr, int length, const char *name, int startLine ) {
+int idLexer::LoadMemory( const char *ptr, size_t length, const char *name, int startLine ) {
 	if ( idLexer::loaded ) {
 		idLib::common->Error("idLexer::LoadMemory: another script already loaded");
 		return false;

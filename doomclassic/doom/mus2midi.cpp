@@ -343,7 +343,7 @@ int Mus2Midi(unsigned char* bytes, unsigned char* out, int* len)
 
 	// Write out track header
 	WriteInt(midiTrackHeader.name, 'MTrk');
-	WriteInt(&midiTrackHeader.length, out - midiTrackHeaderOut - sizeof(midiTrackHeader));
+	WriteInt(&midiTrackHeader.length, static_cast<int>(out - midiTrackHeaderOut - sizeof(midiTrackHeader)));
 	memcpy(midiTrackHeaderOut, &midiTrackHeader, sizeof(midiTrackHeader));
 	
 	// Store length written

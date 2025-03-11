@@ -55,9 +55,9 @@ public:
 							// Get the full file path.
 	virtual const char *	GetFullPath() const;
 							// Read data from the file to the buffer.
-	virtual int				Read( void *buffer, int len );
+	virtual int				Read( void *buffer, size_t len );
 							// Write data from the buffer to the file.
-	virtual int				Write( const void *buffer, int len );
+	virtual int				Write( const void *buffer, size_t len );
 							// Returns the length of the file.
 	virtual int				Length() const;
 							// Return a time value for reload operations.
@@ -155,8 +155,8 @@ public:
 
 	virtual const char *	GetName() const { return name.c_str(); }
 	virtual const char *	GetFullPath() const { return name.c_str(); }
-	virtual int				Read( void *buffer, int len );
-	virtual int				Write( const void *buffer, int len );
+	virtual int				Read( void *buffer, size_t len );
+	virtual int				Write( const void *buffer, size_t len );
 	virtual int				Length() const;
 	virtual void			SetLength( size_t len );
 	virtual ID_TIME_T		Timestamp() const;
@@ -215,8 +215,8 @@ public:
 
 	virtual const char *	GetName() const { return name.c_str(); }
 	virtual const char *	GetFullPath() const { return name.c_str(); }
-	virtual int				Read( void *buffer, int len );
-	virtual int				Write( const void *buffer, int len );
+	virtual int				Read( void *buffer, size_t len );
+	virtual int				Write( const void *buffer, size_t len );
 	virtual int				Length() const;
 	virtual ID_TIME_T		Timestamp() const;
 	virtual int				Tell() const;
@@ -240,8 +240,8 @@ public:
 
 	virtual const char *	GetName() const { return name.c_str(); }
 	virtual const char *	GetFullPath() const { return fullPath.c_str(); }
-	virtual int				Read( void *buffer, int len );
-	virtual int				Write( const void *buffer, int len );
+	virtual int				Read( void *buffer, size_t len );
+	virtual int				Write( const void *buffer, size_t len );
 	virtual int				Length() const;
 	virtual ID_TIME_T		Timestamp() const;
 	virtual int				Tell() const;
@@ -269,7 +269,7 @@ public:
 
 	void					CacheData( uint64 offset, uint64 length );
 
-	virtual int				Read( void *buffer, int len );
+	virtual int				Read( void *buffer, size_t len );
 
 	virtual int				Tell() const;
 	virtual int				Seek( long offset, fsOrigin_t origin );
@@ -291,8 +291,8 @@ public:
 
 	virtual const char *	GetName() const { return name.c_str(); }
 	virtual const char *	GetFullPath() const { return fullPath.c_str(); }
-	virtual int				Read( void *buffer, int len );
-	virtual int				Write( const void *buffer, int len );
+	virtual int				Read( void *buffer, size_t len );
+	virtual int				Write( const void *buffer, size_t len );
 	virtual int				Length() const;
 	virtual ID_TIME_T		Timestamp() const;
 	virtual int				Tell() const;
@@ -318,8 +318,8 @@ public:
 
 	virtual const char *	GetName() const { return name.c_str(); }
 	virtual const char *	GetFullPath() const { return name.c_str(); }
-	virtual int				Read( void *buffer, int len );
-	virtual int				Write( const void *buffer, int len ) { assert( false ); return 0; }
+	virtual int				Read( void *buffer, size_t len );
+	virtual int				Write( const void *buffer, size_t len ) { assert( false ); return 0; }
 	virtual int				Length() const { return length; }
 	virtual ID_TIME_T		Timestamp() const { return 0; }
 	virtual int				Tell() const;

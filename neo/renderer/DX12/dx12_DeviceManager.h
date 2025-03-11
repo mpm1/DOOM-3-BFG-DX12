@@ -2,11 +2,14 @@
 #define __DX12_DEVICE_MANAGER_H__
 
 #include "./dx12_global.h"
+#include <functional>
 
 namespace DX12Rendering
 {
 	namespace Device
 	{
+		typedef std::function<void(UINT, UINT, UINT, UINT, UINT, UINT)> DeviceResolutionFunc; //(UINT monitor, UINT subIndex, UINT width, UINT height, UINT refreshNumerator, UINT refreshDenominator)
+
 		class DeviceManager
 		{
 		public:
@@ -19,11 +22,14 @@ namespace DX12Rendering
 			ComPtr<ID3D12Device5> m_device;
 		};
 
-		void InitializeDevice(IDXGIFactory4* factory);
+		void InitializeDevice(IDXGIFactory6* factory);
 		void DestroyDevice();
 
 		const DeviceManager* GetDeviceManager();
 		ID3D12Device5* GetDevice();
+
+		bool GetAllSupportedResolutions(const UINT monitor, Device::DeviceResolutionFunc resolutionCallback);
+		bool GetDeviceOutput(const UINT monitor, IDXGIOutput** pOutput);
 
 #ifdef DEBUG_GPU
 		void __stdcall OnDeviceRemoved(PVOID context, BOOLEAN);

@@ -132,6 +132,12 @@ void idRenderSystemLocal::RenderCommandBuffers( const emptyCommand_t * const cmd
 	resolutionScale.InitForMap( NULL );
 }
 
+void idRenderSystemLocal::PresentFrame()
+{
+	// TODO: Should this just run in a separate thread?
+	dxRenderer.PresentBackbuffer();
+}
+
 /*
 ============
 R_GetCommandBuffer

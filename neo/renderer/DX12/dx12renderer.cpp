@@ -9,6 +9,9 @@
 #include <type_traits>
 
 extern idCVar r_swapInterval; // Used for VSync
+extern idCVar r_windowWidth; // Used to calculate resize
+extern idCVar r_windowHeight; // Used to calculate resize
+extern idCVar r_fullscreen; // Used to calculate resize
 
 idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
@@ -133,7 +136,6 @@ template<>
 const dxHandle_t DX12Renderer::GetHandle<idRenderModel>(const idRenderModel* renderModel)
 {
 	//TODO: Precache the hash or have a better generation method
-
 	return std::hash<std::string>{}(renderModel->Name());
 }
 
@@ -178,7 +180,7 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	}
 #endif
 
-	ComPtr<IDXGIFactory4> factory;
+	ComPtr<IDXGIFactory6> factory;
 	DX12Rendering::ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&factory)));
 
 	DX12Rendering::Device::InitializeDevice(factory.Get());
@@ -196,10 +198,10 @@ void DX12Renderer::LoadPipeline(HWND hWnd) {
 	swapChainDesc.BufferDesc.Height = m_height;
 	swapChainDesc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM; // TODO: Look into changing this for HDR
 	swapChainDesc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD;
+	swapChainDesc.SwapEffect = DXGI_SWAP_EFFECT_FLIP_SEQUENTIAL;
 	swapChainDesc.OutputWindow = hWnd;
 	swapChainDesc.SampleDesc.Count = 1;
-	swapChainDesc.Flags = 0; // Todo enable when in fullscreen DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
+	swapChainDesc.Flags = 0; // TODO: enable when in fullscreen DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING;
 	swapChainDesc.Windowed = TRUE; //TODO: Change to option
 
 	ComPtr<IDXGISwapChain> swapChain;
@@ -225,7 +227,7 @@ void DX12Renderer::CreateDynamicPerFrameData()
 {
 	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex)
 	{
-		m_dynamicVertexBuffer[frameIndex] = AllocVertexBuffer(DX12_ALIGN(DYNAMIC_VERTEX_MEMORY_PER_FRAME, DYNAMIC_VERTEX_ALIGNMENT), L"Dynamic Vertex Data", true);
+		m_dynamicVertexBuffer[frameIndex] = AllocVertexBuffer(DX12_ALIGN(DYNAMIC_VERTEX_MEMORY_PER_FRAME, DYNAMIC_VERTEX_ALIGNMENT), std::wstring(L"Dynamic Vertex Data %d", frameIndex).c_str(), true);
 	}
 }
 
@@ -242,14 +244,48 @@ void DX12Renderer::ResetDynamicPerFrameData()
 	m_nextDynamicVertexIndex = 0;
 }
 
-UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT offset /* assume srcBuffer and dstBuffer are the same layout */, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset)
+void DX12Renderer::StartComputeSurfaceBones()
+{
+	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::StartComputeSurfaceBones");
+
+	DX12Rendering::Geometry::VertexBuffer* dstBuffer = GetCurrentDynamicVertexBuffer();
+
+	commandList->AddCommandAction([&dstBuffer](ID3D12GraphicsCommandList4* commandList)
+	{
+		D3D12_RESOURCE_BARRIER barrier;
+		if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &barrier))
+		{
+			commandList->ResourceBarrier(1, &barrier);
+		}
+	});
+}
+
+void DX12Renderer::EndComputeSurfaceBones()
+{
+	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::EndComputeSurfaceBones");
+
+	DX12Rendering::Geometry::VertexBuffer* dstBuffer = GetCurrentDynamicVertexBuffer();
+
+	commandList->AddCommandAction([&dstBuffer](ID3D12GraphicsCommandList4* commandList)
+	{
+		D3D12_RESOURCE_BARRIER barrier;
+		if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_COMMON, &barrier))
+		{
+			commandList->ResourceBarrier(1, &barrier);
+		}
+	});
+}
+
+UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* srcBuffer, UINT inputOffset, UINT outputOffset, UINT vertBytes, DX12Rendering::Geometry::JointBuffer* joints, UINT jointOffset)
 {
 	struct 	ComputeConstants
 	{
 		UINT vertCount;
-		UINT vertOffset;
 		UINT vertPerThread;
-		UINT pad0;
+		UINT inputOffset;
+		UINT outputOffset;
 	};
 
 	constexpr UINT vertStride = sizeof(idDrawVert);
@@ -257,8 +293,7 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 	const UINT alignedVerts = DX12_ALIGN(vertIndexCount, 64);
 	const UINT vertsPerSection = (vertIndexCount <= 64) ? 1 : (alignedVerts >> 6);
 
-	UINT8 frameIndex = DX12Rendering::GetCurrentFrameIndex();
-	DX12Rendering::Geometry::VertexBuffer* dstBuffer = m_dynamicVertexBuffer[frameIndex];
+	DX12Rendering::Geometry::VertexBuffer* dstBuffer = GetCurrentDynamicVertexBuffer();
 
 	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::ComputeSurfaceBones");
@@ -266,7 +301,7 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 	ID3D12PipelineState* pipelineState = m_skinnedModelShader.Get();
 	assert(pipelineState != nullptr);
 
-	UINT objectIndex = m_computeRootSignature->RequestNewObjectIndex();
+	const UINT objectIndex = m_computeRootSignature->RequestNewObjectIndex();
 
 	// Create constants
 	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
@@ -276,10 +311,12 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		ComputeConstants constants = {};
 		constants.vertCount = vertIndexCount;
 		constants.vertPerThread = vertsPerSection;
-		constants.vertOffset = offset;
+		constants.inputOffset = inputOffset / vertStride;
+		constants.outputOffset = outputOffset / vertStride;
 
 		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(ComputeConstants));
 		resourceManager.FillConstantBuffer(buffer, &constants);
+
 		m_computeRootSignature->SetConstantBufferView(objectIndex, 2, buffer);
 	}
 
@@ -293,10 +330,10 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 	}
 
 	{
-		// Setup the input buffer
+		// Setup the output buffer
 		m_computeRootSignature->SetUnorderedAccessView(objectIndex, 3, dstBuffer);
 
-		// Setup the output buffer
+		// Setup the input buffer
 		m_computeRootSignature->SetShaderResourceView(objectIndex, 4, srcBuffer);
 	}
 
@@ -306,11 +343,11 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 	commandList->AddCommandAction([&dstBuffer](ID3D12GraphicsCommandList4* commandList)
 	{
 		{
-			D3D12_RESOURCE_BARRIER barrier;
+			/*D3D12_RESOURCE_BARRIER barrier;
 			if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_UNORDERED_ACCESS, &barrier))
 			{
 				commandList->ResourceBarrier(1, &barrier);
-			}
+			}*/
 		}
 
 		// TODO: Make sure we;ve setup the CBV heap correctly.
@@ -318,20 +355,18 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		commandList->Dispatch(64, 1, 1);
 
 		{
-			D3D12_RESOURCE_BARRIER barrier;
+			/*D3D12_RESOURCE_BARRIER barrier;
 			if (dstBuffer->TryTransition(D3D12_RESOURCE_STATE_COMMON, &barrier))
 			{
 				commandList->ResourceBarrier(1, &barrier);
-			}
+			}*/
 		}
 	});
 
-	return objectIndex;
+	return vertBytes;
 }
 
 bool DX12Renderer::CreateBackBuffer() {
-	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-
 	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex) {
 		DX12Rendering::RenderSurface& renderTarget = *DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1 + frameIndex);
 
@@ -477,16 +512,13 @@ void DX12Renderer::SetJointBuffer(DX12Rendering::Geometry::JointBuffer* buffer, 
 }
 
 void DX12Renderer::SignalNextFrame() {
-	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
 
-	auto commandList = commandManager->RequestNewCommandList();
+	commandManager->InsertExecutionBreak();;
 	
-	const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
+	const DX12Rendering::Commands::FenceValue fence = commandManager->InsertFenceSignal();
 	m_endFrameFence.commandList = fence.commandList;
 	m_endFrameFence.value = fence.value;
-	
-	commandList->Close();
 
 	commandManager->Execute();
 }
@@ -561,10 +593,24 @@ void DX12Renderer::BeginDraw() {
 		return;
 	}
 
+	// Set the depth bounds.
+	m_zMin = 0.0f;
+	m_zMax = 1.0f;
+
+	WaitForPreviousFrame();
+
+	// Evaluate if we need to update or  resolution
+	if (r_fullscreen.GetInteger() == 0 && // We transferred to fullscreen mode, this will be handled by R_SetNewMode
+		(static_cast<UINT>(r_windowWidth.GetInteger()) != this->m_width || static_cast<UINT>(r_windowHeight.GetInteger()) != this->m_height))
+	{
+		//TODO: add fullscreen update
+		this->SetScreenParams(r_windowWidth.GetInteger(), r_windowHeight.GetInteger(), false);
+	}
+
 	DX12Rendering::UpdateFrameIndex(m_swapChain.Get());
 	ResetDynamicPerFrameData();
 
-	WaitForPreviousFrame();
+	//WaitForPreviousFrame();
 
 #ifdef _DEBUG
 	DebugClearLights();
@@ -662,6 +708,7 @@ void DX12Renderer::EndDraw() {
 		m_raytracing->EndFrame();
 	}
 
+	DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
 	SignalNextFrame();
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
 }
@@ -718,6 +765,7 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 
 	m_rootSignature->SetRootDescriptorTable(m_objectIndex, &commandList);
 
+
 	return true;
 }
 
@@ -726,30 +774,32 @@ bool DX12Renderer::IsScissorWindowValid() {
 }
 
 void DX12Renderer::PresentBackbuffer() {
-	// Present the frame
-	WaitForPreviousFrame();
+	WaitForPreviousFrame(); // Wait for everything to catch up on the GPU.
 
 	UINT presentProperties = 0;
 	UINT syncInterval = 1;
-	
-	bool inWindow = false; // TODO: Implement
+
+	DXGI_PRESENT_PARAMETERS presentParams = {};
+	presentParams.DirtyRectsCount = 0;
+
+	const bool inWindow = m_fullScreen <= 0;
 	if (inWindow)
 	{
 		if (r_swapInterval.GetInteger() == 0)
 		{
-			presentProperties |= DXGI_PRESENT_ALLOW_TEARING;
-			syncInterval = 0;
+			//TODO: fix no vsync
+			//presentProperties |= DXGI_PRESENT_DO_NOT_WAIT;
+			syncInterval = 1;
 		}
 		else if (r_swapInterval.GetInteger() == 1)
 		{
-			syncInterval = 0;
+			syncInterval = 1;
 		}
 	}
 
-	DX12Rendering::ThrowIfFailed(m_swapChain->Present(syncInterval, presentProperties));
+	DX12Rendering::ThrowIfFailed(m_swapChain->Present1(syncInterval, presentProperties, &presentParams));
 
-	//SignalNextFrame();
-	//WaitForPreviousFrame(); It looks like it's the vertex buffer. We should have a render one between frames. Mark figure out why we need this here.Our buffers are being corupted way too soon.
+	SignalNextFrame();
 }
 
 void DX12Renderer::DrawModel(DX12Rendering::Commands::CommandList& commandList, DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride) {
@@ -761,13 +811,18 @@ void DX12Renderer::DrawModel(DX12Rendering::Commands::CommandList& commandList, 
 
 	const D3D12_INDEX_BUFFER_VIEW& indecies = *indexBuffer->GetView();
 
-	commandList.AddCommandAction([&indecies, &vertecies, &indexCount, &indexOffset, &vertexOffset, vertexStrideOverride](ID3D12GraphicsCommandList4* commandList)
+	FLOAT zMin = m_zMin;
+	FLOAT zMax = m_zMax;
+
+	commandList.AddCommandAction([&indecies, &vertecies, &indexCount, &indexOffset, &vertexOffset, vertexStrideOverride, zMin, zMax](ID3D12GraphicsCommandList4* commandList)
 	{
 		D3D12_VERTEX_BUFFER_VIEW vertCopy = vertecies;
 		if (vertexStrideOverride > 0)
 		{
-			vertCopy.StrideInBytes = vertexStrideOverride;
+			vertCopy.StrideInBytes = static_cast<UINT>(vertexStrideOverride);
 		}
+
+		commandList->OMSetDepthBounds(zMin, zMax);
 
 		commandList->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 		commandList->IASetVertexBuffers(0, 1, &vertCopy);
@@ -849,18 +904,12 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 {
 	ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-	/*if (m_width == width && m_height == height && m_fullScreen == fullscreen) {
-		return true;
-	}*/
-	// TODO: Resize buffers as needed.
+	const bool updateFullscreen = m_fullScreen != fullscreen;
 
 	m_width = width;
 	m_height = height;
 	m_fullScreen = fullscreen;
 	m_aspectRatio = static_cast<FLOAT>(width) / static_cast<FLOAT>(height);
-
-	// TODO: Find the correct window.
-	//m_swapChain->SetFullscreenState(true, NULL);
 
 	// TODO: HANDLE THIS WHILE DRAWING.
 	if (device && m_swapChain) {
@@ -870,6 +919,26 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::Commands::EndFrame();
 		}
 
+		UINT swapChainFlags = 0;
+
+		if (updateFullscreen)
+		{
+			if (m_fullScreen <= 0)
+			{
+				m_swapChain->SetFullscreenState(FALSE, NULL);
+			}
+			else
+			{
+				IDXGIOutput* pOutput;
+				if (DX12Rendering::Device::GetDeviceOutput(m_fullScreen - 1, &pOutput))
+				{
+					m_swapChain->SetFullscreenState(TRUE, pOutput);
+				}
+
+				//swapChainFlags |= DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
+			}
+		}
+		
 		// Resize Swapchain
 		{
 			// This will be updated during the swap chain.
@@ -877,7 +946,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Release();
 		}
 
-		if (FAILED(m_swapChain->ResizeBuffers(DX12_FRAME_COUNT, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, NULL))) {
+		if (FAILED(m_swapChain->ResizeBuffers(DX12_FRAME_COUNT, width, height, DXGI_FORMAT_R8G8B8A8_UNORM, swapChainFlags))) {
 			return false;
 		}
 
@@ -894,7 +963,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal)->Resize(width, height);
-			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ViewDepth)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor)->Resize(width, height);
 
@@ -907,7 +976,15 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 		}*/
 
 		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
-		textureManager->Initialize(m_width, m_height);
+
+		if (textureManager->IsInitialized())
+		{
+			textureManager->ResizeGlobalTextures(m_width, m_height);
+		}
+		else
+		{
+			textureManager->Initialize(m_width, m_height);
+		}
 
 		if (m_raytracing != nullptr) {
 			m_raytracing->Resize(m_width, m_height);
@@ -941,23 +1018,14 @@ void DX12Renderer::UpdateViewport(const FLOAT topLeftX, const FLOAT topLeftY, co
 	m_viewport.MaxDepth = maxDepth;
 }
 
-DX12Rendering::Commands::CommandList* DX12Renderer::UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth, DX12Rendering::Commands::CommandList* commandList) {
+void DX12Renderer::UpdateDepthBounds(const FLOAT minDepth, const FLOAT maxDepth) {
 	if (minDepth > maxDepth)
 	{
-		return commandList;
+		return;
 	}
 
-	if (m_isDrawing) {
-		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
-		{
-			commandList->OMSetDepthBounds(
-				minDepth < 0.0f ? 0.0f : minDepth, 
-				maxDepth == 0.0f ? 1.0f : maxDepth // If the max depth is 0, essentailly disable the depth test by setting it to 1.
-			);
-		});
-	}
-
-	return commandList;
+	m_zMin = minDepth < 0.0f ? 0.0f : minDepth;
+	m_zMax = maxDepth == 0.0f ? 1.0f : maxDepth; // If the max depth is 0, essentailly disable the depth test by setting it to 1.
 }
 
 void DX12Renderer::UpdateScissorRect(const LONG x, const LONG y, const LONG w, const LONG h) {
@@ -1050,6 +1118,41 @@ void DX12Renderer::DXR_RemoveBLAS(const dxHandle_t id)
 	// TODO
 }
 
+UINT DX12Renderer::DXR_UpdatePendingBLAS()
+{
+	DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+	DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "DX12Renderer::DXR_UpdatePendingBLAS");
+
+	D3D12_RESOURCE_BARRIER barrier;
+	DX12Rendering::Geometry::VertexBuffer* dynamicBuffer = GetCurrentDynamicVertexBuffer();
+
+	if (dynamicBuffer->TryTransition(
+		D3D12_RESOURCE_STATE_VERTEX_AND_CONSTANT_BUFFER | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, 
+		&barrier))
+	{
+		auto commandList = commandManager->RequestNewCommandList();
+
+		commandList->CommandResourceBarrier(1, &barrier);
+		commandList->AddPostExecuteBarrier();
+
+		commandList->Close();
+	}
+
+	const UINT result = m_raytracing->GetBLASManager()->Generate();
+
+	if (dynamicBuffer->TryTransition(D3D12_RESOURCE_STATE_COMMON, &barrier))
+	{
+		auto commandList = commandManager->RequestNewCommandList();
+
+		commandList->AddPreExecuteBarrier();
+		commandList->CommandResourceBarrier(1, &barrier);
+
+		commandList->Close();
+	}
+
+	return result;
+}
+
 DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments)
 {
 	if (!IsRaytracingEnabled()) {
@@ -1077,14 +1180,14 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 		const vertCacheHandle_t& vbHandle = geometry.vertexHandle;
 		const vertCacheHandle_t& ibHandle = geometry.indexHandle;
 
-		int vertOffsetBytes;
-		int indexOffsetBytes;
+		int vertOffsetBytes = 0;
+		int indexOffsetBytes = 0;
 
 		// Get vertex buffer
 		if (vertexCache.CacheIsStatic(vbHandle))
 		{
-			vertexBuffer = reinterpret_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
-			vertOffsetBytes = static_cast<int>(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+			vertexBuffer = static_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
+			vertOffsetBytes = (int)(vbHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
 
 			indexBuffer = &vertexCache.staticData.indexBuffer;
 			indexOffsetBytes = static_cast<int>(ibHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
@@ -1117,6 +1220,14 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 			//return;
 		};
 
+		// If dynamic use the precalculated bones
+		if (!isStatic)
+		{
+			vertexBuffer = GetCurrentDynamicVertexBuffer();
+			vertOffsetBytes = geometry.vertexOffset;
+		}
+
+
 		blas->AddGeometry(
 			vertexBuffer,
 			vertOffsetBytes,
@@ -1131,14 +1242,26 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 	return blas;
 }
 
+dxHandle_t DX12Renderer::DXR_GetBLASHandle(const idRenderModel* model)
+{
+	dxHandle_t handle = GetHandle(model);
+
+	return handle;
+}
+
+bool DX12Renderer::DXR_BLASExists(const dxHandle_t id)
+{
+	return m_raytracing->GetBLASManager()->GetBLAS(id) != nullptr;
+}
+
 DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelInBLAS(const idRenderModel* model)
 {
 	if (!IsRaytracingEnabled() || model == nullptr) {
 		return nullptr;
 	}
 
-	// For now we are only supporting objects that can receive shadows.
-	if (!model->ModelHasShadowCastingSurfaces())
+	// If an object can cast shadows or receive shadows, we will count it as having Opaque surfaces.
+	if (!model->ModelHasShadowCastingSurfaces() && !model->ModelHasInteractingSurfaces())
 	{
 		return nullptr;
 	}
@@ -1160,7 +1283,7 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 	std::vector<DX12Rendering::RaytracingGeometryArgument> geometry = {};
 	geometry.reserve(model->NumSurfaces());
 
-	for (UINT surfaceIndex = 0; surfaceIndex < model->NumSurfaces(); ++surfaceIndex)
+	for (UINT surfaceIndex = 0; surfaceIndex < static_cast<UINT>(model->NumSurfaces()); ++surfaceIndex)
 	{
 		const modelSurface_t& surf = *model->Surface(surfaceIndex);
 		if (surf.shader->Coverage() == MC_TRANSLUCENT)
@@ -1169,7 +1292,7 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 			continue;
 		}
 
-		if (!surf.shader->LightCastsShadows())
+		if (!surf.shader->ReceivesLighting() && !surf.shader->LightCastsShadows()) // We're assuming all light receiving objects cast shadows in this model.
 		{
 			// If we dont cast shadows, drop it.
 			continue;
@@ -1196,14 +1319,14 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 		if (!isStatic || surf.geometry->staticModelWithJoints != NULL)
 		{
 			// Code taken from tr_frontend_addmodels.cpp R_SetupDrawSurgJoints
-			idRenderModelStatic* model = surf.geometry->staticModelWithJoints;
-			assert(model->jointsInverted != NULL);
+			idRenderModelStatic* jointModel = surf.geometry->staticModelWithJoints;
+			assert(jointModel->jointsInverted != NULL);
 
-			if (!vertexCache.CacheIsCurrent(model->jointsInvertedBuffer)) {
+			if (!vertexCache.CacheIsCurrent(jointModel->jointsInvertedBuffer)) {
 				const int alignment = glConfig.uniformBufferOffsetAlignment;
-				model->jointsInvertedBuffer = vertexCache.AllocJoint(model->jointsInverted, ALIGN(model->numInvertedJoints * sizeof(idJointMat), alignment));
+				jointModel->jointsInvertedBuffer = vertexCache.AllocJoint(jointModel->jointsInverted, ALIGN(jointModel->numInvertedJoints * sizeof(idJointMat), alignment));
 			}
-			geo.jointsHandle = model->jointsInvertedBuffer;
+			geo.jointsHandle = jointModel->jointsInvertedBuffer;
 		}
 
 		geometry.emplace_back(geo);
@@ -1266,24 +1389,25 @@ bool DX12Renderer::DXR_CastRays()
 
 		DX12Rendering::RenderSurface* surface = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RaytraceShadowMask);
 
-		surface->CopySurfaceToTexture(lightTexture, textureManager, drawFence);
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(drawFence);
+
+		surface->CopySurfaceToTexture(lightTexture, textureManager);
 
 		// Copy the diffuse data
 		auto diffuseMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Diffuse);
 		DX12Rendering::TextureBuffer* diffuseTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE);
-		diffuseMap->CopySurfaceToTexture(diffuseTexture, textureManager, drawFence);
+		diffuseMap->CopySurfaceToTexture(diffuseTexture, textureManager);
 
 		// Copy the specular data
 		auto specularMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular);
 		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
-		auto fenceValue = specularMap->CopySurfaceToTexture(specularTexture, textureManager, drawFence);
+		specularMap->CopySurfaceToTexture(specularTexture, textureManager);
 
 		// Wait for all copies to complete.
-		/*auto directWait = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
-		directWait->AddPreFenceWait(fenceValue);
-		directWait->Close();*/
+		DX12Rendering::Commands::FenceValue fenceValue = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();
 
-		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->WaitOnFence(fenceValue);
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->InsertFenceWait(fenceValue);
 	}
 
 	return result;
@@ -1419,7 +1543,7 @@ void DX12Renderer::SetRenderTargets(const DX12Rendering::eRenderSurface* surface
 	assert(count <= MAX_RENDER_TARGETS);
 	
 	m_activeRenderTargets = count;
-	for (int index = 0; index < count; ++index)
+	for (UINT index = 0; index < count; ++index)
 	{
 		m_renderTargets[index] = DX12Rendering::GetSurface(surfaces[index]);
 	}

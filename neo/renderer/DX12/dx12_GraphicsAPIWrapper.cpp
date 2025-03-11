@@ -34,12 +34,7 @@ void GL_PolygonOffset(float scale, float bias) {
 }
 
 void GL_DepthBoundsTest(const float zmin, const float zmax) {
-	auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT);
-	
-	DX12Rendering::Commands::CommandManagerCycleBlock managerBlock(commandManager, "GL_DepthBoundsTest");
-	auto commandList = commandManager->RequestNewCommandList();
-
-	dxRenderer.UpdateDepthBounds(zmin, zmax, commandList)->Close();
+	dxRenderer.UpdateDepthBounds(zmin, zmax);
 }
 
 void GL_StartDepthPass(const idScreenRect& rect) {

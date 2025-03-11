@@ -119,7 +119,7 @@ void idCommonLocal::VPrintf( const char *fmt, va_list args ) {
 			sprintf( msg, "[%i]", t );
 		}
 	} 
-	timeLength = strlen( msg );
+	timeLength = static_cast<int>(strlen( msg ));
 	// don't overflow
 	if ( idStr::vsnPrintf( msg+timeLength, MAX_PRINT_MSG_SIZE-timeLength-1, fmt, args ) < 0 ) {
 		msg[sizeof(msg)-2] = '\n'; msg[sizeof(msg)-1] = '\0'; // avoid output garbling
@@ -209,7 +209,7 @@ void idCommonLocal::VPrintf( const char *fmt, va_list args ) {
 			Printf( "log file '%s' opened on %s\n", fileName, asctime( newtime ) );
 		}
 		if ( logFile ) {
-			logFile->Write( msg, strlen( msg ) );
+			logFile->Write( msg, static_cast<int>(strlen( msg )) );
 			logFile->Flush();	// ForceFlush doesn't help a whole lot
 		}
 	}

@@ -33,15 +33,15 @@ public:
 	void AddRayHitGroupProgram(const std::wstring& entryPoint, const std::vector<void*>& inputData);
 	void AddCallableShaderProgram(const std::wstring& entryPoint, const std::vector<void*>& inputData);
 
-	UINT32 GetGeneratorEntrySize() const { return m_maxGeneratorSize; }
-	UINT32 GetMissEntrySize() const { return m_maxMissSize; }
-	UINT32 GetHitGroupEntrySize() const { return m_maxHitSize; }
-	UINT32 GetMaxCallableShaderEntrySize() const { return m_maxShaderSize; }
+	UINT64 GetGeneratorEntrySize() const { return m_maxGeneratorSize; }
+	UINT64 GetMissEntrySize() const { return m_maxMissSize; }
+	UINT64 GetHitGroupEntrySize() const { return m_maxHitSize; }
+	UINT64 GetMaxCallableShaderEntrySize() const { return m_maxShaderSize; }
 
-	UINT32 GetGeneratorSectorSize() const { return m_maxGeneratorSize * m_generatorPrograms.size(); }
-	UINT32 GetMissSectorSize() const { return m_maxMissSize * m_missPrograms.size(); }
-	UINT32 GetHitGroupSectorSize() const { return m_maxHitSize * m_hitGroups.size(); }
-	UINT32 GetCallableShaderSectorSize() const { return m_maxShaderSize * m_callableShaderTable.size(); }
+	UINT64 GetGeneratorSectorSize() const { return m_maxGeneratorSize * m_generatorPrograms.size(); }
+	UINT64 GetMissSectorSize() const { return m_maxMissSize * m_missPrograms.size(); }
+	UINT64 GetHitGroupSectorSize() const { return m_maxHitSize * m_hitGroups.size(); }
+	UINT64 GetCallableShaderSectorSize() const { return m_maxShaderSize * m_callableShaderTable.size(); }
 
 	UINT32 CalculateTableSize();
 private:

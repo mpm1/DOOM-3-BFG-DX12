@@ -870,7 +870,7 @@ bool idInventory::Give( idPlayer *owner, const idDict &spawnArgs, const char *st
 				len = end - pos;
 				end++;
 			} else {
-				len = strlen( pos );
+				len = static_cast<int>(strlen( pos ));
 			}
 
 			idStr weaponName( pos, 0, len );
@@ -1100,7 +1100,7 @@ void idInventory::InitRechargeAmmo(idPlayer *owner) {
 	const idKeyValue *kv = owner->spawnArgs.MatchPrefix( "ammorecharge_" );
 	while( kv ) {
 		idStr key = kv->GetKey();
-		idStr ammoname = key.Right(key.Length()- strlen("ammorecharge_"));
+		idStr ammoname = key.Right(key.Length()- static_cast<int>(strlen("ammorecharge_")));
 		int ammoType = AmmoIndexForAmmoClass(ammoname);
 		rechargeAmmo[ammoType].ammo = (atof(kv->GetValue().c_str())*1000);
 		strcpy(rechargeAmmo[ammoType].ammoName, ammoname);

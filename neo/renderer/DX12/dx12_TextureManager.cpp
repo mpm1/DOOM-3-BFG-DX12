@@ -21,6 +21,7 @@ namespace DX12Rendering
 	}
 
 	TextureManager::TextureManager() :
+		m_isInitialized(false),
 		m_textureUploadHeap(3840*2160*4*16, D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap")
 	{
 		m_textures.reserve(BINDLESS_TEXTURE_COUNT);
@@ -44,73 +45,86 @@ namespace DX12Rendering
 
 	TextureBuffer* GetGlobalTexture(eGlobalTexture textureId);
 
+	const char* GetGlobalTextureDetails(eGlobalTexture textureId, D3D12_RESOURCE_DESC& textureDesc)
+	{
+		// Obtain the name and format of the desired write to texture.
+		char* name;
+
+		switch (textureId)
+		{
+		case eGlobalTexture::DEPTH_TEXTURE:
+			name = "depth_texture";
+			textureDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
+			break;
+
+		case eGlobalTexture::POSITION:
+			name = "position";
+			textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
+			break;
+
+		case eGlobalTexture::WORLD_NORMALS:
+			name = "world_normals";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
+		case eGlobalTexture::ALBEDO:
+			name = "albedo";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
+		case eGlobalTexture::SPECULAR_COLOR:
+			name = "specular_color";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
+		case eGlobalTexture::RAYTRACED_DIFFUSE:
+			name = "raytraced_diffuse";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
+		case eGlobalTexture::RAYTRACED_SPECULAR:
+			name = "raytraced_specular";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
+		case eGlobalTexture::WORLD_FLAT_NORMALS:
+			name = "world_flat_normals";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
+		case eGlobalTexture::RAYTRACED_SHADOWMAP:
+			name = "raytraced_shadowmap";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UINT;
+			break;
+
+		default:
+			name = "default_global_texture";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+		}
+
+		return name;
+	}
+
 	void TextureManager::Initialize(uint screenWidth, uint screenHeight) {	
 		// Create the basic entries for the global textures
 		for (int i = 0; i < eGlobalTexture::TEXTURE_COUNT; ++i)
 		{
-			//TODO: Remove old texture
+			TextureBuffer* globalTexture = GetGlobalTexture(static_cast<eGlobalTexture>(i));
+			if (globalTexture != nullptr)
+			{
+				delete(globalTexture);
+			}
 
 			D3D12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, screenWidth, screenHeight, 1, 1);
 			UINT shaderComponentAlignment = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
-			char* name;
+			const char* name = GetGlobalTextureDetails(static_cast<eGlobalTexture>(i), textureDesc);
 
-			switch (i)
-			{
-			case eGlobalTexture::DEPTH_TEXTURE:
-				name = "depth_texture";
-				textureDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
-				break;
-
-			case eGlobalTexture::VIEW_DEPTH:
-				name = "view_depth";
-				textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
-				break;
-
-			case eGlobalTexture::WORLD_NORMALS:
-				name = "world_normals";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				break;
-
-			case eGlobalTexture::ALBEDO:
-				name = "albedo";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				break;
-
-			case eGlobalTexture::SPECULAR_COLOR:
-				name = "specular_color";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				break;
-
-			case eGlobalTexture::RAYTRACED_DIFFUSE:
-				name = "raytraced_diffuse";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				break;
-
-			case eGlobalTexture::RAYTRACED_SPECULAR:
-				name = "raytraced_specular";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				break;
-
-			case eGlobalTexture::WORLD_FLAT_NORMALS:
-				name = "world_flat_normals";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				break;
-
-			case eGlobalTexture::RAYTRACED_SHADOWMAP:
-				name = "raytraced_shadowmap";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UINT;
-				break;
-
-			default:
-				name = "default_global_texture";
-				textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				break;
-			}
-
-			TextureBuffer* globalTexture = AllocTextureBuffer(
-				&idStr(name), textureDesc, 
+			globalTexture = AllocTextureBuffer(
+				&idStr(name), textureDesc,
 				shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
 				m_textures.size() <= i ? -1 : i);
+			
 		}
 
 		// Fill in all textures
@@ -120,6 +134,32 @@ namespace DX12Rendering
 		{
 			CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, i);
 			SetTextureToDefault(textureHandle);
+		}
+
+		m_isInitialized = true;
+	}
+
+	void TextureManager::ResizeGlobalTextures(uint screenWidth, uint screenHeight)
+	{
+		if (!m_isInitialized)
+		{
+			Initialize(screenWidth, screenHeight);
+			return;
+		}
+
+		for (int i = 0; i < eGlobalTexture::TEXTURE_COUNT; ++i)
+		{
+			GetGlobalTexture(static_cast<eGlobalTexture>(i))->Release();
+
+			D3D12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, screenWidth, screenHeight, 1, 1);
+			UINT shaderComponentAlignment = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+			const char* name = GetGlobalTextureDetails(static_cast<eGlobalTexture>(i), textureDesc);
+
+			TextureBuffer* globalTexture = AllocTextureBuffer(
+				&idStr(name), textureDesc,
+				shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
+				m_textures.size() <= i ? -1 : i);
+
 		}
 	}
 
@@ -212,11 +252,9 @@ namespace DX12Rendering
 		commandList->Close();
 	}
 
-	const DX12Rendering::Commands::FenceValue TextureManager::EndTextureWrite(TextureBuffer* buffer) {
+	bool TextureManager::EndTextureWrite(TextureBuffer* buffer) {
 		auto copyCommands = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
 		auto commandList = copyCommands->RequestNewCommandList();
-
-		const DX12Rendering::Commands::FenceValue fence = commandList->AddPostFenceSignal();
 
 		DX12Rendering::CaptureEventEnd(commandList);
 		commandList->Close();
@@ -226,7 +264,7 @@ namespace DX12Rendering
 		// Clean out the temp images
 		m_tempImages.clear();
 
-		return fence;
+		return true;
 	}
 
 	byte* TextureManager::CreateTemporaryImageStorage(const UINT imageSize)

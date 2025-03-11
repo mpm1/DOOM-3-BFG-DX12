@@ -362,6 +362,11 @@ struct viewEntity_t {
 	// R_AddSingleModel will build a chain of parameters here to setup shadow volumes
 	staticShadowVolumeParms_t *		staticShadowVolumes;
 	dynamicShadowVolumeParms_t *	dynamicShadowVolumes;
+
+	// Raytracing resources
+	int entityIndex;
+	dxHandle_t blasIndex; // When creating BLAS entries for static objects, this value will be greater than 0.
+	idRenderMatrix modelRenderMatrix;
 };
 
 
@@ -737,6 +742,7 @@ public:
 	virtual const emptyCommand_t *	SwapCommandBuffers_FinishCommandBuffers();
 
 	virtual void			RenderCommandBuffers( const emptyCommand_t * commandBuffers );
+	virtual void			PresentFrame();
 	virtual void			TakeScreenshot( int width, int height, const char *fileName, int downSample, renderView_t *ref );
 	virtual void			CropRenderSize( int width, int height );
 	virtual void			CaptureRenderToImage( const char *imageName, bool clearColorAfterCopy = false );

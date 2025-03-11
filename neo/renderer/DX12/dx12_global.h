@@ -59,7 +59,8 @@ namespace DX12Rendering {
 		UAV_DiffuseMap,
 		UAV_SpecularMap,
 		SRV_TLAS,
-		CBV_CameraProperties
+		CBV_CameraProperties,
+		CBV_LightProperties
 	};
 
 	namespace Commands

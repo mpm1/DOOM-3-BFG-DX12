@@ -152,7 +152,7 @@ LONG WINAPI MainWndProc( HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam ) {
 				RECT rect;
 				if (::GetClientRect(win32.hWnd, &rect)) {
 
-					if ( rect.right > rect.left && rect.bottom > rect.top ) {
+					if (r_fullscreen.GetInteger() == 0 && rect.right > rect.left && rect.bottom > rect.top ) {
 						glConfig.nativeScreenWidth = rect.right - rect.left;
 						glConfig.nativeScreenHeight = rect.bottom - rect.top;
 

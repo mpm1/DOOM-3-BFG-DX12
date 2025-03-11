@@ -30,20 +30,6 @@ If you have questions concerning this license or the applicable additional terms
 
 #define GROUP_THREADS 64
 
-SamplerState MeshTextureSampler
-{
-    Filter = MIN_MAG_MIP_LINEAR;
-    AddressU = Wrap;
-    AddressV = Wrap;
-};
-
-SamplerState GuiTextureSampler 
-{
-	Filter = MIN_MAG_MIP_LINEAR;
-    AddressU = Wrap;
-    AddressV = Wrap;
-};
-
 struct SceneConstants {
 	float4 rpScreenCorrectionFactor;
 	float4 rpWindowCoord;
@@ -119,6 +105,11 @@ struct SceneConstants {
 	float4 rpOverbright;
 	float4 rpEnableSkinning;
 	float4 rpAlphaTest;
+
+	float4 rpPrevMVPmatrixX;
+	float4 rpPrevMVPmatrixY;
+	float4 rpPrevMVPmatrixZ;
+	float4 rpPrevMVPmatrixW;
 };
 ConstantBuffer<SceneConstants> sceneConstants : register(b0, space0);
 
