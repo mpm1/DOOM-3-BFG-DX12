@@ -325,6 +325,8 @@ namespace DX12Rendering {
 		auto commandManager = DX12Rendering::Commands::GetCommandManager(Commands::COMPUTE);
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RayTracing::CastShadowRays");
 
+		commandManager->InsertFenceWait(DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->GetLastFenceValue());
+
 		//Update the resources
 		m_constantBuffer.positionTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::POSITION)->GetTextureIndex();
 		m_constantBuffer.flatNormalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS)->GetTextureIndex();

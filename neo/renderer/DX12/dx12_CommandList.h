@@ -82,6 +82,11 @@ namespace DX12Rendering
 				commandList(inCommandList),
 				value(inValue)
 			{}
+
+			static FenceValue Empty(DX12Rendering::Commands::dx12_commandList_t cmdList = DX12Rendering::Commands::dx12_commandList_t::DIRECT)
+			{
+				return FenceValue(cmdList, 0);
+			}
 		};
 
 		class Fence
@@ -170,6 +175,11 @@ namespace DX12Rendering
 
 				UINT64 completedValue = m_fence->GetCompletedValue();
 				return completedValue >= checkValue.value;
+			}
+
+			const FenceValue GetLastFenceValue()
+			{
+				return m_lastSignaledValue;
 			}
 
 			void GPUWait(ID3D12CommandQueue* commandQueue, const FenceValue checkValue)
@@ -265,6 +275,7 @@ public:
 	void WaitOnFence(const DX12Rendering::Commands::FenceValue value) { return m_fence.Wait(value); }
 	bool IsFenceCompleted(const DX12Rendering::Commands::FenceValue value) { return m_fence.IsFenceCompleted(value); }
 	void InsertFenceWait(const DX12Rendering::Commands::FenceValue value);
+	const FenceValue GetLastFenceValue();
 	const DX12Rendering::Commands::FenceValue InsertFenceSignal();
 
 	/// <summary>

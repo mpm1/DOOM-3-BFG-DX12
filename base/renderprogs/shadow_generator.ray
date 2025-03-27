@@ -233,6 +233,12 @@ void RayGen() {
 				rayStartDistance, diffuse, specular,
 				resultDiffuse, resultSpecular);
 		}
+
+		if((sceneLight.flags & LIGHT_FLAG_FOG_LIGHT))
+		{
+			// TODO: Light Fog
+			// Should we send this data to a separate texture, or do all fodg lights at once?
+		}
 	//}
 
 	// Send to the output buffers

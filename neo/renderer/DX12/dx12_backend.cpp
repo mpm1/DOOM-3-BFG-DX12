@@ -26,6 +26,21 @@ struct GBufferSurfaceConstants
 	UINT pad;
 };
 
+class RenderPass
+{
+public:
+	/// <summary>
+	/// Passes a single surface into a function for surface gathering.
+	/// </summary>
+	virtual void Gather(const drawSurf_t* ds, const int index) = 0;
+
+	/// <summary>
+	/// Renders the scene and returns a fence value for when the work is complete.
+	/// </summary>
+	/// <returns>A fence representing the end of the pass.</returns>
+	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) = 0;
+};
+
 // Loads a texture into memory and provides the bindless index to that texture
 UINT LoadBindlessTexture(idImage* image)
 {
@@ -70,7 +85,49 @@ idVertexBuffer* GetVertexBuffer(const vertCacheHandle_t vbHandle)
 
 	return vertexBuffer;
 }
-	
+
+/// <summary>
+/// Passes a single surface into a function for surface gathering.
+/// </summary>
+typedef std::function<void(const drawSurf_t*, const int)> GatherFunction;
+
+/// <summary>
+/// Calls all gather functions on each surface.
+/// </summary>
+/// <param name="viewDef"></param>
+/// <param name="gatherFunctions"></param>
+/// <param name="gatherFunctionCount"></param>
+void GatherSurfacesPerStage(const viewDef_t* viewDef, RenderPass** renderPasses, const int renderPassCount)
+{
+	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
+	const int numDrawSurfs = viewDef->numDrawSurfs;
+
+	for (int i = 0; i < numDrawSurfs; i++) {
+		const drawSurf_t* ds = viewDef->drawSurfs[i];
+
+		for (int passIndex = 0; passIndex < renderPassCount; ++passIndex)
+		{
+			renderPasses[passIndex]->Gather(ds, passIndex);
+		}
+	}
+}
+
+class PurgeMaterialPass : public RenderPass
+{
+public:
+	// Inherited via RenderPass
+	virtual void Gather(const drawSurf_t* ds, const int index) override
+	{
+		if (ds->material != NULL) {
+			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
+		}
+	}
+
+	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
+	{
+		return DX12Rendering::Commands::FenceValue::Empty();
+	}
+};
 
 bool R_GetModeListForDisplay(const int displayNum, idList<vidMode_t>& modeList) 
 {
@@ -767,125 +824,6 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 #ifdef USE_CORE_PROFILE
 	SetFragmentParm(RENDERPARM_ALPHA_TEST, vec4_zero.ToFloatPtr());
 #endif
-}
-
-/*
-=====================
-RB_FillDepthBufferFast
-
-Optimized fast path code.
-
-If there are subview surfaces, they must be guarded in the depth buffer to allow
-the mirror / subview to show through underneath the current view rendering.
-
-Surfaces with perforated shaders need the full shader setup done, but should be
-drawn after the opaque surfaces.
-
-The bulk of the surfaces should be simple opaque geometry that can be drawn very rapidly.
-
-If there are no subview surfaces, we could clear to black and use fast-Z rendering
-on the 360.
-=====================
-*/
-static const DX12Rendering::Commands::FenceValue RB_FillDepthBufferFast(drawSurf_t** drawSurfs, int numDrawSurfs) {
-	// TODO: Run this on it's own commandList so we can fill the rest while running.
-	if (numDrawSurfs == 0) {
-		return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::DIRECT, 0);
-	}
-
-	// if we are just doing 2D rendering, no need to fill the depth buffer
-	if (backEnd.viewDef->viewEntitys == NULL) {
-		return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::DIRECT, 0);
-	}
-
-	renderLog.OpenMainBlock(MRB_FILL_DEPTH_BUFFER);
-	renderLog.OpenBlock("RB_FillDepthBufferFast");
-
-	DX12Rendering::RenderPassBlock renderPassBlock("DepthPass", DX12Rendering::Commands::DIRECT);
-
-	GL_StartDepthPass(backEnd.viewDef->scissor);
-
-	// force MVP change on first surface
-	backEnd.currentSpace = NULL;
-
-	// draw all the subview surfaces, which will already be at the start of the sorted list,
-	// with the general purpose path
-	GL_State(GLS_DEFAULT);
-
-	int	surfNum;
-	for (surfNum = 0; surfNum < numDrawSurfs; surfNum++) {
-		if (drawSurfs[surfNum]->material->GetSort() != SS_SUBVIEW) {
-			break;
-		}
-		RB_FillDepthBufferGeneric(&drawSurfs[surfNum], 1);
-	}
-
-	const drawSurf_t** perforatedSurfaces = (const drawSurf_t**)_alloca(numDrawSurfs * sizeof(drawSurf_t*));
-	int numPerforatedSurfaces = 0;
-
-	// draw all the opaque surfaces and build up a list of perforated surfaces that
-	// we will defer drawing until all opaque surfaces are done
-	GL_State(GLS_DEFAULT);
-
-	// continue checking past the subview surfaces
-	for (; surfNum < numDrawSurfs; surfNum++) {
-		const drawSurf_t* surf = drawSurfs[surfNum];
-		const idMaterial* shader = surf->material;
-
-		// translucent surfaces don't put anything in the depth buffer
-		if (shader->Coverage() == MC_TRANSLUCENT) {
-			continue;
-		}
-		if (shader->Coverage() == MC_PERFORATED) {
-			// save for later drawing
-			perforatedSurfaces[numPerforatedSurfaces] = surf;
-			numPerforatedSurfaces++;
-			continue;
-		}
-
-		// set polygon offset?
-
-		// set mvp matrix
-		if (surf->space != backEnd.currentSpace) {
-			RB_SetMVP(surf->space->mvp);
-			backEnd.currentSpace = surf->space;
-		}
-
-		renderLog.OpenBlock(shader->GetName());
-
-		if (surf->jointCache) {
-			renderProgManager.BindShader_DepthSkinned();
-		}
-		else {
-			renderProgManager.BindShader_Depth();
-		}
-
-		// must render with less-equal for Z-Cull to work properly
-		assert((GL_GetCurrentState() & GLS_DEPTHFUNC_BITS) == GLS_DEPTHFUNC_LESS);
-
-		// draw it solid
-		RB_DrawElementsWithCounters(surf);
-
-		renderLog.CloseBlock();
-	}
-
-	// draw all perforated surfaces with the general code path
-	if (numPerforatedSurfaces > 0) {
-		RB_FillDepthBufferGeneric(perforatedSurfaces, numPerforatedSurfaces);
-	}
-
-	// Allow platform specific data to be collected after the depth pass.
-	GL_FinishDepthPass();
-
-	auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
-	const DX12Rendering::Commands::FenceValue resultFence = commandList->AddPostFenceSignal();
-
-	commandList->Close();
-
-	renderLog.CloseBlock();
-	renderLog.CloseMainBlock();
-
-	return resultFence;
 }
 
 /*
@@ -1862,261 +1800,6 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 /*
 ==============================================================================================
 
-DRAW GBUFFER
-
-==============================================================================================
-*/
-/*
-==================
-RB_DrawGBuffer
-==================
-*/
-static const DX12Rendering::Commands::FenceValue RB_DrawGBuffer(drawSurf_t** drawSurfs, int numDrawSurfs) {
-	constexpr UINT surfaceCount = 5;
-	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
-		DX12Rendering::eRenderSurface::FlatNormal,
-		DX12Rendering::eRenderSurface::Position,
-		DX12Rendering::eRenderSurface::Normal,
-		DX12Rendering::eRenderSurface::Albedo,
-		DX12Rendering::eRenderSurface::SpecularColor
-	};
-
-	DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
-
-	//First fill in the sub view surfaces
-	int surfNum;
-	for (surfNum = 0; surfNum < numDrawSurfs; surfNum++)
-	{
-		if (drawSurfs[surfNum]->material->GetSort() != SS_SUBVIEW) {
-			break;
-		}
-		// TODO: Handle Sub Views
-	}
-
-//TODO: Clear the buffers
-//TODO: Implement perforated serfaces
-//TODO: Move to it's own buffer to render and cast rays'
-
-
-	GBufferSurfaceConstants surfaceConstants = {};
-	// continue checking past the subview surfaces
-	for (; surfNum < numDrawSurfs; surfNum++) {
-		const drawSurf_t* surf = drawSurfs[surfNum];
-		const idMaterial* shader = surf->material;
-
-		if (!shader->ReceivesLighting())
-		{
-			// The GBuffer is only used to calculate light interactions. No point in adding these objects
-			continue;
-		}
-
-		// translucent surfaces should not write to the depth or normal maps
-		if (shader->Coverage() == MC_TRANSLUCENT)
-		{
-			continue;
-
-			// Removing all transparent surfaces as they will be handled in the forward renderer.
-
-			//if (shader->GetSort() != SS_DECAL)
-			//{
-			//	// Only decals can be added onto objects.
-			//	continue;
-			//}
-
-			////Materials are additive blended to their background.
-			//GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ONE | GLS_DEPTHMASK | GLS_DEPTHFUNC_LESS | GLS_STENCIL_FUNC_ALWAYS);
-
-			//if (surf->jointCache) {
-			//	renderProgManager.BindShader_GBufferTransparentSkinned();
-			//}
-			//else {
-			//	renderProgManager.BindShader_GBufferTransparent();
-			//}
-		}
-		else
-		{
-			// draw all the opaque surfaces and build up a list of perforated surfaces that
-			// we will defer drawing until all opaque surfaces are done
-			GL_State(GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL | GLS_STENCIL_FUNC_ALWAYS);
-
-			if (surf->jointCache) {
-				renderProgManager.BindShader_GBufferSkinned();
-			}
-			else {
-				renderProgManager.BindShader_GBuffer();
-			}
-		}
-
-
-		// set mvp matrix
-		if (surf->space != backEnd.currentSpace) {
-			RB_SetMVP(surf->space->mvp);
-			backEnd.currentSpace = surf->space;
-
-			// set the Normal Matrix (technically it's the transpose of the model matrix)
-			const float* modelMatrix = surf->space->modelMatrix;
-			idMat4 normalMatrix(
-				modelMatrix[0], modelMatrix[1], modelMatrix[2], modelMatrix[3],
-				modelMatrix[4], modelMatrix[5], modelMatrix[6], modelMatrix[7],
-				modelMatrix[8], modelMatrix[9], modelMatrix[10], modelMatrix[11],
-				modelMatrix[12], modelMatrix[13], modelMatrix[14], modelMatrix[15]
-			); // TODO: Precalculate value
-			//normalMatrix = normalMatrix.Transpose();
-			normalMatrix = normalMatrix.Inverse();
-			float normalMatrixTranspose[16];
-			R_MatrixTranspose(normalMatrix.ToFloatPtr(), normalMatrixTranspose);
-			//TODO: Find the appropriate matrix
-			SetVertexParms(RENDERPARM_NORMALMATRIX_X, normalMatrix.ToFloatPtr(), 4);
-
-			// set model Matrix
-			float modelMatrixTranspose[16];
-			R_MatrixTranspose(surf->space->modelMatrix, modelMatrixTranspose);
-			SetVertexParms(RENDERPARM_MODELMATRIX_X, modelMatrixTranspose, 4);
-
-			// Set ModelView Matrix
-			float modelViewMatrixTranspose[16];
-			R_MatrixTranspose(surf->space->modelViewMatrix, modelViewMatrixTranspose);
-			SetVertexParms(RENDERPARM_MODELVIEWMATRIX_X, modelViewMatrixTranspose, 4);
-		}
-
-		const idMaterial* surfaceShader = surf->material;
-		if (surfaceShader->GetFastPathBumpImage() && !r_skipInteractionFastPath.GetBool()) {
-			// texture 0 will be the per-surface bump map
-			surfaceConstants.bumpMapIndex = LoadBindlessTexture(surfaceShader->GetFastPathBumpImage());
-
-			// texture 3 is the per-surface diffuse map
-			surfaceConstants.albedoIndex = LoadBindlessTexture(surfaceShader->GetFastPathDiffuseImage());
-
-			// texture 4 is the per-surface specular map
-			surfaceConstants.specularIndex = LoadBindlessTexture(surfaceShader->GetFastPathSpecularImage());
-
-			const idVec4 sMatrix(1, 0, 0, 0);
-			const idVec4 tMatrix(0, 1, 0, 0);
-
-			SetVertexParm(RENDERPARM_BUMPMATRIX_S, sMatrix.ToFloatPtr());
-			SetVertexParm(RENDERPARM_BUMPMATRIX_T, tMatrix.ToFloatPtr());
-
-			SetVertexParm(RENDERPARM_DIFFUSEMATRIX_S, sMatrix.ToFloatPtr());
-			SetVertexParm(RENDERPARM_DIFFUSEMATRIX_T, tMatrix.ToFloatPtr());
-
-			SetVertexParm(RENDERPARM_SPECULARMATRIX_S, sMatrix.ToFloatPtr());
-			SetVertexParm(RENDERPARM_SPECULARMATRIX_T, tMatrix.ToFloatPtr());
-		}
-		else
-		{
-			const float* surfaceRegs = surf->shaderRegisters;
-			bool bumpMapFound = false;
-			bool diffuseMapFound = false;
-			bool specularMapFound = false;
-
-			for (int surfaceStageNum = 0; surfaceStageNum < surfaceShader->GetNumStages(); surfaceStageNum++) {
-				const shaderStage_t* surfaceStage = surfaceShader->GetStage(surfaceStageNum);
-
-				switch (surfaceStage->lighting) {
-				case SL_COVERAGE: {
-					// ignore any coverage stages since they should only be used for the depth fill pass
-					// for diffuse stages that use alpha test.
-					break;
-				}
-				case SL_AMBIENT: {
-					// ignore ambient stages while drawing interactions
-					break;
-				}
-				case SL_BUMP: {
-					// ignore stage that fails the condition
-					if (!surfaceRegs[surfaceStage->conditionRegister]) {
-						break;
-					}
-
-					if (bumpMapFound)
-					{
-						// Already loaded the texture, draw the surface.
-						RB_DrawElementsWithCounters(surf);
-					}
-					bumpMapFound = true;
-
-					// texture 0 will be the per-surface bump map
-					surfaceConstants.bumpMapIndex = LoadBindlessTexture(surfaceStage->texture.image);
-
-					idVec4 bumpMatrix[2];
-					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
-						bumpMatrix, NULL);
-
-					// bump matrix
-					SetVertexParm(RENDERPARM_BUMPMATRIX_S, bumpMatrix[0].ToFloatPtr());
-					SetVertexParm(RENDERPARM_BUMPMATRIX_T, bumpMatrix[1].ToFloatPtr());
-
-					break;
-				}
-				case SL_DIFFUSE: {
-					// ignore stage that fails the condition
-					if (!surfaceRegs[surfaceStage->conditionRegister]) {
-						break;
-					}
-
-					if (diffuseMapFound)
-					{
-						// Already loaded the texture, draw the surface.
-						RB_DrawElementsWithCounters(surf);
-					}
-					diffuseMapFound = true;
-
-					// texture 3 will be the diffuse map
-					surfaceConstants.albedoIndex = LoadBindlessTexture(surfaceStage->texture.image);
-
-					idVec4 matrix[2];
-					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
-						matrix, NULL);
-
-					// bump matrix
-					SetVertexParm(RENDERPARM_DIFFUSEMATRIX_S, matrix[0].ToFloatPtr());
-					SetVertexParm(RENDERPARM_DIFFUSEMATRIX_T, matrix[1].ToFloatPtr());
-
-					break;
-				}
-				case SL_SPECULAR: {
-					// ignore stage that fails the condition
-					if (!surfaceRegs[surfaceStage->conditionRegister]) {
-						break;
-					}
-
-					if (specularMapFound)
-					{
-						// Already loaded the texture, draw the surface.
-						RB_DrawElementsWithCounters(surf);
-					}
-					specularMapFound = true;
-
-					// texture 3 will be the diffuse map
-					surfaceConstants.specularIndex = LoadBindlessTexture(surfaceStage->texture.image);
-
-					idVec4 matrix[2];
-					RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
-						matrix, NULL);
-
-					// bump matrix
-					SetVertexParm(RENDERPARM_SPECULARMATRIX_S, matrix[0].ToFloatPtr());
-					SetVertexParm(RENDERPARM_SPECULARMATRIX_T, matrix[1].ToFloatPtr());
-
-					break;
-				}
-				}
-			}
-		}
-
-		// draw it solid
-		RB_DrawElementsWithCounters(surf, &surfaceConstants, sizeof(GBufferSurfaceConstants));
-	}
-
-	DX12Rendering::Commands::CommandManager* commandManager = renderPassBlock.GetCommandManager();
-	const DX12Rendering::Commands::FenceValue fence = commandManager->InsertFenceSignal();
-
-	return fence;
-}
-
-/*
-==============================================================================================
-
 DRAW INTERACTIONS
 
 ==============================================================================================
@@ -2968,169 +2651,600 @@ void RB_DrawCombinedGBufferResults()
 	}
 }
 
-void RB_CalculateDynamicObjects(const viewDef_t* viewDef, const bool raytracedEnabled)
+class DynamicSurfacesPass : public RenderPass
 {
-	const int numDrawSurfs = viewDef->numDrawSurfs;
-
-	// Update all surfaces and bones as needed
+public:
+	DynamicSurfacesPass(const int size)
 	{
-		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
-		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_DrawViewInternal::ComputeBones");
-
-		dxRenderer.StartComputeSurfaceBones();
-		commandManager->Execute();
-
-		// Entity definitions are gouped together. This way we can put them into a single blas
-		const viewEntity_t* lastEntity = nullptr;
-		dxHandle_t blasHandle = 1;
-		std::vector<DX12Rendering::RaytracingGeometryArgument> rtGeometry;
-		rtGeometry.reserve(16);
-
-		UINT outVertexBufferOffset = 0;
-
-		for (int i = 0; i < numDrawSurfs; i++) {
-			const drawSurf_t* ds = viewDef->drawSurfs[i];
-
-			if (ds->space != lastEntity)
-			{
-				if (rtGeometry.size() > 0)
-				{
-					// Add the BLAS and TLAS
-					dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
-
-					UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
-					{
-						// Calculate the instance mask
-						if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: find a better way to mark these as shadow casting.
-						{
-							instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
-						}
-					}
-
-					dxRenderer.DXR_AddBLASToTLAS(
-						lastEntity->entityIndex,
-						blasHandle,
-						lastEntity->modelRenderMatrix[0], // TODO: Find thre right one
-						DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
-						static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
-					);
-
-					++blasHandle;
-					rtGeometry.clear();
-				}
-
-				lastEntity = ds->space;
-			}
-
-			if (ds->jointCache)
-			{
-
-				// get vertex buffer
-				idVertexBuffer* const vertexBuffer = GetVertexBuffer(ds->ambientCache);
-				const int vertOffset = GetVertexBufferOffset(ds->ambientCache);
-				const UINT vertSize = GetVertexBufferSize(ds->ambientCache);
-				const UINT vertIndexCount = vertSize / sizeof(idDrawVert);
-
-				if (vertexBuffer == nullptr)
-				{
-					// An error occured when grabbing the vertex buffer data.
-					return;
-				}
-
-				DX12Rendering::Geometry::VertexBuffer* const apiVertexBuffer = static_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject());
-
-				// get joint buffer
-				idJointBuffer jointBuffer;
-				if (!vertexCache.GetJointBuffer(ds->jointCache, &jointBuffer)) {
-					idLib::Warning("BackEnd ComputeSurfaceBones, jointBuffer == NULL");
-					return;
-				}
-
-				DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
-
-				// Update the vert structure.
-				const UINT bufferOffset = dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, outVertexBufferOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
-
-				if (raytracedEnabled && ds->material && ds->material->SurfaceCastsShadow() /* Only allow shadow casting surfaces */)
-				{
-					const dxHandle_t handle = i;
-					const UINT entityIndex = i << 16;
-
-					DX12Rendering::RaytracingGeometryArgument dxArguments = {};
-					dxArguments.vertexHandle = ds->ambientCache;
-					dxArguments.vertCounts = vertIndexCount;
-					dxArguments.vertexOffset = outVertexBufferOffset;
-
-					dxArguments.indexHandle = ds->indexCache;
-					dxArguments.indexCounts = ds->numIndexes;
-
-					dxArguments.jointsHandle = ds->jointCache;
-
-					// Add to the list of entities
-					rtGeometry.push_back(dxArguments);
-				}
-
-				outVertexBufferOffset += bufferOffset;
-			}
-		}
-
-		// If there are any dynamic BLAS objects being created. Finish them here.
-		if (rtGeometry.size() > 0)
-		{
-			// Add the BLAS and TLAS
-			dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
-
-			UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
-			{
-				// Calculate the instance mask
-				if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: fix this
-				{
-					instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
-				}
-			}
-
-			dxRenderer.DXR_AddBLASToTLAS(
-				lastEntity->entityIndex,
-				blasHandle,
-				lastEntity->modelRenderMatrix[0],
-				DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
-				static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
-			);
-		}
-
-		commandManager->Execute();
-		dxRenderer.EndComputeSurfaceBones();
+		m_surfaces.reserve(size);
 	}
 
-	// Update/Create the BLASa and create a list for the TLAS structure 
-	UINT blasResult = 0;
-	if (raytracedEnabled) {
-		viewEntity_t* viewEntity = viewDef->viewEntitys;
-		for (; viewEntity != NULL; viewEntity = viewEntity->next)
+	// Inherited via RenderPass
+	virtual void Gather(const drawSurf_t* ds, const int index) override
+	{
+		if (ds->jointCache)
 		{
-			if (viewEntity->blasIndex > 0) // Dynamic objects will not set this value, so we know it's static.
+			m_surfaces.push_back(ds);
+		}
+	}
+
+	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
+	{
+		// Update all surfaces and bones as needed
+		{
+			DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+			DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_DrawViewInternal::ComputeBones");
+
+			dxRenderer.StartComputeSurfaceBones();
+			commandManager->Execute();
+
+			// Entity definitions are gouped together. This way we can put them into a single blas
+			const viewEntity_t* lastEntity = nullptr;
+			dxHandle_t blasHandle = 1;
+			std::vector<DX12Rendering::RaytracingGeometryArgument> rtGeometry;
+			rtGeometry.reserve(16);
+
+			UINT outVertexBufferOffset = 0;
+
+			std::vector<const drawSurf_t*>::iterator it = m_surfaces.begin();
+			UINT count = 0;
+
+			while(it != m_surfaces.end()) {
+				const drawSurf_t* ds = *it;
+				++it; // Setup next iterator.
+				const UINT index = count++;
+
+				if (ds->space != lastEntity)
+				{
+					if (rtGeometry.size() > 0)
+					{
+						// Add the BLAS and TLAS
+						dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
+
+						UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+						{
+							// Calculate the instance mask
+							if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: find a better way to mark these as shadow casting.
+							{
+								instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+							}
+						}
+
+						dxRenderer.DXR_AddBLASToTLAS(
+							lastEntity->entityIndex,
+							blasHandle,
+							lastEntity->modelRenderMatrix[0], // TODO: Find thre right one
+							DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
+							static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
+						);
+
+						++blasHandle;
+						rtGeometry.clear();
+					}
+
+					lastEntity = ds->space;
+				}
+
+				if (ds->jointCache)
+				{
+
+					// get vertex buffer
+					idVertexBuffer* const vertexBuffer = GetVertexBuffer(ds->ambientCache);
+					const int vertOffset = GetVertexBufferOffset(ds->ambientCache);
+					const UINT vertSize = GetVertexBufferSize(ds->ambientCache);
+					const UINT vertIndexCount = vertSize / sizeof(idDrawVert);
+
+					if (vertexBuffer == nullptr)
+					{
+						// An error occured when grabbing the vertex buffer data.
+						return DX12Rendering::Commands::FenceValue::Empty(DX12Rendering::Commands::COMPUTE);
+					}
+
+					DX12Rendering::Geometry::VertexBuffer* const apiVertexBuffer = static_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject());
+
+					// get joint buffer
+					idJointBuffer jointBuffer;
+					if (!vertexCache.GetJointBuffer(ds->jointCache, &jointBuffer)) {
+						idLib::Warning("BackEnd ComputeSurfaceBones, jointBuffer == NULL");
+						return DX12Rendering::Commands::FenceValue::Empty(DX12Rendering::Commands::COMPUTE);
+					}
+
+					DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
+
+					// Update the vert structure.
+					const UINT bufferOffset = dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, outVertexBufferOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
+
+					if (raytracedEnabled && ds->material && ds->material->SurfaceCastsShadow() /* Only allow shadow casting surfaces */)
+					{
+						const dxHandle_t handle = index;
+						const UINT entityIndex = index << 16;
+
+						DX12Rendering::RaytracingGeometryArgument dxArguments = {};
+						dxArguments.vertexHandle = ds->ambientCache;
+						dxArguments.vertCounts = vertIndexCount;
+						dxArguments.vertexOffset = outVertexBufferOffset;
+
+						dxArguments.indexHandle = ds->indexCache;
+						dxArguments.indexCounts = ds->numIndexes;
+
+						dxArguments.jointsHandle = ds->jointCache;
+
+						// Add to the list of entities
+						rtGeometry.push_back(dxArguments);
+					}
+
+					outVertexBufferOffset += bufferOffset;
+				}
+			}
+
+			// If there are any dynamic BLAS objects being created. Finish them here.
+			if (rtGeometry.size() > 0)
 			{
+				// Add the BLAS and TLAS
+				dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
+
 				UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
 				{
 					// Calculate the instance mask
-					if (true || viewEntity->staticShadowVolumes != nullptr || viewEntity->dynamicShadowVolumes != nullptr) // TODO: Fix this
+					if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: fix this
 					{
 						instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
 					}
 				}
 
 				dxRenderer.DXR_AddBLASToTLAS(
-					viewEntity->entityIndex,
-					viewEntity->blasIndex,
-					viewEntity->modelRenderMatrix[0],
-					DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC,
-					static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
+					lastEntity->entityIndex,
+					blasHandle,
+					lastEntity->modelRenderMatrix[0],
+					DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
+					static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
+				);
 			}
+
+			commandManager->Execute();
+			dxRenderer.EndComputeSurfaceBones();
 		}
 
-		blasResult = dxRenderer.DXR_UpdatePendingBLAS();
+		// Update/Create the BLASa and create a list for the TLAS structure 
+		UINT blasResult = 0;
+		if (raytracedEnabled) {
+			viewEntity_t* viewEntity = viewDef->viewEntitys;
+			for (; viewEntity != NULL; viewEntity = viewEntity->next)
+			{
+				if (viewEntity->blasIndex > 0) // Dynamic objects will not set this value, so we know it's static.
+				{
+					UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
+					{
+						// Calculate the instance mask
+						if (true || viewEntity->staticShadowVolumes != nullptr || viewEntity->dynamicShadowVolumes != nullptr) // TODO: Fix this
+						{
+							instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
+						}
+					}
+
+					dxRenderer.DXR_AddBLASToTLAS(
+						viewEntity->entityIndex,
+						viewEntity->blasIndex,
+						viewEntity->modelRenderMatrix[0],
+						DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC,
+						static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
+				}
+			}
+
+			blasResult = dxRenderer.DXR_UpdatePendingBLAS();
+		}
 	}
-}
+
+private:
+	std::vector<const drawSurf_t*> m_surfaces;
+};
+
+class FillDepthBufferFastPass : public RenderPass
+{
+public:
+	FillDepthBufferFastPass(const int size)
+	{
+		m_surfaces.reserve(size);
+		m_perforatedSurfaces.reserve(size);
+	}
+
+	// Inherited via RenderPass
+	virtual void Gather(const drawSurf_t* ds, const int index) override
+	{
+		const idMaterial* shader = ds->material;
+
+		if (shader->GetSort() == SS_SUBVIEW)
+		{
+			m_surfaces.push_back(ds);
+		}
+		else if(shader->Coverage() == MC_TRANSLUCENT)
+		{
+			// translucent surfaces don't put anything in the depth buffer
+			return;
+		}
+		else if (shader->Coverage() == MC_PERFORATED)
+		{
+			// Save for later drawing
+			m_perforatedSurfaces.push_back(ds);
+		}
+		else
+		{
+			m_surfaces.push_back(ds);
+		}
+	}
+
+	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
+	{
+		// TODO: Run this on it's own commandList so we can fill the rest while running.
+		if (m_surfaces.size() == 0 && m_perforatedSurfaces.size() == 0) {
+			return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::DIRECT, 0);
+		}
+
+		// if we are just doing 2D rendering, no need to fill the depth buffer
+		if (viewDef->viewEntitys == NULL) {
+			return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::DIRECT, 0);
+		}
+
+		renderLog.OpenMainBlock(MRB_FILL_DEPTH_BUFFER);
+		renderLog.OpenBlock("RB_FillDepthBufferFast");
+
+		DX12Rendering::RenderPassBlock renderPassBlock("DepthPass", DX12Rendering::Commands::DIRECT);
+
+		GL_StartDepthPass(viewDef->scissor);
+
+		// force MVP change on first surface
+		backEnd.currentSpace = NULL;
+
+		// draw all the subview surfaces, which will already be at the start of the sorted list,
+		// with the general purpose path
+		GL_State(GLS_DEFAULT);
+
+		std::vector<const drawSurf_t*>::iterator it = m_surfaces.begin();
+
+		while (it != m_surfaces.end()) {
+			const drawSurf_t* surf = *it;
+			if (surf->material->GetSort() != SS_SUBVIEW) {
+				break;
+			}
+
+			RB_FillDepthBufferGeneric(&surf, 1);
+			++it;
+		}
+
+		// draw all the opaque surfaces and build up a list of perforated surfaces that
+		// we will defer drawing until all opaque surfaces are done
+		GL_State(GLS_DEFAULT);
+
+		// continue checking past the subview surfaces
+		while (it != m_surfaces.end()) {
+			const drawSurf_t* surf = *it;
+			const idMaterial* shader = surf->material;
+			++it; // Prepare the next itterator
+
+			// set polygon offset?
+
+			// set mvp matrix
+			if (surf->space != backEnd.currentSpace) {
+				RB_SetMVP(surf->space->mvp);
+				backEnd.currentSpace = surf->space;
+			}
+
+			renderLog.OpenBlock(shader->GetName());
+
+			if (surf->jointCache) {
+				renderProgManager.BindShader_DepthSkinned();
+			}
+			else {
+				renderProgManager.BindShader_Depth();
+			}
+
+			// must render with less-equal for Z-Cull to work properly
+			assert((GL_GetCurrentState() & GLS_DEPTHFUNC_BITS) == GLS_DEPTHFUNC_LESS);
+
+			// draw it solid
+			RB_DrawElementsWithCounters(surf);
+
+			renderLog.CloseBlock();
+		}
+
+		// draw all perforated surfaces with the general code path
+		if (m_perforatedSurfaces.size() > 0) {
+			RB_FillDepthBufferGeneric(m_perforatedSurfaces.data(), m_perforatedSurfaces.size());
+		}
+
+		// Allow platform specific data to be collected after the depth pass.
+		GL_FinishDepthPass();
+
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+		const DX12Rendering::Commands::FenceValue resultFence = commandList->AddPostFenceSignal();
+
+		commandList->Close();
+
+		renderLog.CloseBlock();
+		renderLog.CloseMainBlock();
+
+		return resultFence;
+	}
+
+private:
+	std::vector<const drawSurf_t*> m_surfaces;
+	std::vector<const drawSurf_t*> m_perforatedSurfaces;
+
+	// Comment from original RB_FillDepthBufferFast
+	/*
+	=====================
+	RB_FillDepthBufferFast
+
+	Optimized fast path code.
+
+	If there are subview surfaces, they must be guarded in the depth buffer to allow
+	the mirror / subview to show through underneath the current view rendering.
+
+	Surfaces with perforated shaders need the full shader setup done, but should be
+	drawn after the opaque surfaces.
+
+	The bulk of the surfaces should be simple opaque geometry that can be drawn very rapidly.
+
+	If there are no subview surfaces, we could clear to black and use fast-Z rendering
+	on the 360.
+	=====================
+	*/
+};
+
+class GBufferPass : public RenderPass
+{
+public:
+	GBufferPass(const int size)
+	{
+		m_surfaces.reserve(size);
+	}
+
+	// Inherited via RenderPass
+	virtual void Gather(const drawSurf_t* ds, const int index) override
+	{
+		const idMaterial* shader = ds->material;
+
+		if (shader->GetSort() == SS_SUBVIEW)
+		{
+			m_surfaces.push_back(ds);
+		}
+		else if (shader->Coverage() == MC_TRANSLUCENT)
+		{
+			// translucent surfaces don't put anything in the GBuffer buffer
+			return;
+		}
+		else if (!shader->ReceivesLighting())
+		{
+			// The GBuffer is only used to calculate light interactions. No point in adding these objects
+			return;
+		}
+		else
+		{
+			m_surfaces.push_back(ds);
+		}
+	}
+
+	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
+	{
+		constexpr UINT surfaceCount = 5;
+		const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
+			DX12Rendering::eRenderSurface::FlatNormal,
+			DX12Rendering::eRenderSurface::Position,
+			DX12Rendering::eRenderSurface::Normal,
+			DX12Rendering::eRenderSurface::Albedo,
+			DX12Rendering::eRenderSurface::SpecularColor
+		};
+
+		DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
+
+		//First fill in the sub view surfaces
+		std::vector<const drawSurf_t*>::iterator it = m_surfaces.begin();
+	
+		while (it != m_surfaces.end()) 
+		{
+			const drawSurf_t* surf = *it;
+			if (surf->material->GetSort() != SS_SUBVIEW) {
+				break;
+			}
+
+			// TODO: Handle Sub Views
+			++it;
+		}
+
+		//TODO: Clear the buffers
+		//TODO: Implement perforated serfaces
+		//TODO: Move to it's own buffer to render and cast rays'
+
+		GBufferSurfaceConstants surfaceConstants = {};
+
+		// continue checking past the subview surfaces
+		while (it != m_surfaces.end()) 
+		{
+			const drawSurf_t* surf = *it;
+			const idMaterial* shader = surf->material;
+			++it; // Prepare the next itteration
+
+				
+			// draw all the opaque surfaces and build up a list of perforated surfaces that
+			// we will defer drawing until all opaque surfaces are done
+			GL_State(GLS_DEPTHMASK | GLS_DEPTHFUNC_EQUAL | GLS_STENCIL_FUNC_ALWAYS);
+
+			if (surf->jointCache) {
+				renderProgManager.BindShader_GBufferSkinned();
+			}
+			else {
+				renderProgManager.BindShader_GBuffer();
+			}
+
+			// set mvp matrix
+			if (surf->space != backEnd.currentSpace) {
+				RB_SetMVP(surf->space->mvp);
+				backEnd.currentSpace = surf->space;
+
+				// set the Normal Matrix (technically it's the transpose of the model matrix)
+				const float* modelMatrix = surf->space->modelMatrix;
+				idMat4 normalMatrix(
+					modelMatrix[0], modelMatrix[1], modelMatrix[2], modelMatrix[3],
+					modelMatrix[4], modelMatrix[5], modelMatrix[6], modelMatrix[7],
+					modelMatrix[8], modelMatrix[9], modelMatrix[10], modelMatrix[11],
+					modelMatrix[12], modelMatrix[13], modelMatrix[14], modelMatrix[15]
+				); // TODO: Precalculate value
+				//normalMatrix = normalMatrix.Transpose();
+				normalMatrix = normalMatrix.Inverse();
+				float normalMatrixTranspose[16];
+				R_MatrixTranspose(normalMatrix.ToFloatPtr(), normalMatrixTranspose);
+				//TODO: Find the appropriate matrix
+				SetVertexParms(RENDERPARM_NORMALMATRIX_X, normalMatrix.ToFloatPtr(), 4);
+
+				// set model Matrix
+				float modelMatrixTranspose[16];
+				R_MatrixTranspose(surf->space->modelMatrix, modelMatrixTranspose);
+				SetVertexParms(RENDERPARM_MODELMATRIX_X, modelMatrixTranspose, 4);
+
+				// Set ModelView Matrix
+				float modelViewMatrixTranspose[16];
+				R_MatrixTranspose(surf->space->modelViewMatrix, modelViewMatrixTranspose);
+				SetVertexParms(RENDERPARM_MODELVIEWMATRIX_X, modelViewMatrixTranspose, 4);
+			}
+
+			const idMaterial* surfaceShader = surf->material;
+			if (surfaceShader->GetFastPathBumpImage() && !r_skipInteractionFastPath.GetBool()) {
+				// texture 0 will be the per-surface bump map
+				surfaceConstants.bumpMapIndex = LoadBindlessTexture(surfaceShader->GetFastPathBumpImage());
+
+				// texture 3 is the per-surface diffuse map
+				surfaceConstants.albedoIndex = LoadBindlessTexture(surfaceShader->GetFastPathDiffuseImage());
+
+				// texture 4 is the per-surface specular map
+				surfaceConstants.specularIndex = LoadBindlessTexture(surfaceShader->GetFastPathSpecularImage());
+
+				const idVec4 sMatrix(1, 0, 0, 0);
+				const idVec4 tMatrix(0, 1, 0, 0);
+
+				SetVertexParm(RENDERPARM_BUMPMATRIX_S, sMatrix.ToFloatPtr());
+				SetVertexParm(RENDERPARM_BUMPMATRIX_T, tMatrix.ToFloatPtr());
+
+				SetVertexParm(RENDERPARM_DIFFUSEMATRIX_S, sMatrix.ToFloatPtr());
+				SetVertexParm(RENDERPARM_DIFFUSEMATRIX_T, tMatrix.ToFloatPtr());
+
+				SetVertexParm(RENDERPARM_SPECULARMATRIX_S, sMatrix.ToFloatPtr());
+				SetVertexParm(RENDERPARM_SPECULARMATRIX_T, tMatrix.ToFloatPtr());
+			}
+			else
+			{
+				const float* surfaceRegs = surf->shaderRegisters;
+				bool bumpMapFound = false;
+				bool diffuseMapFound = false;
+				bool specularMapFound = false;
+
+				for (int surfaceStageNum = 0; surfaceStageNum < surfaceShader->GetNumStages(); surfaceStageNum++) {
+					const shaderStage_t* surfaceStage = surfaceShader->GetStage(surfaceStageNum);
+
+					switch (surfaceStage->lighting) {
+					case SL_COVERAGE: {
+						// ignore any coverage stages since they should only be used for the depth fill pass
+						// for diffuse stages that use alpha test.
+						break;
+					}
+					case SL_AMBIENT: {
+						// ignore ambient stages while drawing interactions
+						break;
+					}
+					case SL_BUMP: {
+						// ignore stage that fails the condition
+						if (!surfaceRegs[surfaceStage->conditionRegister]) {
+							break;
+						}
+
+						if (bumpMapFound)
+						{
+							// Already loaded the texture, draw the surface.
+							RB_DrawElementsWithCounters(surf);
+						}
+						bumpMapFound = true;
+
+						// texture 0 will be the per-surface bump map
+						surfaceConstants.bumpMapIndex = LoadBindlessTexture(surfaceStage->texture.image);
+
+						idVec4 bumpMatrix[2];
+						RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
+							bumpMatrix, NULL);
+
+						// bump matrix
+						SetVertexParm(RENDERPARM_BUMPMATRIX_S, bumpMatrix[0].ToFloatPtr());
+						SetVertexParm(RENDERPARM_BUMPMATRIX_T, bumpMatrix[1].ToFloatPtr());
+
+						break;
+					}
+					case SL_DIFFUSE: {
+						// ignore stage that fails the condition
+						if (!surfaceRegs[surfaceStage->conditionRegister]) {
+							break;
+						}
+
+						if (diffuseMapFound)
+						{
+							// Already loaded the texture, draw the surface.
+							RB_DrawElementsWithCounters(surf);
+						}
+						diffuseMapFound = true;
+
+						// texture 3 will be the diffuse map
+						surfaceConstants.albedoIndex = LoadBindlessTexture(surfaceStage->texture.image);
+
+						idVec4 matrix[2];
+						RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
+							matrix, NULL);
+
+						// bump matrix
+						SetVertexParm(RENDERPARM_DIFFUSEMATRIX_S, matrix[0].ToFloatPtr());
+						SetVertexParm(RENDERPARM_DIFFUSEMATRIX_T, matrix[1].ToFloatPtr());
+
+						break;
+					}
+					case SL_SPECULAR: {
+						// ignore stage that fails the condition
+						if (!surfaceRegs[surfaceStage->conditionRegister]) {
+							break;
+						}
+
+						if (specularMapFound)
+						{
+							// Already loaded the texture, draw the surface.
+							RB_DrawElementsWithCounters(surf);
+						}
+						specularMapFound = true;
+
+						// texture 3 will be the diffuse map
+						surfaceConstants.specularIndex = LoadBindlessTexture(surfaceStage->texture.image);
+
+						idVec4 matrix[2];
+						RB_SetupInteractionStage(surfaceStage, surfaceRegs, NULL,
+							matrix, NULL);
+
+						// bump matrix
+						SetVertexParm(RENDERPARM_SPECULARMATRIX_S, matrix[0].ToFloatPtr());
+						SetVertexParm(RENDERPARM_SPECULARMATRIX_T, matrix[1].ToFloatPtr());
+
+						break;
+					}
+					}
+				}
+			}
+
+			// draw it solid
+			RB_DrawElementsWithCounters(surf, &surfaceConstants, sizeof(GBufferSurfaceConstants));
+		}
+
+		DX12Rendering::Commands::CommandManager* commandManager = renderPassBlock.GetCommandManager();
+		const DX12Rendering::Commands::FenceValue fence = commandManager->InsertFenceSignal();
+
+		return fence;
+	}
+
+private: 
+	std::vector<const drawSurf_t*> m_surfaces;
+};
 
 void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	renderLog.OpenBlock("RB_DrawViewInternal");
@@ -3146,12 +3260,30 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
 	const bool useGBuffer = raytracedEnabled;
 
-	for (int i = 0; i < numDrawSurfs; i++) {
-		const drawSurf_t* ds = viewDef->drawSurfs[i];
-		if (ds->material != NULL) {
-			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
+	std::vector<const drawSurf_t*> dynamicSurfaces;
+	dynamicSurfaces.reserve(numDrawSurfs);
+
+	GatherFunction GatherDynamicSurfaces = [&dynamicSurfaces](const drawSurf_t * ds, const int surfaceIndex)
+	{
+		if (ds->jointCache)
+		{
+			dynamicSurfaces.push_back(ds);
 		}
-	}
+	};
+
+	PurgeMaterialPass purgeMaterialPass;
+	DynamicSurfacesPass dynamicSurfacesPass(numDrawSurfs);
+	FillDepthBufferFastPass fillDepthBufferPass(numDrawSurfs);
+	GBufferPass gBufferPass(numDrawSurfs);
+
+	RenderPass* renderPasses[] = {
+		&purgeMaterialPass,
+		&dynamicSurfacesPass,
+		&fillDepthBufferPass,
+		&gBufferPass
+	};
+
+	GatherSurfacesPerStage(viewDef, renderPasses, std::size(renderPasses));
 
 	//-------------------------------------------------
 	// RB_BeginDrawingView
@@ -3318,7 +3450,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		}
 	}
 
-	RB_CalculateDynamicObjects(viewDef, raytracedEnabled);
+	dynamicSurfacesPass.Execute(viewDef, raytracedEnabled);
 
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	bool raytraceUpdated = false;
@@ -3326,7 +3458,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		//-------------------------------------------------
 		// fill the depth buffer and clear color buffer to black except on subviews
 		//-------------------------------------------------
-		RB_FillDepthBufferFast(drawSurfs, numDrawSurfs);
+		fillDepthBufferPass.Execute(viewDef, raytracedEnabled);
 
 		if (raytracedEnabled)
 		{
@@ -3340,7 +3472,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		if (useGBuffer)
 		{
 			// Fill the GBuffer
-			const DX12Rendering::Commands::FenceValue fence = RB_DrawGBuffer(drawSurfs, numDrawSurfs);
+			const DX12Rendering::Commands::FenceValue fence = gBufferPass.Execute(viewDef, raytracedEnabled);
 
 			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(fence);
 
@@ -3374,9 +3506,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			normalMap->CopySurfaceToTexture(normalTexture, textureManager);
 
 			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
-
+			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();
 			// TODO: Find a better place to reset this.
-			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Reset();
+			//DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Reset(); Mark, move this to the begin of draw frame, have the next function wait on the copy fence.
 		}
 	}
 

@@ -27,7 +27,7 @@ namespace DX12Rendering {
 				queueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 				queueDesc.Type = D3D12_COMMAND_LIST_TYPE_COPY;
 
-				m_commandManagers.emplace_back(&queueDesc, Commands::COPY, false, L"Copy", 20);
+				m_commandManagers.emplace_back(&queueDesc, Commands::COPY, true, L"Copy", 20);
 			}
 
 			//  Commands
@@ -205,6 +205,11 @@ namespace DX12Rendering {
 			CommandList* commandList = RequestNewCommandList();
 			commandList->AddPostCommandListDivider();
 			commandList->Close();
+		}
+
+		const FenceValue CommandManager::GetLastFenceValue()
+		{
+			return m_fence.GetLastFenceValue();
 		}
 
 		void CommandManager::InsertFenceWait(const DX12Rendering::Commands::FenceValue value)
