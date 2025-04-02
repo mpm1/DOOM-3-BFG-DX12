@@ -1429,7 +1429,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 
 		DX12Rendering::DXR_LIGHT_TYPE lightType = DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_POINT; // Default light type.
 
-		bool isAmbientLight = lightShader->IsAmbientLight(); // TODO: add as flag.
+		const bool isAmbientLight = lightShader->IsAmbientLight(); // TODO: add as flag.
 		if (isAmbientLight)
 		{
 			lightType = DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_AMBIENT;
@@ -1449,7 +1449,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 			vLight->globalLightOrigin.z,
 			1.0f);
 
-		XMFLOAT4 scissor(
+		const XMFLOAT4 scissor(
 			vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
 			vLight->scissorRect.y1 + m_viewport.TopLeftY, // top
 			vLight->scissorRect.x2 + m_viewport.TopLeftX, //right
@@ -1466,7 +1466,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				continue;
 			}
 
-			XMFLOAT4 lightColor(
+			const XMFLOAT4 lightColor(
 				lightScale * lightRegs[lightStage->color.registers[0]],
 				lightScale * lightRegs[lightStage->color.registers[1]],
 				lightScale * lightRegs[lightStage->color.registers[2]],

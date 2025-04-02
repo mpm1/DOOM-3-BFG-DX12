@@ -2753,7 +2753,7 @@ public:
 
 					// Update the vert structure.
 					const UINT bufferOffset = dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, outVertexBufferOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
-
+					
 					if (raytracedEnabled && ds->material && ds->material->SurfaceCastsShadow() /* Only allow shadow casting surfaces */)
 					{
 						const dxHandle_t handle = index;

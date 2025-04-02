@@ -127,7 +127,7 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	void ResetLightList();
-	bool AddLight(const UINT index, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows);
+	bool AddLight(const UINT index, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4& location, const XMFLOAT4& color, const XMFLOAT4* lightProjection, const XMFLOAT4& scissorWindow, bool castsShadows);
 	UINT GetLightMask(const UINT index);
 
 	void GenerateTLAS();

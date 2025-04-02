@@ -582,7 +582,7 @@ namespace DX12Rendering {
 
 	void TLASManager::Reset()
 	{
-		DX12Rendering::WriteLock instanceLock(m_instanceLock);
+		//DX12Rendering::WriteLock instanceLock(m_instanceLock);
 
 		m_isDirty = false;
 
@@ -607,7 +607,7 @@ namespace DX12Rendering {
 	{
 		bool result = false;
 		{
-			DX12Rendering::WriteLock instanceLock(m_instanceLock);
+			//DX12Rendering::WriteLock instanceLock(m_instanceLock);
 
 			auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
 			DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "TLASManager::Generate");
@@ -650,7 +650,7 @@ namespace DX12Rendering {
 		}
 
 		{
-			DX12Rendering::WriteLock instanceLock(m_instanceLock);
+			//DX12Rendering::WriteLock instanceLock(m_instanceLock);
 
 			const UINT frameIndex = GetCurrentFrameIndex();
 

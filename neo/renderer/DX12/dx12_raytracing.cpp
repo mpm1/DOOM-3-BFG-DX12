@@ -231,7 +231,7 @@ namespace DX12Rendering {
 		return 0x00000000;
 	}
 
-	bool Raytracing::AddLight(const UINT lightIndex, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows)
+	bool Raytracing::AddLight(const UINT lightIndex, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4& location, const XMFLOAT4& color, const XMFLOAT4* lightProjection, const XMFLOAT4& scissorWindow, bool castsShadows)
 	{
 		static UINT padValue = 0;
 		padValue = (padValue + 1) % 3459871;
