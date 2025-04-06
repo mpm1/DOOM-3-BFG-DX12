@@ -28,8 +28,10 @@ If you have questions concerning this license or the applicable additional terms
 
 #include "global.inc"
 
-uniform Texture2D<float4> samp0 : register(t0); // Diffuse texture
-uniform Texture2D<float4> samp1 : register(t1); // Specular
+uniform Texture2D<float4> samp0 : register(t0); // Diffuse light
+uniform Texture2D<float4> samp1 : register(t1); // Specular light
+uniform Texture2D<float4> samp2 : register(t2); // Albedo Color
+uniform Texture2D<float4> samp3 : register(t3); // Specular Color. Essentially this is the amount of specular that can be added to the diffuse.
 
 struct PS_IN {
 	float4 position : SV_POSITION;
@@ -43,8 +45,8 @@ struct PS_OUT {
 void main( PS_IN fragment, out PS_OUT result ) {
 	float2 tCoords = fragment.texcoord0;
 
-	float4 diffuse = samp0.Sample(baseSampler, tCoords);
-	float4 specular = samp1.Sample(baseSampler, tCoords);
+	float4 diffuse = samp0.Sample(baseSampler, tCoords) * samp2.Sample(baseSampler, tCoords);
+	float4 specular = samp1.Sample(baseSampler, tCoords) * samp3.Sample(baseSampler, tCoords);
 	
 	result.color = diffuse + specular;
 	result.color.w = 1.0;

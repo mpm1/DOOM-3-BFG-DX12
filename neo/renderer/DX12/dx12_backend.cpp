@@ -2624,15 +2624,22 @@ void RB_DrawCombinedGBufferResults()
 		// Wait for any copy operations to finish
 		auto diffuse = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE);
 		auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
+		auto albedo = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
+		auto specularColor = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
 
 		// Prepare the surfaces for rendering
 		commandList->AddPreFenceWait(diffuse->GetLastFenceValue());
 		GL_SelectTexture(0);
 		dxRenderer.SetTexture(diffuse);
 
-		commandList->AddPreFenceWait(specular->GetLastFenceValue());
 		GL_SelectTexture(1);
 		dxRenderer.SetTexture(specular);
+
+		GL_SelectTexture(2);
+		dxRenderer.SetTexture(albedo);
+
+		GL_SelectTexture(3);
+		dxRenderer.SetTexture(specularColor);
 
 		commandList->Close();
 	}
@@ -2646,6 +2653,8 @@ void RB_DrawCombinedGBufferResults()
 		// Once completed reset the states on the diffuse and specular textures
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_DIFFUSE), D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR), D3D12_RESOURCE_STATE_COMMON, commandList);
 
 		commandList->Close();
 	}

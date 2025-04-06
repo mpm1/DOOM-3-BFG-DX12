@@ -41,13 +41,13 @@ float3 CalculateProjection(in SceneLight light, float4 worldPosition)
 	return projectionTexture.SampleLevel(projectionSampler, projection.xy, 0).rgb;
 }
 
-float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 normal, in float3 pointToEye, in float3 pointToLight, in float3 specularColor, in float specMultiplier)
+float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 normal, in float3 pointToEye, in float3 pointToLight, in float specMultiplier)
 {
 	const half specularPower = 10.0f;
 	half hDotN = dot3(normalize(pointToEye + pointToLight), normal);
 	half3 specularContribution = _half3(pow( hDotN, specularPower ));
 
-	return specularColor.rgb * specularContribution * (light.color.rgb * specMultiplier) * lightFalloff.rgb;
+	return specularContribution * (light.color.rgb * specMultiplier) * lightFalloff.rgb;
 }
 
 float3 GetValidLightLocation(in SceneLight light, in Plane surfacePlane, in float3 randomOffset)
@@ -69,8 +69,6 @@ void HandleAmbientLight(
 	in float3 worldPosition,
 	in float3 normal,
 	in float3 pointToEye,
-	in float3 diffuseColor,
-	in float3 specularColor,
 	out float3 diffuseResult, 
 	out float3 specularResult)
 {
@@ -90,8 +88,8 @@ void HandleAmbientLight(
 			CalculateProjection(light, float4(worldPosition, 1.0));
 	}
 
-	diffuseResult = saturate(diffuseColor * light.color.rgb * lightColor.rgb);
-	specularResult = GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, specularColor, 2.0 /* Keeping consistant original method */);
+	diffuseResult = saturate(light.color.rgb * lightColor.rgb);
+	specularResult = GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, 2.0 /* Keeping consistant original method */);
 }
 
 void HandlePointLight(
@@ -104,8 +102,6 @@ void HandlePointLight(
 	in float3 worldPosition, 
 	in float2 screenUV,
 	in float rayStartDistance,
-	in float3 diffuseColor,
-	in float3 specularColor,
 	out float3 diffuseResult, 
 	out float3 specularResult)
 {
@@ -167,8 +163,8 @@ void HandlePointLight(
 
 			if (intensity > 0.0)
 			{
-				localDiffuse += (light.color.rgb * lightColor * diffuseColor);
-				localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, specularColor, 2.0 /* Keeping consistant original method */);
+				localDiffuse += (light.color.rgb * lightColor);
+				localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, 2.0 /* Keeping consistant original method */);
 			}
 		}
 	}
@@ -196,8 +192,6 @@ void RayGen() {
 	float3 worldPosition = GetBindlessTexture4f(sceneConstants.positionTextureIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz;
 	float3 flatNormal = normalize((GetBindlessTexture4f(sceneConstants.flatNormalIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz * 2.0) - 1.0);
 	float3 normal = normalize((GetBindlessTexture4f(sceneConstants.normalIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz * 2.0) - 1.0);
-	float3 diffuse = GetBindlessTexture4f(sceneConstants.diffuseTextureIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz;
-	float3 specular = GetBindlessTexture4f(sceneConstants.specularTexureIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz;
 
 	// Calculate the offset from the ray start we'd like to use.
 	// This is done to help with precision errors the further away our surface is.
@@ -221,7 +215,6 @@ void RayGen() {
 			HandleAmbientLight(
 				sceneLight, 
 				worldPosition, normal, pointToEye,
-				diffuse, specular,
 				resultDiffuse, resultSpecular);
 		}
 		else if((sceneLight.flags & LIGHT_FLAG_POINT_LIGHT) > 0)
@@ -230,8 +223,7 @@ void RayGen() {
 				sceneLight, lightRayCount, 
 				castsShadows, surfacePlane, normal,
 				pointToEye, worldPosition, screenUV,
-				rayStartDistance, diffuse, specular,
-				resultDiffuse, resultSpecular);
+				rayStartDistance, resultDiffuse, resultSpecular);
 		}
 
 		if((sceneLight.flags & LIGHT_FLAG_FOG_LIGHT))
@@ -245,5 +237,5 @@ void RayGen() {
 	uint2 screenIndex = (uint2)(screenUV * sceneConstants.rp.viewport.zw);
 	shadowMask[screenIndex] += uint4(sceneLight.sceneIndex, 0, 3, 255); //TODO: Remove completely from system.
 	diffuseResult[screenIndex] += float4(saturate(resultDiffuse.rgb), 1.0);
-	specularResult[screenIndex] += float4(saturate(resultSpecular.rgb), 1.0);
+	specularResult[screenIndex] = max(specularResult[screenIndex], float4(saturate(resultSpecular.rgb), 1.0)); // Taking max to represent reflections
 }
