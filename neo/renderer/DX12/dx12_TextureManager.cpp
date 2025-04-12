@@ -7,11 +7,12 @@
 
 namespace DX12Rendering
 {
-	bool TextureBuffer::Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc, D3D12_RESOURCE_STATES resourceState)
+	bool TextureBuffer::Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc, D3D12_RESOURCE_STATES resourceState)
 	{
 		Release();
 
 		m_textureDesc = textureDesc;
+		m_samplerDesc = samplerDesc;
 
 		Allocate(textureDesc, resourceState, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT));
 
@@ -106,6 +107,21 @@ namespace DX12Rendering
 		return name;
 	}
 
+	D3D12_SAMPLER_DESC CreateGlobalSamplerDesc()
+	{
+		D3D12_SAMPLER_DESC samplerDesc = {};
+		samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+		samplerDesc.MaxAnisotropy = 1;
+		samplerDesc.MaxLOD = FLT_MAX;
+		samplerDesc.BorderColor[3] = 0.0f; // Set alpha to 0.0
+		samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+
+		return samplerDesc;
+	}
+
 	void TextureManager::Initialize(uint screenWidth, uint screenHeight) {	
 		// Create the basic entries for the global textures
 		for (int i = 0; i < eGlobalTexture::TEXTURE_COUNT; ++i)
@@ -120,20 +136,27 @@ namespace DX12Rendering
 			UINT shaderComponentAlignment = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 			const char* name = GetGlobalTextureDetails(static_cast<eGlobalTexture>(i), textureDesc);
 
+			D3D12_SAMPLER_DESC samplerDesc = CreateGlobalSamplerDesc();
+
 			globalTexture = AllocTextureBuffer(
-				&idStr(name), textureDesc,
+				&idStr(name), textureDesc, samplerDesc,
 				shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
 				m_textures.size() <= i ? -1 : i);
 			
 		}
 
 		// Fill in all textures
-		HeapDescriptorManager* heapManager = GetDescriptorManager();
-
 		for (int i = eGlobalTexture::TEXTURE_COUNT; i < BINDLESS_TEXTURE_COUNT; ++i)
 		{
-			CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, i);
-			SetTextureToDefault(textureHandle);
+			SetTextureToDefault(i);
+		}
+
+		{
+			auto defaultTexture = GetGlobalTexture(eGlobalTexture::ALBEDO);
+			for (UINT i = 0; i < SAMPLERS_HEAP_SIZE; ++i)
+			{
+				StoreSamplerDirectly(defaultTexture, i);
+			}
 		}
 
 		m_isInitialized = true;
@@ -155,21 +178,29 @@ namespace DX12Rendering
 			UINT shaderComponentAlignment = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
 			const char* name = GetGlobalTextureDetails(static_cast<eGlobalTexture>(i), textureDesc);
 
+			D3D12_SAMPLER_DESC samplerDesc = CreateGlobalSamplerDesc();
+
 			TextureBuffer* globalTexture = AllocTextureBuffer(
-				&idStr(name), textureDesc,
+				&idStr(name), textureDesc, samplerDesc,
 				shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COMMON,
 				m_textures.size() <= i ? -1 : i);
 
 		}
 	}
 
-	void TextureManager::SetTextureToDefault(CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle)
+	void TextureManager::SetTextureToDefault(UINT textureIndex)
 	{
-		auto defaultTexture = GetGlobalTexture(eGlobalTexture::ALBEDO); // TODO: Change to a default mangenta for debugging
-
+		HeapDescriptorManager* heapManager = GetDescriptorManager();
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-		device->CreateShaderResourceView(defaultTexture->resource.Get(), &defaultTexture->textureView, textureHandle);
+		auto defaultTexture = GetGlobalTexture(eGlobalTexture::ALBEDO); // TODO: Change to a default mangenta for debugging
+
+		{
+			// Setup the texture
+			D3D12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, textureIndex);
+
+			device->CreateShaderResourceView(defaultTexture->resource.Get(), &defaultTexture->textureView, textureHandle);
+		}
 	}
 
 	void TextureManager::Clear() {
@@ -277,7 +308,24 @@ namespace DX12Rendering
 		return m_tempImages.back().get();
 	}
 
-	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index) 
+	void TextureManager::StoreSamplerPerFrame(const TextureBuffer* buffer, UINT objectIndex, UINT samplerIndex)
+	{
+		StoreSamplerDirectly(buffer, (objectIndex * SAMPLERS_PER_OBJECT_MAX) + samplerIndex);
+	}
+
+	void TextureManager::StoreSamplerDirectly(const TextureBuffer* buffer, UINT index)
+	{
+		assert(index < SAMPLERS_HEAP_SIZE);
+
+		HeapDescriptorManager* heapManager = GetDescriptorManager();
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
+		// Setup the sampler
+		D3D12_CPU_DESCRIPTOR_HANDLE samplerHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorSamplerEntries, index);
+		device->CreateSampler(buffer->GetSamplerDescription(), samplerHandle);
+	}
+
+	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index)
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
@@ -295,7 +343,7 @@ namespace DX12Rendering
 		srvDesc.ViewDimension = textureDesc.DepthOrArraySize == 6 ? D3D12_SRV_DIMENSION_TEXTURECUBE : D3D12_SRV_DIMENSION_TEXTURE2D;
 		srvDesc.Texture2D.MipLevels = textureDesc.MipLevels;
 
-		if (buffer->Build(textureDesc, srvDesc, resourceState))
+		if (buffer->Build(textureDesc, samplerDesc, srvDesc, resourceState))
 		{
 			// Setup the heap index data
 			assert(index < (int)m_textures.size());
@@ -327,8 +375,14 @@ namespace DX12Rendering
 			
 			if (index < BINDLESS_TEXTURE_COUNT)
 			{
-				CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle = GetDescriptorManager()->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, index);
-				device->CreateShaderResourceView(buffer->resource.Get(), &buffer->textureView, textureHandle);
+				HeapDescriptorManager* heapManager = GetDescriptorManager();
+
+				{
+					// Setup the texture
+					D3D12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, index);
+
+					device->CreateShaderResourceView(buffer->resource.Get(), &buffer->textureView, textureHandle);
+				}
 			}
 
 			return buffer;
@@ -342,8 +396,7 @@ namespace DX12Rendering
 			const Commands::FenceValue fence = buffer->GetLastFenceValue();
 			Commands::GetCommandManager(fence.commandList)->WaitOnFence(fence);
 
-			CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle = GetDescriptorManager()->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, buffer->m_heapIndex);
-			SetTextureToDefault(textureHandle);
+			SetTextureToDefault(buffer->m_heapIndex);
 
 			m_textures[buffer->m_heapIndex] = nullptr;
 

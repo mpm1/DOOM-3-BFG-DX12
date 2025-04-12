@@ -433,6 +433,7 @@ void idImage::AllocImage() {
 	}*/
 
 	D3D12_RESOURCE_DESC textureDesc = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_UNKNOWN, width, height, numSides, opts.numLevels);
+	D3D12_SAMPLER_DESC samplerDesc = {};
 	//textureDesc.Alignment = alignment;
 	
 	// Set all swizzle components.
@@ -583,8 +584,80 @@ void idImage::AllocImage() {
 		return;
 	}
 
+	// Setup filtering
+	samplerDesc.MaxLOD = FLT_MAX;
+	samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+
+	switch (filter)
+	{
+	case TF_DEFAULT:
+		if (r_useTrilinearFiltering.GetBool()) {
+			samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_LINEAR;
+		}
+		else {
+			samplerDesc.Filter = D3D12_FILTER_MIN_POINT_MAG_MIP_LINEAR;
+		}
+		break;
+	case TF_LINEAR:
+		samplerDesc.Filter = D3D12_FILTER_MIN_POINT_MAG_LINEAR_MIP_POINT;
+		break;
+	case TF_NEAREST:
+		samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+		break;
+	default:
+		common->FatalError("%s: bad texture filter %d", GetName(), filter);	
+	}
+
+	// Anisotropic filtering
+	samplerDesc.MaxAnisotropy = 1;
+	if (filter == TF_DEFAULT)
+	{
+		int aniso = std::max(0, std::min(16, r_maxAnisotropicFiltering.GetInteger()));
+		if (aniso > 0)
+		{
+			samplerDesc.MaxAnisotropy = aniso;
+			samplerDesc.Filter = D3D12_FILTER_ANISOTROPIC;
+
+			if (usage != TD_FONT)
+			{
+				// use a blurring LOD bias in combination with high anisotropy to fix our aliasing grate textures...
+				samplerDesc.MipLODBias = r_lodBias.GetFloat();
+			}
+		}
+	}
+
+	samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+
+	switch (repeat)
+	{
+	case TR_REPEAT:
+		samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_WRAP;
+		break;
+	case TR_CLAMP_TO_ZERO: 
+	{
+		samplerDesc.BorderColor[3] = 1.0f; // Set alpha to 1.0
+		samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		break;
+	}
+	case TR_CLAMP_TO_ZERO_ALPHA:
+	{
+		samplerDesc.BorderColor[3] = 0.0f; // Set alpha to 0.0
+		samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_BORDER;
+		break;
+	}
+	case TR_CLAMP:
+		samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		break;
+	default:
+		common->FatalError("%s: bad texture repeat %d", GetName(), repeat);
+	}
+
 	// Allocate the texture
-	textureResource = DX12Rendering::GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc, shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COPY_DEST);
+	textureResource = DX12Rendering::GetTextureManager()->AllocTextureBuffer(&imgName, textureDesc, samplerDesc, shaderComponentAlignment, D3D12_RESOURCE_STATES::D3D12_RESOURCE_STATE_COPY_DEST);
 
 	if (textureResource == nullptr) {
 		return;

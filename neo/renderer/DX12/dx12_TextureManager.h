@@ -36,12 +36,12 @@ namespace DX12Rendering
 		{
 		}
 
-		bool Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc, D3D12_RESOURCE_STATES resourceState);
+		bool Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc, D3D12_RESOURCE_STATES resourceState);
 
 		const bool IsReady() { return Exists(); }
 
-		const CD3DX12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptorHandle() const { return m_gpuHandle; }
-		void SetGPUDescriptorHandle(CD3DX12_GPU_DESCRIPTOR_HANDLE handle) { m_gpuHandle = handle; }
+		const D3D12_GPU_DESCRIPTOR_HANDLE GetGPUDescriptorHandle() const { return m_gpuHandle; }
+		void SetGPUDescriptorHandle(D3D12_GPU_DESCRIPTOR_HANDLE handle) { m_gpuHandle = handle; }
 
 		const UINT GetTextureIndex() const { return m_heapIndex; }
 
@@ -54,18 +54,23 @@ namespace DX12Rendering
 			return m_lastFenceValue;
 		}
 
+		const D3D12_SAMPLER_DESC* GetSamplerDescription() const { return &m_samplerDesc; };
+
 	private:
 		D3D12_RESOURCE_DESC m_textureDesc;
-		CD3DX12_GPU_DESCRIPTOR_HANDLE m_gpuHandle;
+		D3D12_GPU_DESCRIPTOR_HANDLE m_gpuHandle;
 		UINT m_heapIndex;
+
+		D3D12_SAMPLER_DESC m_samplerDesc;
 
 		Commands::FenceValue m_lastFenceValue;
 	};
 
 	class TextureManager {
 	public:
-		static const UINT BINDLESS_TEXTURE_COUNT = 4096;
+		static const UINT BINDLESS_TEXTURE_COUNT = TEXTURE_ENTRIES_HEAP_SIZE;
 		static const UINT TEXTURE_SPACE_COUNT = 2;
+		static const UINT DESCRIPTOR_COUNT = TEXTURE_SPACE_COUNT;
 
 		TextureManager();
 		~TextureManager();
@@ -83,6 +88,8 @@ namespace DX12Rendering
 		void StartTextureWrite(TextureBuffer* buffer);
 		bool EndTextureWrite(TextureBuffer* buffer);
 
+		void StoreSamplerPerFrame(const TextureBuffer* buffer, UINT objectIndex, UINT samplerIndex);
+
 		/// <summary>
 		/// Generates a texture to be stored in video memory
 		/// </summary>
@@ -91,7 +98,7 @@ namespace DX12Rendering
 		/// <param name="shaderComponentMapping">Any special mapping we need to define our RGB components</param>
 		/// <param name="resourceState">The default state for the texture.</param>
 		/// <param name="index">Index to store the texture in the system. A value less than 1 will append the texture to the end.</param>
-		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index = -1);
+		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index = -1);
 
 		TextureBuffer* GetTextureBuffer(uint64 textureHandle); //TODO: Move everything to a reference to create bindless textures.
 		void FreeTextureBuffer(TextureBuffer* buffer);
@@ -111,13 +118,15 @@ namespace DX12Rendering
 
 		bool m_isInitialized;
 		
-		CD3DX12_DESCRIPTOR_RANGE1 m_descriptorRanges[TEXTURE_SPACE_COUNT];
+		D3D12_DESCRIPTOR_RANGE1 m_descriptorRanges[DESCRIPTOR_COUNT];
 
 		std::vector<DX12Rendering::TextureBuffer*> m_textures; // Stores the active texture information in the scene.
 
 		std::vector<std::unique_ptr<byte[]>> m_tempImages;
 
-		void SetTextureToDefault(CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle);
+		void SetTextureToDefault(UINT textureIndex);
+
+		void StoreSamplerDirectly(const TextureBuffer* buffer, UINT index);
 	};
 
 	TextureManager* GetTextureManager();
