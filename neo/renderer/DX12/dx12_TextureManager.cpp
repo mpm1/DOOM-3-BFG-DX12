@@ -151,14 +151,6 @@ namespace DX12Rendering
 			SetTextureToDefault(i);
 		}
 
-		{
-			auto defaultTexture = GetGlobalTexture(eGlobalTexture::ALBEDO);
-			for (UINT i = 0; i < SAMPLERS_HEAP_SIZE; ++i)
-			{
-				StoreSamplerDirectly(defaultTexture, i);
-			}
-		}
-
 		m_isInitialized = true;
 	}
 
@@ -306,23 +298,6 @@ namespace DX12Rendering
 		m_tempImages.push_back(std::move(data));
 
 		return m_tempImages.back().get();
-	}
-
-	void TextureManager::StoreSamplerPerFrame(const TextureBuffer* buffer, UINT objectIndex, UINT samplerIndex)
-	{
-		StoreSamplerDirectly(buffer, (objectIndex * SAMPLERS_PER_OBJECT_MAX) + samplerIndex);
-	}
-
-	void TextureManager::StoreSamplerDirectly(const TextureBuffer* buffer, UINT index)
-	{
-		assert(index < SAMPLERS_HEAP_SIZE);
-
-		HeapDescriptorManager* heapManager = GetDescriptorManager();
-		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
-
-		// Setup the sampler
-		D3D12_CPU_DESCRIPTOR_HANDLE samplerHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorSamplerEntries, index);
-		device->CreateSampler(buffer->GetSamplerDescription(), samplerHandle);
 	}
 
 	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index)

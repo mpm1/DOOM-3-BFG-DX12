@@ -12,10 +12,6 @@
 #define TEXTURE_ENTRIES_HEAP_START (COMPUTE_OBJECTS_HEAP_START + COMPUTE_OBJECTS_HEAP_SIZE)
 #define TEXTURE_ENTRIES_HEAP_SIZE 4096
 
-#define SAMPLER_HEAP_START 0
-#define SAMPLERS_PER_OBJECT_MAX 16
-#define SAMPLERS_HEAP_SIZE 2048 /*Current max. (MAX_OBJECT_COUNT * SAMPLERS_PER_OBJECT_MAX)*/
-
 #define TOTAL_HEAP_SIZE (RENDER_OBJECTS_HEAP_SIZE + COMPUTE_OBJECTS_HEAP_SIZE + TEXTURE_ENTRIES_HEAP_SIZE)
 
 namespace DX12Rendering
@@ -24,8 +20,7 @@ namespace DX12Rendering
 	{
 		eHeapDescriptorRenderObjects = 0,
 		eHeapDescriptorComputeObjects,
-		eHeapDescriptorTextureEntries,
-		eHeapDescriptorSamplerEntries
+		eHeapDescriptorTextureEntries
 	};
 
 	class HeapDescriptorManager
@@ -42,23 +37,17 @@ namespace DX12Rendering
 		bool IsInitialized() { return m_cbvHeap != nullptr; }
 
 		ID3D12DescriptorHeap* GetCBVHeap() { return m_cbvHeap.Get(); }
-		ID3D12DescriptorHeap* GetSamplerHeap() { return m_samplerHeap.Get(); }
 
 	private:
 		UINT m_cbvHeapIncrementor;
 		ComPtr<ID3D12DescriptorHeap> m_cbvHeap;
 
-		UINT m_samplerHeapIncrementor;
-		ComPtr< ID3D12DescriptorHeap> m_samplerHeap;
-
 		void CreateCBVHeap();
-		void CreateSamplerHeap();
 
 		const UINT m_partitionIndexStart[4] = { // Must match the order in eHeapDescriptorPartition
 			RENDER_OBJECTS_HEAP_START,
 			COMPUTE_OBJECTS_HEAP_START,
-			TEXTURE_ENTRIES_HEAP_START,
-			SAMPLER_HEAP_START
+			TEXTURE_ENTRIES_HEAP_START
 		};
 
 	};

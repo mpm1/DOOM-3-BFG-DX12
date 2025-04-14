@@ -61,7 +61,7 @@ namespace DX12Rendering {
 }
 
 //TODO: move everything into the correct namespace
-bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, DX12Rendering::Commands::CommandList& commandList);
+bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList);
 
 class DX12Renderer {
 public:
@@ -112,7 +112,7 @@ public:
 	void SetPassDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
 	void SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
 	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
-	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant, void* surfaceConstants, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList); // Records the the surface entry into the heap.
+	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant, void* surfaceConstants, const idMaterial* material, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList); // Records the the surface entry into the heap.
 	void DrawModel(DX12Rendering::Commands::CommandList& commandList, DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride /* 0 means no override */);
 
 #pragma region RayTracing

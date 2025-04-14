@@ -720,13 +720,13 @@ UINT DX12Renderer::StartSurfaceSettings() {
 	return m_objectIndex;
 }
 
-bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState, void* surfaceConstants, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList) {
+bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState, void* surfaceConstants, const idMaterial* material, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList) {
 	// TODO: Define separate CBV for location data and Textures
 	// TODO: add a check if we need to update tehCBV and Texture data.
 
 	assert(m_isDrawing);
 
-	if (!DX12_ActivatePipelineState(variantState, commandList)) {
+	if (!DX12_ActivatePipelineState(variantState, material, commandList)) {
 		// We cant draw the object, so return.
 		return false;
 	}

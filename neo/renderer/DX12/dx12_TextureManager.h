@@ -88,8 +88,6 @@ namespace DX12Rendering
 		void StartTextureWrite(TextureBuffer* buffer);
 		bool EndTextureWrite(TextureBuffer* buffer);
 
-		void StoreSamplerPerFrame(const TextureBuffer* buffer, UINT objectIndex, UINT samplerIndex);
-
 		/// <summary>
 		/// Generates a texture to be stored in video memory
 		/// </summary>
@@ -125,8 +123,6 @@ namespace DX12Rendering
 		std::vector<std::unique_ptr<byte[]>> m_tempImages;
 
 		void SetTextureToDefault(UINT textureIndex);
-
-		void StoreSamplerDirectly(const TextureBuffer* buffer, UINT index);
 	};
 
 	TextureManager* GetTextureManager();

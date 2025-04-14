@@ -580,7 +580,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), commandList);
 	}
 
-	if (dxRenderer.EndSurfaceSettings(variant, surfaceConstants, surfaceConstantsSize, *commandList)) {
+	if (dxRenderer.EndSurfaceSettings(variant, surfaceConstants, surf->material, surfaceConstantsSize, *commandList)) {
 		dxRenderer.DrawModel(
 			*commandList,
 			apiVertexBuffer,
