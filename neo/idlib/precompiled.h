@@ -81,6 +81,7 @@ const int MAX_EXPRESSION_OPS = 4096;
 const int MAX_EXPRESSION_REGISTERS = 4096;
 
 // renderer
+#include "../renderer/DX12/murmurhash/MurmurHash3.h"
 #include "../renderer/DX12/dx12renderer.h"
 #include "../renderer/GLFunction.h"
 #include "../renderer/Cinematic.h"

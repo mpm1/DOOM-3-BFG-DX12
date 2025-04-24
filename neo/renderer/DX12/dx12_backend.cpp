@@ -523,10 +523,13 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 	DX12Rendering::Commands::CommandList* commandList = DX12Rendering::RenderPassBlock::GetCurrentRenderPass()->GetCommandManager()->RequestNewCommandList();
 	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "RB_DrawElementsWithCounters");
 
-	dxRenderer.SetCommandListDefaults(commandList, false);
-
 	// Connect to a new surfae renderer
-	const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
+	const int gpuIndex = dxRenderer.StartSurfaceSettings(variant, surf->material, *commandList);
+	if (gpuIndex < 0)
+	{
+		// An error occured when setting the pipeline state.
+		return;
+	}
 
 	// get vertex buffer
 	idVertexBuffer* vertexBuffer = GetVertexBuffer(vbHandle);
@@ -580,7 +583,7 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		dxRenderer.SetJointBuffer(reinterpret_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject()), jointBuffer.GetOffset(), commandList);
 	}
 
-	if (dxRenderer.EndSurfaceSettings(variant, surfaceConstants, surf->material, surfaceConstantsSize, *commandList)) {
+	if (dxRenderer.EndSurfaceSettings(surfaceConstants, surfaceConstantsSize, *commandList)) {
 		dxRenderer.DrawModel(
 			*commandList,
 			apiVertexBuffer,
@@ -2133,7 +2136,6 @@ static int RB_DrawShaderPasses(const drawSurf_t* const* const drawSurfs, const i
 				}
 				renderLog.OpenBlock("New Shader Stage");
 
-				const UINT gpuIndex = dxRenderer.StartSurfaceSettings();
 				GL_State(stageGLState);
 
 				renderProgManager.BindShader(newStage->glslProgram, newStage->glslProgram);

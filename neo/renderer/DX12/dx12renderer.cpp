@@ -407,9 +407,9 @@ void DX12Renderer::LoadPipelineState(D3D12_GRAPHICS_PIPELINE_STATE_DESC* psoDesc
 }
 
 void DX12Renderer::SetActivePipelineState(ID3D12PipelineState* pPipelineState, DX12Rendering::Commands::CommandList& commandList) {
-	if (pPipelineState != NULL  && pPipelineState != m_activePipelineState) {
+	if (pPipelineState != NULL)
+	{ //TODO: readd this functionality on commandlists with multiple draws. && pPipelineState != m_activePipelineState) {
 		m_activePipelineState = pPipelineState;
-		m_isPipelineStateNew = true;
 
 		if (m_isDrawing) {
 			commandList.CommandSetPipelineState(pPipelineState);
@@ -541,47 +541,12 @@ void DX12Renderer::SetPassDefaults(DX12Rendering::Commands::CommandList* command
 
 			if (m_activePipelineState != nullptr) {
 				commandList->SetPipelineState(m_activePipelineState);
-				m_isPipelineStateNew = false;
 			}
 
 			commandList->RSSetViewports(1, &m_viewport);
 			commandList->RSSetScissorRects(1, &m_scissorRect);
 
 			commandList->OMSetStencilRef(m_stencilRef);
-		});
-
-		EnforceRenderTargets(commandList);
-	}
-}
-
-void DX12Renderer::SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue)
-{
-	if (!isComputeQueue)
-	{
-		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
-		{
-			auto rootSignature = isComputeQueue ? nullptr : m_rootSignature->GetRootSignature();
-			if (rootSignature != nullptr)
-			{
-				commandList->SetGraphicsRootSignature(rootSignature);
-			}
-
-			if (m_activePipelineState != nullptr) {
-				commandList->SetPipelineState(m_activePipelineState);
-				
-				m_isPipelineStateNew = false;
-			}
-
-			commandList->RSSetViewports(1, &m_viewport);
-			commandList->RSSetScissorRects(1, &m_scissorRect);
-
-			commandList->OMSetStencilRef(m_stencilRef);
-
-			// Setup the initial heap location
-			ID3D12DescriptorHeap* descriptorHeaps[1] = {
-				m_rootSignature->GetCBVHeap(),
-			};
-			commandList->SetDescriptorHeaps(1, descriptorHeaps);
 		});
 
 		EnforceRenderTargets(commandList);
@@ -713,24 +678,53 @@ void DX12Renderer::EndDraw() {
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
 }
 
-UINT DX12Renderer::StartSurfaceSettings() {
+int DX12Renderer::StartSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList) {
 	assert(m_isDrawing);
+
+	ID3D12RootSignature* rootSignature = m_rootSignature->GetRootSignature();
+	if (rootSignature != nullptr)
+	{
+		commandList.AddCommandAction([rootSignature](ID3D12GraphicsCommandList4* cmdList)
+		{
+			cmdList->SetGraphicsRootSignature(rootSignature);
+		});
+	}
+
+	if (!DX12_ActivatePipelineState(variantState, material, commandList)) {
+		// We cant draw the object, so return.
+		return -1;
+	}
+
+	UINT stencilRef = m_stencilRef;
+	CD3DX12_VIEWPORT viewport = m_viewport;
+	CD3DX12_RECT scissor = m_scissorRect;
+	ID3D12DescriptorHeap* heap = m_rootSignature->GetCBVHeap();
+	commandList.AddCommandAction([stencilRef, viewport, scissor, heap](ID3D12GraphicsCommandList4* commandList)
+	{
+		commandList->RSSetViewports(1, &viewport);
+		commandList->RSSetScissorRects(1, &scissor);
+
+		commandList->OMSetStencilRef(stencilRef);
+
+		ID3D12DescriptorHeap* descriptorHeaps[1] = {
+			heap,
+		};
+		commandList->SetDescriptorHeaps(1, descriptorHeaps);
+	});
+
+	EnforceRenderTargets(&commandList);
+
 	m_objectIndex = m_rootSignature->RequestNewObjectIndex();
 
 	return m_objectIndex;
 }
 
-bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState, void* surfaceConstants, const idMaterial* material, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList) {
+bool DX12Renderer::EndSurfaceSettings(void* surfaceConstants,  size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList) {
 	// TODO: Define separate CBV for location data and Textures
 	// TODO: add a check if we need to update tehCBV and Texture data.
 
 	assert(m_isDrawing);
 
-	if (!DX12_ActivatePipelineState(variantState, material, commandList)) {
-		// We cant draw the object, so return.
-		return false;
-	}
-	
 	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
 
 	{

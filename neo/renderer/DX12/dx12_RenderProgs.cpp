@@ -15,15 +15,24 @@ static constexpr uint64 HASH_PARENT_INDEX_SHIFT = HASH_VARIANT_INDEX_SHIFT + 5;
 
 static int activePipelineState = 0;
 
-D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDescriptors[128];
+D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDescriptors[128] = {};
+
+typedef GUID PSOKey;
+struct PSOKeyComparator
+{
+	bool operator()(const PSOKey& a, const PSOKey& b) const
+	{
+		return memcmp(&a, &b, sizeof(PSOKey)) < 0;
+	}
+};
 
 struct PipelineStateObjectEntry
 {
-	const dxHandle_t handle;
+	const PSOKey handle;
 	bool isValid;
-	ID3D12PipelineState* pipelineState;
+	ComPtr<ID3D12PipelineState> pipelineState;
 
-	PipelineStateObjectEntry(const dxHandle_t handle) :
+	PipelineStateObjectEntry(const PSOKey handle) :
 		handle(handle),
 		isValid(false),
 		pipelineState(nullptr)
@@ -41,7 +50,7 @@ struct PipelineStateObjectEntry
 	}
 };
 
-typedef std::map<dxHandle_t, PipelineStateObjectEntry> PSOMap;
+typedef std::map<PSOKey, PipelineStateObjectEntry, PSOKeyComparator> PSOMap;
 
 PSOMap shaderMap;
 
@@ -303,28 +312,48 @@ void FillPolygonOffset(D3D12_GRAPHICS_PIPELINE_STATE_DESC& psoDesc, uint64 state
 	}
 }
 
-dxHandle_t GetPSOHandle(const int parentState, const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, const glstate_t state)
+PSOKey GetPSOHandle(const int parentState, const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, const glstate_t state)
 {
-	dxHandle_t result = (state.glStateBits & STATE_TO_HASH_MASK);
-	result ^= (state.faceCulling << HASH_FACE_CULL_SHIFT);
-	result ^= (static_cast<uint64>(variant) << HASH_VARIANT_INDEX_SHIFT);
-	result ^= (parentState << HASH_PARENT_INDEX_SHIFT);
+	byte data[512] = {};
+	int length = 0;
 
-	if (material != nullptr)
+	const byte parentBits = static_cast<byte>(parentState);
+	std::memcpy(&data[length], &parentBits, sizeof(byte));
+	length += sizeof(byte);
+
+	const uint64 stateBits = state.glStateBits & STATE_TO_HASH_MASK;
+	std::memcpy(&data[length], &stateBits, sizeof(uint64));
+	length += sizeof(uint64);
+
+	const int cullingBits = state.faceCulling;
+	std::memcpy(&data[length], &cullingBits, sizeof(int));
+	length += sizeof(int);
+
+	const byte variantBits = static_cast<byte>(variant);
+	std::memcpy(&data[length], &variantBits, sizeof(byte));
+	length += sizeof(byte);
+
+	if (material != nullptr && !idRenderProgManager::IgnoreMaterial(parentState))
 	{
 		const char* name = material->GetName();
-		int index = material->Index();
-		//result ^= index << (HASH_VARIANT_INDEX_SHIFT + 10);
+		const int nameLength = std::strlen(name);
+		const int maxCopy = std::min(nameLength, 512 - length);
+
+		std::memcpy(&data[length], name, maxCopy);
+		length += maxCopy;
 	}
 
-	Mark start here. Implement murmur hash ofr stateIndex, material name, and variant. Then each PSO will set it's sampler information.
-	return result;
+	PSOKey key;
+
+	MurmurHash3_x64_128(data, length, 0, &key);
+
+	return key;
 }
 
 void LoadStagePipelineState(const int parentState, const idMaterial* material, const DX12Rendering::eSurfaceVariant variant, glstate_t state, DX12Rendering::Commands::CommandList& commandList) {
 	// Combine the glStateBits with teh faceCulling and parentState index values.
 	// We do not need the stecil ref value as this will be set through the command list. This gives us 8 useable bits.
-	dxHandle_t shaderIndex = GetPSOHandle(parentState, variant, material, state);
+	PSOKey shaderIndex = GetPSOHandle(parentState, variant, material, state);
 
 	auto psoMapEntry = shaderMap.find(shaderIndex);
 	PipelineStateObjectEntry* psoEntry;
@@ -338,7 +367,7 @@ void LoadStagePipelineState(const int parentState, const idMaterial* material, c
 		psoEntry = &psoMapEntry->second;
 	}
 	
-	if (!psoEntry->isValid || psoEntry->pipelineState == nullptr) {
+	if (!psoEntry->isValid) {
 		if (psoEntry->pipelineState != nullptr)
 		{
 			// Remove invalid state.
@@ -367,26 +396,29 @@ void LoadStagePipelineState(const int parentState, const idMaterial* material, c
 
 		psoDesc.BlendState = CalculateBlendMode(state.glStateBits);
 		psoDesc.DepthStencilState = CalculateDepthStencilMode(state.glStateBits);
-		
+
 		FillPolygonOffset(psoDesc, state.glStateBits);
 
 		DX12_ApplyPSOVariant(psoDesc, variant);
 
-		ID3D12PipelineState* renderState;
-		dxRenderer.LoadPipelineState(&psoDesc, &renderState);
+		dxRenderer.LoadPipelineState(&psoDesc, &psoEntry->pipelineState);
 
-		wchar_t resourceName[64];
-		wsprintfW(resourceName, L"Shader: 0x%x", shaderIndex);
-		renderState->SetName(resourceName);
+		wchar_t resourceName[128];
 
-		psoEntry->pipelineState = renderState;
+		if (material == nullptr)
+		{
+			wsprintfW(resourceName, L"Shader: 0x%x", shaderIndex);
+		}
+		else
+		{
+			wsprintfW(resourceName, L"Shader: %S", material->GetName());
+		}
+		psoEntry->pipelineState->SetName(resourceName);
+
 		psoEntry->isValid = true;
-
-		dxRenderer.SetActivePipelineState(renderState, commandList);
 	}
-	else {
-		dxRenderer.SetActivePipelineState(psoEntry->pipelineState, commandList);
-	}
+	
+	dxRenderer.SetActivePipelineState(psoEntry->pipelineState.Get(), commandList);
 }
 
 bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList) {

@@ -73,6 +73,9 @@
     <Filter Include="Renderer\DX12\debug">
       <UniqueIdentifier>{b6fb3a0f-fd7c-4266-9f13-8acd2651c239}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Renderer\DX12\murmurhash">
+      <UniqueIdentifier>{39c3e1bd-8acc-472a-b7d0-b2f624e38523}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cm\CollisionModel.h">
@@ -635,6 +638,9 @@
     </ClInclude>
     <ClInclude Include="renderer\DX12\dx12_HeapDescriptorManager.h">
       <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\murmurhash\MurmurHash3.h">
+      <Filter>Renderer\DX12\murmurhash</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -1327,6 +1333,9 @@
     </ClCompile>
     <ClCompile Include="renderer\DX12\dx12_HeapDescriptorManager.cpp">
       <Filter>Renderer\DX12</Filter>
+    </ClCompile>
+    <ClCompile Include="renderer\DX12\murmurhash\MurmurHash3.cpp">
+      <Filter>Renderer\DX12\murmurhash</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
