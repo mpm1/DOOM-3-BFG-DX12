@@ -553,7 +553,7 @@ void DX12Renderer::SetPassDefaults(DX12Rendering::Commands::CommandList* command
 	}
 }
 
-void DX12Renderer::BeginDraw() {
+void DX12Renderer::BeginDraw(const int frameIndex) {
 	if (m_isDrawing || !m_initialized) {
 		return;
 	}
@@ -563,6 +563,8 @@ void DX12Renderer::BeginDraw() {
 	m_zMax = 1.0f;
 
 	WaitForPreviousFrame();
+
+	DX12Rendering::GetTextureManager()->BeginFrame(frameIndex);
 
 	// Evaluate if we need to update or  resolution
 	if (r_fullscreen.GetInteger() == 0 && // We transferred to fullscreen mode, this will be handled by R_SetNewMode
@@ -698,18 +700,19 @@ int DX12Renderer::StartSurfaceSettings(const DX12Rendering::eSurfaceVariant vari
 	UINT stencilRef = m_stencilRef;
 	CD3DX12_VIEWPORT viewport = m_viewport;
 	CD3DX12_RECT scissor = m_scissorRect;
-	ID3D12DescriptorHeap* heap = m_rootSignature->GetCBVHeap();
-	commandList.AddCommandAction([stencilRef, viewport, scissor, heap](ID3D12GraphicsCommandList4* commandList)
+	ID3D12DescriptorHeap* heaps[2] = {
+		m_rootSignature->GetCBVHeap(),
+		m_rootSignature->GetSamplerHeap(),
+	};
+
+	commandList.AddCommandAction([stencilRef, viewport, scissor, heaps](ID3D12GraphicsCommandList4* commandList)
 	{
 		commandList->RSSetViewports(1, &viewport);
 		commandList->RSSetScissorRects(1, &scissor);
 
 		commandList->OMSetStencilRef(stencilRef);
 
-		ID3D12DescriptorHeap* descriptorHeaps[1] = {
-			heap,
-		};
-		commandList->SetDescriptorHeaps(1, descriptorHeaps);
+		commandList->SetDescriptorHeaps(2, heaps);
 	});
 
 	EnforceRenderTargets(&commandList);

@@ -20,8 +20,8 @@ bool IsInsideViewport(float2 p, float4 viewport)
 
 float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
 {
-	Texture2D<float4> falloffTexture =  GetBindlessTexture4f(light.falloffIndex);
-	float4 falloff = falloffTexture.SampleLevel(projectionSampler, float2(dot4( worldPosition, light.falloffS ), 0), 0);
+	float2 uv = float2(dot4( worldPosition, light.falloffS ), 0);
+	float4 falloff =  SampleBindlessTexture4fLevel(light.falloffIndex, uv, 0);
 	
 	return falloff.rgb;
 }
@@ -36,9 +36,8 @@ float3 CalculateProjection(in SceneLight light, float4 worldPosition)
 	);
 
 	projection.xy /= projection.w;
-	Texture2D<float4> projectionTexture = GetBindlessTexture4f(light.projectionIndex);
 
-	return projectionTexture.SampleLevel(projectionSampler, projection.xy, 0).rgb;
+	return SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb;
 }
 
 float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 normal, in float3 pointToEye, in float3 pointToLight, in float specMultiplier)

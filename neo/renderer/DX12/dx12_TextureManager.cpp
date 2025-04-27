@@ -23,13 +23,17 @@ namespace DX12Rendering
 
 	TextureManager::TextureManager() :
 		m_isInitialized(false),
+		m_nextSamplerLocation(0),
 		m_textureUploadHeap(3840*2160*4*16, D3D12_SMALL_MSAA_RESOURCE_PLACEMENT_ALIGNMENT, CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD), D3D12_RESOURCE_FLAG_NONE, D3D12_RESOURCE_STATE_GENERIC_READ, L"Texture Buffer Upload Resource Heap")
 	{
 		m_textures.reserve(BINDLESS_TEXTURE_COUNT);
+		std::memset(m_samplers, 0, sizeof(m_samplers));
+
+		int descriptorIndex = 0;
 
 		for (uint space = 0; space < TEXTURE_SPACE_COUNT; ++space)
 		{
-			m_descriptorRanges[space] = CD3DX12_DESCRIPTOR_RANGE1(
+			m_descriptorRanges[descriptorIndex] = CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_SRV /* Texture Array */,
 				BINDLESS_TEXTURE_COUNT, /* Total number of possible textures */
 				0 /*t0*/,
@@ -37,7 +41,28 @@ namespace DX12Rendering
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
 				0 // Starting index of the heap
 			);
+
+			++descriptorIndex;
 		}
+
+		m_descriptorRanges[descriptorIndex] = CD3DX12_DESCRIPTOR_RANGE1(
+			D3D12_DESCRIPTOR_RANGE_TYPE_CBV, /* Constant Buffer */
+			CONSTANT_DESCRIPTOR_COUNT, /* 1 Constant Buffer */
+			0, /*b0*/
+			1, /* space1 */
+			D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+			0 // Starting index of the heap
+		);
+		++descriptorIndex;
+
+		m_descriptorRanges[descriptorIndex] = CD3DX12_DESCRIPTOR_RANGE1(
+			D3D12_DESCRIPTOR_RANGE_TYPE_SAMPLER, /* Sampler Array */
+			BINDLESS_SAMPLER_COUNT, /* 512 Samplers */
+			0, /*s0*/
+			1, /* space1 */
+			D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
+			0 // Starting index of the heap
+		);
 	}
 
 	TextureManager::~TextureManager() {
@@ -122,6 +147,17 @@ namespace DX12Rendering
 		return samplerDesc;
 	}
 
+	void TextureManager::BeginFrame(const int frameIndex)
+	{
+		m_nextSamplerLocation = 0;
+
+		// Record the global texutre samplers
+		for (UINT i = 0; i < eGlobalTexture::TEXTURE_COUNT; ++i)
+		{
+			RecordSamplerForFrame(frameIndex, i);
+		}
+	}
+
 	void TextureManager::Initialize(uint screenWidth, uint screenHeight) {	
 		// Create the basic entries for the global textures
 		for (int i = 0; i < eGlobalTexture::TEXTURE_COUNT; ++i)
@@ -151,6 +187,14 @@ namespace DX12Rendering
 			SetTextureToDefault(i);
 		}
 
+		// Fill in all samplers
+		for (int i = 0; i < BINDLESS_SAMPLER_COUNT; ++i)
+		{
+			HeapDescriptorManager* heapManager = GetDescriptorManager();
+			D3D12_CPU_DESCRIPTOR_HANDLE samplerHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorSamplerEntries, i);
+			Device::GetDevice()->CreateSampler(&GetTextureBuffer(0)->m_samplerDesc, samplerHandle);
+		}
+
 		m_isInitialized = true;
 	}
 
@@ -178,6 +222,39 @@ namespace DX12Rendering
 				m_textures.size() <= i ? -1 : i);
 
 		}
+	}
+
+	void TextureManager::RecordSamplerForFrame(const int frameIndex, const UINT textureIndex)
+	{
+		assert(textureIndex < BINDLESS_TEXTURE_COUNT);
+		assert(m_nextSamplerLocation < SAMPLERS_ENTRIES_HEAP_SIZE);
+
+		BindlessSamplerIndex& index = m_samplers[textureIndex];
+		if (frameIndex != index.frame)
+		{
+			index.samplerMapIndex = m_nextSamplerLocation;
+			index.frame = frameIndex;
+
+			// Place the sampler on the GPU
+			HeapDescriptorManager* heapManager = GetDescriptorManager();
+			D3D12_CPU_DESCRIPTOR_HANDLE samplerHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorSamplerEntries, m_nextSamplerLocation);
+			Device::GetDevice()->CreateSampler(&GetTextureBuffer(textureIndex)->m_samplerDesc, samplerHandle);
+
+			++m_nextSamplerLocation;
+		}
+	}
+
+	void TextureManager::StoreFrameSamplers()
+	{
+		ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
+		const size_t samplerSize = sizeof(m_samplers);
+
+		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(samplerSize);
+		resourceManager.FillConstantBuffer(buffer, m_samplers);
+
+		CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle = GetDescriptorManager()->GetCPUDescriptorHandle(eHeapDescriptorTextureConstants, 0); // We use 0, as this will always be the first constant object.
+
+		Device::GetDevice()->CreateConstantBufferView(&buffer.bufferLocation, descriptorHandle);
 	}
 
 	void TextureManager::SetTextureToDefault(UINT textureIndex)

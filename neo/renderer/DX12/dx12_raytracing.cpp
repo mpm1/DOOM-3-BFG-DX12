@@ -511,10 +511,14 @@ namespace DX12Rendering {
 
 			D3D12_GPU_DESCRIPTOR_HANDLE srvUavHandle = GetGPUDescriptorHandle(frameIndex, objectIndex);
 			D3D12_GPU_DESCRIPTOR_HANDLE textureHeap = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureEntries, 0);
+			D3D12_GPU_DESCRIPTOR_HANDLE textureConstantDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureConstants, 0);
+			D3D12_GPU_DESCRIPTOR_HANDLE samplerHeap = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorSamplerEntries, 0);
 
 			std::vector<void*> heapPointers = {};
 			heapPointers.push_back(reinterpret_cast<void*>(srvUavHandle.ptr));
 			heapPointers.push_back(reinterpret_cast<void*>(textureHeap.ptr));
+			heapPointers.push_back(reinterpret_cast<void*>(textureConstantDescriptorHandle.ptr));
+			heapPointers.push_back(reinterpret_cast<void*>(samplerHeap.ptr));
 
 			// TODO: We'll eventually need a custom SBT descriptor per object, but for now this will work with just shadows.
 

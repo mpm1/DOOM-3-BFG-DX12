@@ -116,7 +116,7 @@ class DX12Rendering::ResourceManager
 public:
 	ResourceManager(const DX12Rendering::ResourceManager&) = delete;
 
-	static const size_t MAX_CONSTANT_BUFFER_SIZE = 4096;
+	static const size_t MAX_CONSTANT_BUFFER_SIZE = 4 /* 4 bytes each */ * 4096;
 
 	ResourceManager();
 	~ResourceManager();

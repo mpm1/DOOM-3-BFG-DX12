@@ -34,6 +34,7 @@ namespace DX12Rendering
 		ID3D12RootSignature* GetRootSignature() { return m_rootSignature.Get(); }
 
 		ID3D12DescriptorHeap* GetCBVHeap();
+		ID3D12DescriptorHeap* GetSamplerHeap();
 
 		/// <summary>
 		/// Initializes the RootSignature for the current frame and resets cbvHeapIndex.

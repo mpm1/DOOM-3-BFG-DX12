@@ -112,7 +112,26 @@ void GatherSurfacesPerStage(const viewDef_t* viewDef, RenderPass** renderPasses,
 	}
 }
 
-class PurgeMaterialPass : public RenderPass
+/// <summary>
+/// Go through materials textures and make sure the samplers are prepared for the frame.
+/// </summary>
+/// <param name="material">The material to be evaluated.</param>
+void EnsureMaterialTexturesReadyForFrame(const idMaterial* material)
+{
+	for (int stageNum = 0; stageNum < material->GetNumStages(); ++stageNum)
+	{
+		const shaderStage_t* stage = material->GetStage(stageNum);
+
+		if (stage != nullptr && stage->texture.image != nullptr)
+		{
+			idImage* image = stage->texture.image;
+			int textureIndex = LoadBindlessTexture(image);
+			DX12Rendering::GetTextureManager()->RecordSamplerForFrame(tr.frameCount, textureIndex);
+		}
+	}
+}
+
+class EvaluateMaterialPass : public RenderPass
 {
 public:
 	// Inherited via RenderPass
@@ -120,11 +139,28 @@ public:
 	{
 		if (ds->material != NULL) {
 			const_cast<idMaterial*>(ds->material)->EnsureNotPurged();
+			EnsureMaterialTexturesReadyForFrame(ds->material);
 		}
 	}
 
 	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
 	{
+		// Add all light textures to the pass
+		for (const viewLight_t* vLight = backEnd.viewDef->viewLights; vLight != NULL; vLight = vLight->next)
+		{
+			idImage* image = vLight->falloffImage;
+			if (image)
+			{
+				int textureIndex = LoadBindlessTexture(image);
+				DX12Rendering::GetTextureManager()->RecordSamplerForFrame(tr.frameCount, textureIndex);
+			}
+
+			EnsureMaterialTexturesReadyForFrame(vLight->lightShader);
+		}
+
+		// Make sure we have samplers available for all material textures.
+		DX12Rendering::GetTextureManager()->StoreFrameSamplers();
+
 		return DX12Rendering::Commands::FenceValue::Empty();
 	}
 };
@@ -3266,6 +3302,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	// in a separate thread, it must not try to load images, so do it here.
 	//-------------------------------------------------
 	drawSurf_t** drawSurfs = (drawSurf_t**)&viewDef->drawSurfs[0];
+
 	const int numDrawSurfs = viewDef->numDrawSurfs;
 
 	const bool raytracedEnabled = dxRenderer.IsRaytracingEnabled() && (backEnd.viewDef->viewEntitys != NULL /* Only can be used on 3d models */);
@@ -3282,19 +3319,20 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		}
 	};
 
-	PurgeMaterialPass purgeMaterialPass;
+	EvaluateMaterialPass evaluateMaterialPass;
 	DynamicSurfacesPass dynamicSurfacesPass(numDrawSurfs);
 	FillDepthBufferFastPass fillDepthBufferPass(numDrawSurfs);
 	GBufferPass gBufferPass(numDrawSurfs);
 
 	RenderPass* renderPasses[] = {
-		&purgeMaterialPass,
+		&evaluateMaterialPass,
 		&dynamicSurfacesPass,
 		&fillDepthBufferPass,
 		&gBufferPass
 	};
 
 	GatherSurfacesPerStage(viewDef, renderPasses, std::size(renderPasses));
+	evaluateMaterialPass.Execute(viewDef, raytracedEnabled);
 
 	//-------------------------------------------------
 	// RB_BeginDrawingView
@@ -3695,7 +3733,7 @@ void RB_ExecuteBackEndCommands(const emptyCommand_t* cmds) {
 
 	uint64 backEndStartTime = Sys_Microseconds();
 
-	dxRenderer.BeginDraw();
+	dxRenderer.BeginDraw(tr.frameCount);
 	GL_SetDefaultState();
 
 	for (; cmds != NULL; cmds = (const emptyCommand_t*)cmds->next) {

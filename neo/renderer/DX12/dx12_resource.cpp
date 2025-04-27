@@ -170,7 +170,9 @@ namespace DX12Rendering {
 
 	ResourceManager::ResourceManager()
 		: m_nextConstantBufferOffset(0)
-		, m_maxCBVHeapSize(DX12_ALIGN(CBV_REGISTER_COUNT * MAX_OBJECT_COUNT * MAX_CONSTANT_BUFFER_SIZE * DX12_FRAME_COUNT, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) // 64kb aligned
+		, m_maxCBVHeapSize(DX12_ALIGN(
+			(((CBV_REGISTER_COUNT * MAX_OBJECT_COUNT) + MAX_GLOBAL_REGISTERS) * MAX_CONSTANT_BUFFER_SIZE) * DX12_FRAME_COUNT, 
+			D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) // 64kb aligned
 	{
 		auto device = DX12Rendering::Device::GetDevice();
 

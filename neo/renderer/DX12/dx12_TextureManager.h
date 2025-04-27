@@ -23,6 +23,14 @@ namespace DX12Rendering
 		TEXTURE_COUNT
 	};
 
+	struct BindlessSamplerIndex
+	{
+		int frame; // The frame when we recorded this value. That way we can keep this up to date
+		UINT samplerMapIndex; // Where on the sampler heap we find this sampler
+		UINT pad1;
+		UINT pad2;
+	};
+
 	struct TextureBuffer : public Resource
 	{
 	public:
@@ -69,11 +77,16 @@ namespace DX12Rendering
 	class TextureManager {
 	public:
 		static const UINT BINDLESS_TEXTURE_COUNT = TEXTURE_ENTRIES_HEAP_SIZE;
+		static const UINT BINDLESS_SAMPLER_COUNT = SAMPLERS_ENTRIES_HEAP_SIZE;
 		static const UINT TEXTURE_SPACE_COUNT = 2;
-		static const UINT DESCRIPTOR_COUNT = TEXTURE_SPACE_COUNT;
+		static const UINT CONSTANT_DESCRIPTOR_COUNT = 1;
+		static const UINT SAMPLER_DESCRIPTOR_COUNT = 1;
+		static const UINT DESCRIPTOR_COUNT = TEXTURE_SPACE_COUNT + CONSTANT_DESCRIPTOR_COUNT + SAMPLER_DESCRIPTOR_COUNT;
 
 		TextureManager();
 		~TextureManager();
+
+		void BeginFrame(const int frameIndex);
 
 		void Initialize(uint screenWidth, uint screenHeight);
 		void ResizeGlobalTextures(uint screenWidth, uint screenHeight);
@@ -98,7 +111,6 @@ namespace DX12Rendering
 		/// <param name="index">Index to store the texture in the system. A value less than 1 will append the texture to the end.</param>
 		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index = -1);
 
-		TextureBuffer* GetTextureBuffer(uint64 textureHandle); //TODO: Move everything to a reference to create bindless textures.
 		void FreeTextureBuffer(TextureBuffer* buffer);
 		void SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);
 
@@ -106,6 +118,12 @@ namespace DX12Rendering
 
 		// Stores images in temporary data. This is reset on EndTextureWrite.
 		byte* CreateTemporaryImageStorage(const UINT imageSize);
+		
+		// Stores the information for a sampler into the sampler heap. An index is then recorded to make sure we don't create multiple samplers for the same item.
+		void RecordSamplerForFrame(const int frameIndex, const UINT textureIndex);
+
+		// Stores teh sampler map for the frame into GPU memory.
+		void StoreFrameSamplers();
 
 		// PipelineFunctions
 		const D3D12_DESCRIPTOR_RANGE1* GetDescriptorRanges() { return m_descriptorRanges; }
@@ -119,10 +137,15 @@ namespace DX12Rendering
 		D3D12_DESCRIPTOR_RANGE1 m_descriptorRanges[DESCRIPTOR_COUNT];
 
 		std::vector<DX12Rendering::TextureBuffer*> m_textures; // Stores the active texture information in the scene.
+		DX12Rendering::BindlessSamplerIndex m_samplers[BINDLESS_TEXTURE_COUNT]; // Stores the active sampler index for each texture. The texture vertex must match the index of each entry.
+
+		UINT m_nextSamplerLocation;
 
 		std::vector<std::unique_ptr<byte[]>> m_tempImages;
 
 		void SetTextureToDefault(UINT textureIndex);
+
+		TextureBuffer* GetTextureBuffer(const UINT index) { return m_textures[index]; }
 	};
 
 	TextureManager* GetTextureManager();

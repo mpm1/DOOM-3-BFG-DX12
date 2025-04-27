@@ -41,6 +41,7 @@
 #define TEXTURE_REGISTER_COUNT 6
 #define MAX_DESCRIPTOR_COUNT (CBV_REGISTER_COUNT + TEXTURE_REGISTER_COUNT)
 #define MAX_OBJECT_COUNT 5000
+#define MAX_GLOBAL_REGISTERS 32
 
 #define MAX_SCENE_LIGHTS 128 // Total lights allowed in a scene.
 #define MAX_DXR_LIGHTS 32 // We use each light as a mask position.

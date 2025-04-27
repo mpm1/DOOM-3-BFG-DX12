@@ -105,7 +105,7 @@ public:
 	void SetTexture(DX12Rendering::TextureBuffer* buffer);
 
 	// Draw commands
-	void BeginDraw();
+	void BeginDraw(const int frameIndex);
 	DX12Rendering::Commands::CommandList* Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4], DX12Rendering::Commands::CommandList* commandList);
 	void EndDraw();
 	void PresentBackbuffer();

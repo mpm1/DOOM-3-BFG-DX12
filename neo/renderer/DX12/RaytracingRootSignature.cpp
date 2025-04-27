@@ -5,7 +5,8 @@ namespace DX12Rendering {
 
 	RaytracingRootSignature::RaytracingRootSignature(UINT flags)
 	{
-		CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+		const int rootParameterCount = 4;
+		CD3DX12_ROOT_PARAMETER1 rootParameters[rootParameterCount];
 
 		// Build the descriptor table.
 		std::vector<D3D12_DESCRIPTOR_RANGE1> descriptorRanges;
@@ -20,13 +21,6 @@ namespace DX12Rendering {
 				D3D12_DESCRIPTOR_RANGE_FLAG_NONE,
 				DX12Rendering::e_RaytracingHeapIndex::SRV_TLAS
 			));
-
-			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
-			const D3D12_DESCRIPTOR_RANGE1* ranges = textureManager->GetDescriptorRanges();
-			for (UINT space = 0; space < DX12Rendering::TextureManager::TEXTURE_SPACE_COUNT; ++space)
-			{
-				textureDescriptorRanges.push_back(ranges[space]);
-			}
 
 			descriptorRanges.push_back(CD3DX12_DESCRIPTOR_RANGE1(
 				D3D12_DESCRIPTOR_RANGE_TYPE_CBV /*Camera constant buffer*/,
@@ -61,13 +55,16 @@ namespace DX12Rendering {
 		}
 		
 		if (descriptorRanges.size() > 0) {
-			int rootParameterCount = 1;
 			rootParameters[0].InitAsDescriptorTable(descriptorRanges.size(), (D3D12_DESCRIPTOR_RANGE1*)descriptorRanges.data());
 
-			if (textureDescriptorRanges.size() > 0)
+			// Setup the texture table
 			{
-				rootParameters[rootParameterCount].InitAsDescriptorTable(textureDescriptorRanges.size(), (D3D12_DESCRIPTOR_RANGE1*)textureDescriptorRanges.data());
-				++rootParameterCount;
+				DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+				const D3D12_DESCRIPTOR_RANGE1* ranges = textureManager->GetDescriptorRanges();
+
+				rootParameters[1].InitAsDescriptorTable(TextureManager::TEXTURE_SPACE_COUNT, &ranges[0]);
+				rootParameters[2].InitAsDescriptorTable(TextureManager::CONSTANT_DESCRIPTOR_COUNT, &ranges[TextureManager::TEXTURE_SPACE_COUNT]);
+				rootParameters[3].InitAsDescriptorTable(TextureManager::SAMPLER_DESCRIPTOR_COUNT, &ranges[TextureManager::TEXTURE_SPACE_COUNT + TextureManager::CONSTANT_DESCRIPTOR_COUNT]);
 			}
 
 			CreateRootSignature(rootParameters, rootParameterCount);
