@@ -1,6 +1,12 @@
 #define BINDLESS_TEXTURE_COUNT	4096
 #define BINDLESS_SAMPLER_COUNT  512
 
+struct TextureConstants
+{
+	uint textureIndex[8];
+};
+ConstantBuffer<TextureConstants> textureConstants : register(b3, space0);
+
 struct BindlessSamplerIndex
 {
 	int frameIndex;

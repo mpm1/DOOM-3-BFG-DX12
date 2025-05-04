@@ -17,6 +17,7 @@ namespace DX12Rendering
 		eModelCBV = 0,
 		eJointCBV,
 		eSurfaceCBV,
+		eTextureCBV,
 		eTesxture0SRV,
 		eTesxture1SRV,
 		eTesxture2SRV,

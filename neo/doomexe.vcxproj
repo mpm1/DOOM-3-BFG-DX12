@@ -1686,6 +1686,7 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
     </FxCompile>
+    <None Include="..\base\renderprogs\interaction.inc" />
     <None Include="..\base\renderprogs\interactionAmbient_skinned.pixel" />
     <None Include="..\base\renderprogs\interactionAmbient_skinned.vertex" />
     <FxCompile Include="..\base\renderprogs\interaction_skinned.pixel">

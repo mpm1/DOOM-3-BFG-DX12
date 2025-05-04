@@ -87,11 +87,6 @@ idVertexBuffer* GetVertexBuffer(const vertCacheHandle_t vbHandle)
 }
 
 /// <summary>
-/// Passes a single surface into a function for surface gathering.
-/// </summary>
-typedef std::function<void(const drawSurf_t*, const int)> GatherFunction;
-
-/// <summary>
 /// Calls all gather functions on each surface.
 /// </summary>
 /// <param name="viewDef"></param>
@@ -3310,14 +3305,6 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 	std::vector<const drawSurf_t*> dynamicSurfaces;
 	dynamicSurfaces.reserve(numDrawSurfs);
-
-	GatherFunction GatherDynamicSurfaces = [&dynamicSurfaces](const drawSurf_t * ds, const int surfaceIndex)
-	{
-		if (ds->jointCache)
-		{
-			dynamicSurfaces.push_back(ds);
-		}
-	};
 
 	EvaluateMaterialPass evaluateMaterialPass;
 	DynamicSurfacesPass dynamicSurfacesPass(numDrawSurfs);

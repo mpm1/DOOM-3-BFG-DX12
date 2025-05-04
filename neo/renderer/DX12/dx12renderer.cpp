@@ -317,7 +317,7 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(ComputeConstants));
 		resourceManager.FillConstantBuffer(buffer, &constants);
 
-		m_computeRootSignature->SetConstantBufferView(objectIndex, 2, buffer);
+		m_computeRootSignature->SetConstantBufferView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eSurfaceCBV, buffer);
 	}
 
 	{
@@ -326,15 +326,15 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		constantBuffer.bufferLocation.BufferLocation = joints->resource->GetGPUVirtualAddress() + jointOffset;
 		constantBuffer.bufferLocation.SizeInBytes = *joints->GetSize();
 
-		m_computeRootSignature->SetConstantBufferView(objectIndex, 1, constantBuffer);
+		m_computeRootSignature->SetConstantBufferView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eJointCBV, constantBuffer);
 	}
 
 	{
 		// Setup the output buffer
-		m_computeRootSignature->SetUnorderedAccessView(objectIndex, 3, dstBuffer);
+		m_computeRootSignature->SetUnorderedAccessView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture0SRV, dstBuffer);
 
 		// Setup the input buffer
-		m_computeRootSignature->SetShaderResourceView(objectIndex, 4, srcBuffer);
+		m_computeRootSignature->SetShaderResourceView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture1SRV, srcBuffer);
 	}
 
 	m_computeRootSignature->SetRootDescriptorTable(objectIndex, commandList);
@@ -753,11 +753,20 @@ bool DX12Renderer::EndSurfaceSettings(void* surfaceConstants,  size_t surfaceCon
 		// Copy the Textures
 		DX12Rendering::TextureBuffer* currentTexture;
 		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+		DX12Rendering::TextureConstants textureConstants = {};
+
 		UINT index;
 		for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
 			textureManager->SetTexturePixelShaderState(currentTexture, &commandList);
 			m_rootSignature->SetTextureRegisterIndex(m_objectIndex, index, currentTexture, &commandList);
+
+			textureConstants.textureIndex[index] = currentTexture->GetTextureIndex();
 		}
+
+		// Set our constant buffer values.
+		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(DX12Rendering::TextureConstants));
+		resourceManager.FillConstantBuffer(buffer, &textureConstants);
+		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTextureCBV, buffer); 
 	}
 
 	m_rootSignature->SetRootDescriptorTable(m_objectIndex, &commandList);

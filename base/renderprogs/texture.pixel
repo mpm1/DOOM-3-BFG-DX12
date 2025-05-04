@@ -27,6 +27,7 @@ If you have questions concerning this license or the applicable additional terms
 */
 
 #include "global.inc"
+#include "bindless_textures.inc"
 
 uniform Texture2D<float4> samp0 : register(t0);
 
@@ -40,5 +41,5 @@ struct PS_OUT {
 };
 
 void main( PS_IN fragment, out PS_OUT result ) {
-	result.color = samp0.Sample(baseSampler, fragment.texcoord0) * sceneConstants.rpColor;
+	result.color = SampleBindlessTexture4f(textureConstants.textureIndex[0], fragment.texcoord0) * sceneConstants.rpColor;
 }

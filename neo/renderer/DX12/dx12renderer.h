@@ -46,6 +46,11 @@ namespace DX12Rendering {
 		VARIANT_COUNT
 	};
 
+	struct TextureConstants
+	{
+		UINT textureIndex[8];
+	};
+
 	// TODO: Start setting frame data to it's own object to make it easier to manage.
 	struct DX12FrameDataBuffer
 	{
