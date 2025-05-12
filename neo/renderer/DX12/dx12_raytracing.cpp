@@ -9,8 +9,11 @@
 #include "./dx12_DeviceManager.h"
 #include "./dx12_RenderPass.h"
 
-idCVar s_raysCastPerLight("s_raysCastPerLight", "20", CVAR_ARCHIVE | CVAR_INTEGER, "number of shadow rays per light per pixel.", 0, 1000);
-idCVar s_lightEmissiveRadius("s_lightEmissiveRadius", "20.0", CVAR_ARCHIVE | CVAR_FLOAT, "the radius of a light. The larger the value, the softer shadows will be.", 0.0f, 100.0f);
+idCVar s_raysCastPerLight("s_raysCastPerLight", "20", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "number of shadow rays per light per pixel.", 0, 1000);
+idCVar s_lightEmissiveRadius("s_lightEmissiveRadius", "20.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "the radius of a light. The larger the value, the softer shadows will be.", 0.0f, 100.0f);
+idCVar r_useGli("r_useGli", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "use raytraced global illumination.");
+idCVar r_gliResolution("r_gliResolution", "0.125", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "the percentage of global illumination points to cast per screen axis.", 0.0f, 1.0f);
+idCVar r_gliBounces("r_gliBounces", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "the max number of global illumination bounces allowed.", 0, 10);
 
 namespace DX12Rendering {
 	bool CheckRaytracingSupport() {
@@ -53,6 +56,7 @@ namespace DX12Rendering {
 		//m_localIndexBuffer(VERTCACHE_INDEX_MEMORY)
 	{
 		CreateShadowPipeline();
+		CreateGlobalIlluminationPipeline();
 		CreateCBVHeap(sizeof(m_constantBuffer));
 	}
 
@@ -70,6 +74,28 @@ namespace DX12Rendering {
 		}
 
 		m_nextDescriptorHeapIndex = 0;
+
+		{
+			// Update per frame constants;
+			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+			assert(textureManager);
+
+			//Update the resources
+			m_constantBuffer.positionTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::POSITION)->GetTextureIndex();
+			m_constantBuffer.flatNormalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS)->GetTextureIndex();
+			m_constantBuffer.normalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)->GetTextureIndex();
+			m_constantBuffer.diffuseTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO)->GetTextureIndex();
+			m_constantBuffer.specularTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR)->GetTextureIndex();
+
+			m_constantBuffer.raysPerLight = s_raysCastPerLight.GetInteger();
+
+			// Update the noise offset
+			m_constantBuffer.noiseOffset += 0.01f;
+			if (m_constantBuffer.noiseOffset > 5.0f)
+			{
+				m_constantBuffer.noiseOffset = 0.0f;
+			}
+		}
 
 		CleanUpAccelerationStructure();
 	}
@@ -292,6 +318,65 @@ namespace DX12Rendering {
 		return true;
 	}
 
+	const DX12Rendering::Commands::FenceValue Raytracing::CastGlobalIlluminationRays(
+		const UINT frameIndex,
+		const CD3DX12_VIEWPORT& viewport,
+		const CD3DX12_RECT& scissorRect
+	)
+	{
+		constexpr UINT surfaceCount = 1;
+		const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
+			DX12Rendering::eRenderSurface::GlobalIllumination
+		};
+
+		DX12Rendering::RenderPassBlock renderPass(
+			"RayTracing::CastGlobalIlluminationRays",
+			Commands::COMPUTE,
+			surfaces,
+			surfaceCount
+		);
+
+		auto tlasManager = GetTLASManager();
+
+		if (tlasManager && !tlasManager->IsReady()) {
+			// No objects to cast light against.
+			return DX12Rendering::Commands::FenceValue(DX12Rendering::Commands::COMPUTE, 0);
+		}
+
+		auto commandManager = DX12Rendering::Commands::GetCommandManager(Commands::COMPUTE);
+		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RayTracing::CastGlobalIlluminationRays");
+
+		commandManager->InsertFenceWait(DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->GetLastFenceValue());
+		commandManager->InsertFenceWait(m_tlasManager.GetCurrent().GetLastFenceValue());
+
+		const UINT objectIndex = RequestNewObjectIndex();
+
+		LONG xResolution = static_cast<LONG>(std::max(viewport.Width * r_gliResolution.GetFloat(), 1.0f));
+		LONG yResolution = static_cast<LONG>(std::max(viewport.Height * r_gliResolution.GetFloat(), 1.0f));
+
+		dxr_global_illumination_t constants =
+		{
+			viewport.Width / xResolution, viewport.Height / yResolution,
+			r_gliBounces.GetInteger(),
+			0
+		};
+
+		SetCBVDescriptorTable(sizeof(dxr_global_illumination_t), &constants, frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::CBV_LightProperties);
+
+		const CD3DX12_RECT castingDimensions(
+				0, 0,
+				xResolution, yResolution);
+
+		// Add the output buffers
+		SetOutputTexture(eRenderSurface::GlobalIllumination, frameIndex, objectIndex, e_RaytracingHeapIndex::UAV_ShadowMap);
+
+		CastRays(frameIndex, objectIndex, viewport, castingDimensions, renderPass, m_gliStateObject.Get(), m_gliStateObjectProps.Get());
+
+		const DX12Rendering::Commands::FenceValue result = commandManager->InsertFenceSignal();
+
+		return result;
+	}
+
 	const DX12Rendering::Commands::FenceValue Raytracing::CastShadowRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
@@ -312,9 +397,6 @@ namespace DX12Rendering {
 			surfaceCount
 		);
 
-		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
-		assert(textureManager);
-
 		auto tlasManager = GetTLASManager();
 
 		if (tlasManager && !tlasManager->IsReady()) {
@@ -326,41 +408,28 @@ namespace DX12Rendering {
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RayTracing::CastShadowRays");
 
 		commandManager->InsertFenceWait(DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->GetLastFenceValue());
-
-		//Update the resources
-		m_constantBuffer.positionTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::POSITION)->GetTextureIndex();
-		m_constantBuffer.flatNormalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS)->GetTextureIndex();
-		m_constantBuffer.normalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)->GetTextureIndex();
-		m_constantBuffer.diffuseTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO)->GetTextureIndex();
-		m_constantBuffer.specularTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR)->GetTextureIndex();
-
-		m_constantBuffer.raysPerLight = s_raysCastPerLight.GetInteger();
-
-		// Update the noise offset
-		m_constantBuffer.noiseOffset += 0.01f;
-		if (m_constantBuffer.noiseOffset > 5.0f)
-		{
-			m_constantBuffer.noiseOffset = 0.0f;
-		}
-
 		commandManager->InsertFenceWait(m_tlasManager.GetCurrent().GetLastFenceValue());
 
-		for (UINT index = 0; index < m_constantBuffer.lightCount; ++index)
+		//for (UINT index = 0; index < m_constantBuffer.lightCount; ++index)
+		std::for_each(std::begin(m_lights), std::begin(m_lights) + m_constantBuffer.lightCount,
+				[&](dxr_lightData_t& light)
 		{
 			const UINT objectIndex = RequestNewObjectIndex();
-			std::memcpy(&m_activeLight, &m_lights[index], sizeof(dxr_lightData_t));
+
+			SetCBVDescriptorTable(sizeof(light), &light, frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::CBV_LightProperties);
+			//std::memcpy(&m_activeLight, &m_lights[index], sizeof(dxr_lightData_t));
 
 			const CD3DX12_RECT lightViewport(
-				m_activeLight.scissor.x, m_activeLight.scissor.y,
-				m_activeLight.scissor.z, m_activeLight.scissor.w);
+				light.scissor.x, light.scissor.y,
+				light.scissor.z, light.scissor.w);
 
 			// Add the output buffers
 			SetOutputTexture(eRenderSurface::RaytraceShadowMask, frameIndex, objectIndex, e_RaytracingHeapIndex::UAV_ShadowMap); // TODO: Remove
 			SetOutputTexture(eRenderSurface::Diffuse, frameIndex, objectIndex, e_RaytracingHeapIndex::UAV_DiffuseMap);
 			SetOutputTexture(eRenderSurface::Specular, frameIndex, objectIndex, e_RaytracingHeapIndex::UAV_SpecularMap);
 
-			CastRays(frameIndex, objectIndex, viewport, lightViewport, renderPass);
-		}
+			CastRays(frameIndex, objectIndex, viewport, lightViewport, renderPass, m_shadowStateObject.Get(), m_shadowStateObjectProps.Get());
+		});
 
 		const DX12Rendering::Commands::FenceValue result = commandManager->InsertFenceSignal();
 
@@ -372,7 +441,9 @@ namespace DX12Rendering {
 		const UINT objectIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
-		DX12Rendering::RenderPassBlock& renderPass
+		DX12Rendering::RenderPassBlock& renderPass,
+		ID3D12StateObject* pipelineState,
+		ID3D12StateObjectProperties* stateProperties
 	)
 	{
 		auto commandList = renderPass.GetCommandManager()->RequestNewCommandList();
@@ -387,7 +458,6 @@ namespace DX12Rendering {
 		Uniform4f(RENDERPARM_VIEWPORT, viewportVector);
 
 		SetCBVDescriptorTable(sizeof(m_constantBuffer), &m_constantBuffer, frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::CBV_CameraProperties);
-		SetCBVDescriptorTable(sizeof(m_activeLight), &m_activeLight, frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::CBV_LightProperties);
 		
 		UpdateTlasDescriptor(frameIndex, objectIndex);
 
@@ -397,7 +467,7 @@ namespace DX12Rendering {
 			commandList->SetDescriptorHeaps(static_cast<UINT>(heaps.size()), heaps.data());
 
 			// Create the ray dispatcher
-			const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = CreateShadowBindingTable(frameIndex, objectIndex)->GetGPUVirtualAddress();
+			const D3D12_GPU_VIRTUAL_ADDRESS gpuAddress = CreateShadowBindingTable(frameIndex, objectIndex, stateProperties)->GetGPUVirtualAddress();
 			const UINT32 generatorSize = m_generalSBTDesc.GetGeneratorSectorSize();
 			const UINT32 missSize = m_generalSBTDesc.GetMissSectorSize();
 			const UINT32 hitSize = m_generalSBTDesc.GetHitGroupSectorSize();
@@ -424,7 +494,7 @@ namespace DX12Rendering {
 			desc.Depth = 1;
 
 			// Generate the ray traced image.
-			commandList->SetPipelineState1(m_shadowStateObject.Get());
+			commandList->SetPipelineState1(pipelineState);
 			commandList->DispatchRays(&desc);
 		});
 
@@ -460,6 +530,35 @@ namespace DX12Rendering {
 		}
 
 		return m_globalRootSignature.Get();
+	}
+
+	void Raytracing::CreateGlobalIlluminationPipeline()
+	{
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
+		// Create the Pipline
+		DX12Rendering::RaytracingPipeline pipeline(device, GetGlobalRootSignature());
+		std::vector<std::wstring> generatorSymbols = { L"RayGen" };
+		std::vector<std::wstring> missSymbols = { L"Miss" };
+		std::vector<std::wstring> hitSymbols = { L"ClosestHit" };
+		std::vector<std::wstring> allSymbols = { L"RayGen", L"Miss", L"ClosestHit" };
+
+		pipeline.AddLibrary("globalillumination_generator", allSymbols);
+
+		pipeline.AddAssocation(m_rayGenSignature.GetRootSignature(), generatorSymbols);
+		pipeline.AddAssocation(m_missSignature.GetRootSignature(), missSymbols);
+		pipeline.AddAssocation(m_hitSignature.GetRootSignature(), hitSymbols);
+
+		pipeline.AddHitGroup(L"HitGroup", L"ClosestHit");
+
+		pipeline.SetMaxPayloadSize(9 * sizeof(float)); // diffuse, indirect, specular lighting.
+		pipeline.SetMaxAttributeSize(4 * sizeof(float)); // x, y, z, w corrdinates.
+
+		m_gliStateObject = pipeline.Generate();
+		m_gliStateObject->SetName(L"DXR Global Illumination Pipeline State");
+
+		// Copy the shader property data.
+		ThrowIfFailed(m_gliStateObject->QueryInterface(IID_PPV_ARGS(&m_gliStateObjectProps)));
 	}
 
 	void Raytracing::CreateShadowPipeline() { 
@@ -499,7 +598,7 @@ namespace DX12Rendering {
 		}
 	}
 
-	ID3D12Resource* Raytracing::CreateShadowBindingTable(UINT frameIndex, UINT objectIndex)
+	ID3D12Resource* Raytracing::CreateShadowBindingTable(UINT frameIndex, UINT objectIndex, ID3D12StateObjectProperties* props)
 	{
 		assert(objectIndex < DESCRIPTOR_OBJECT_TOTAL);
 
@@ -548,7 +647,7 @@ namespace DX12Rendering {
 			));
 
 			// Fill the SBT
-			m_generalSBTDesc.Generate(m_generalSBTData[frameObjectIndex].Get(), m_shadowStateObjectProps.Get());
+			m_generalSBTDesc.Generate(m_generalSBTData[frameObjectIndex].Get(), props);
 		}
 
 		return m_generalSBTData[frameObjectIndex].Get();

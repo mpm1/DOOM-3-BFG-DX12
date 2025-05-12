@@ -13,6 +13,8 @@ extern idCVar r_windowWidth; // Used to calculate resize
 extern idCVar r_windowHeight; // Used to calculate resize
 extern idCVar r_fullscreen; // Used to calculate resize
 
+extern idCVar r_useGli; // Use the global illumination system.
+
 idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
 
@@ -973,6 +975,8 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor)->Resize(width, height);
 
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination)->Resize(width, height);
+
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Resize(width, height);
 		}
@@ -1384,6 +1388,11 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
+	if (r_useGli.GetBool())
+	{
+		m_raytracing->CastGlobalIlluminationRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
+	}
+
 	const DX12Rendering::Commands::FenceValue drawFence = m_raytracing->CastShadowRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
 	const bool result = drawFence.value > 0;
 

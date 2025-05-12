@@ -55,6 +55,14 @@ namespace DX12Rendering {
 		COUNT
 	};
 
+	struct dxr_global_illumination_t
+	{
+		UINT xDelta;
+		UINT yDelta;
+		UINT maxBounce;
+		UINT pad0;
+	};
+
 	struct dxr_lightData_t
 	{
 		UINT lightIndex;
@@ -144,6 +152,12 @@ public:
 		const CD3DX12_RECT& scissorRect
 	);
 
+	const DX12Rendering::Commands::FenceValue CastGlobalIlluminationRays(
+		const UINT frameIndex,
+		const CD3DX12_VIEWPORT& viewport,
+		const CD3DX12_RECT& scissorRect
+	);
+
 	/// <summary>
 	/// Adds the desired object to the various top level acceleration structures.
 	/// </summary>
@@ -171,6 +185,9 @@ private:
 	ComPtr<ID3D12StateObject> m_shadowStateObject; // Raytracing pipeline state.
 	ComPtr<ID3D12StateObjectProperties> m_shadowStateObjectProps;
 
+	ComPtr<ID3D12StateObject> m_gliStateObject; // Raytracing pipeline state.
+	ComPtr<ID3D12StateObjectProperties> m_gliStateObjectProps;
+
 	ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
 	dxr_sceneConstants_t m_constantBuffer;
@@ -191,11 +208,12 @@ private:
 
 	// Pipeline
 	void CreateShadowPipeline();
+	void CreateGlobalIlluminationPipeline();
 	void CreateOutputBuffers();
 	void CreateShaderResourceHeap();
 
 	void CreateShaderBindingTables();
-	ID3D12Resource* CreateShadowBindingTable(UINT frameIndex, UINT objectIndex);
+	ID3D12Resource* CreateShadowBindingTable(UINT frameIndex, UINT objectIndex, ID3D12StateObjectProperties* props);
 
 	void SetOutputTexture(DX12Rendering::eRenderSurface renderSurface, UINT frameIndex, UINT objectIndex, DX12Rendering::e_RaytracingHeapIndex uav);
 
@@ -231,7 +249,9 @@ private:
 		const UINT objectIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
-		DX12Rendering::RenderPassBlock& renderPass
+		DX12Rendering::RenderPassBlock& renderPass,
+		ID3D12StateObject* pipelineState,
+		ID3D12StateObjectProperties* stateProperties
 	);
 
 	// Acceleration Structure

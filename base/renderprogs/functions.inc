@@ -1,3 +1,5 @@
+#define EPSILON 0.0000001
+
 static float dot2( float2 a, float2 b ) { return dot( a, b ); }
 static float dot3( float3 a, float3 b ) { return dot( a, b ); }
 static float dot3( float3 a, float4 b ) { return dot( a, b.xyz ); }

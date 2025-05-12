@@ -1,0 +1,85 @@
+#include "raytracing_global.inc"
+
+struct GlobalIlluminationContants
+{
+	uint2 delta; // Pixel coverage in the x,y direction
+	uint maxBounce; // Total number of light bounces allowed. 0 means no global illumination.
+	uint pad0;
+};
+
+struct GlobalIlluminationPayload
+{
+	float3 color;
+	uint bouncesRemaining;
+};
+
+ConstantBuffer<RaytracedSceneConstants> sceneConstants : register(b0, space0);
+ConstantBuffer<GlobalIlluminationContants> gliConstants : register(b1, space0);
+
+// For now we output to the Global Illumination UAV. 
+// Later we will be outputting to a cache and the UAV will calculate from the cache.
+RWTexture2D<float4> globalDiffuse :register(u0);
+
+// Raytracing acceleration structure, accessed as a SRV
+RaytracingAccelerationStructure SceneBVH :register(t0);
+
+float2 GetScreenPoint(in uint2 pixelLocation)
+{
+	float2 uv = (((float2)pixelLocation + 0.5) + sceneConstants.rp.viewport.xy) / sceneConstants.rp.viewport.zw;
+	uv.y = 1.0 - uv.y;
+
+	return uv;
+}
+
+float2 GetWeightedPixelPoint()
+{
+	// We need to find the point within our screen block that will provide the best result for Global Illumination.
+	// This usually means weighing to point closer to larger surface normal contrast.
+	const float2 ddx = float2(1.0, 0.0) / sceneConstants.rp.viewport.zw;
+	const float2 ddy = float2(0.0, 1.0) / sceneConstants.rp.viewport.zw;
+	const uint2 startLocation = DispatchRaysIndex() * gliConstants.delta;
+
+	float highestGradient = -1.0;
+	float2 highestUV = uint2(0, 0);
+	uint2 offset = uint2(0, 0);
+
+	for (offset.y = 0; offset.y < gliConstants.delta.y; ++offset.y)
+	{
+		for (offset.x = 0; offset.x < gliConstants.delta.x; ++offset.x)
+		{
+			float2 uv = GetScreenPoint(startLocation + offset);
+			float gradient = abs(GetBindlessTexture4f(sceneConstants.flatNormalIndex).SampleGrad(pointSampler, uv, ddx, ddy));
+
+			if (gradient > highestGradient)
+			{
+				highestGradient = gradient;
+				highestUV = uv;
+			}
+		}
+	}
+
+	return highestUV;
+}
+
+[shader("raygeneration")]
+void RayGen()
+{
+	float2 screenUV = GetWeightedPixelPoint();
+
+	uint2 screenIndex = (uint2)(screenUV * sceneConstants.rp.viewport.zw);
+	globalDiffuse[screenIndex] = float4(1.0, 1.0, 1.0, 1.0);
+}
+
+[shader("closesthit")] 
+void ClosestHit(inout GlobalIlluminationPayload payload, Attributes attrib) 
+{
+	payload.color = float3(1.0, 1.0, 1.0);
+	payload.bouncesRemaining = 0;
+}
+
+[shader("miss")]
+void Miss(inout GlobalIlluminationPayload payload : SV_RayPayload)
+{
+    payload.color = float3(0.0, 0.0, 0.0);
+	payload.bouncesRemaining = 0;
+}

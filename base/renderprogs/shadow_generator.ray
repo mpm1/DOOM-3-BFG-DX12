@@ -109,8 +109,6 @@ void HandlePointLight(
 
 	float3 pointToCenter = normalize(light.center - worldPosition);
 
-	RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
-
 	for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
 	{
 		float3 lightPosition = castsShadows ?
@@ -121,51 +119,53 @@ void HandlePointLight(
 			: light.center;
 
 		float maxDistance = distance(lightPosition, worldPosition);
-
 		float3 lightVector = normalize(lightPosition - worldPosition);
-
 		float intensity = saturate(dot(normal, lightVector));
-		float3 lightColor = float3(intensity, intensity, intensity);
 
-		if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
+		if (intensity <= EPSILON)
 		{
-			lightColor = lightColor * 
+			// No light is being cast.
+			continue;
+		}
+		
+		float3 lightColor = intensity * 
 				CalculateFalloff(light, float4(worldPosition, 1.0)) * 
 				CalculateProjection(light, float4(worldPosition, 1.0));
-		}
 
-		if(intensity > 0 && length(lightColor) > 0)
+		if (length(lightColor) <= EPSILON)
 		{
-			if(castsShadows)
-			{
-				// We are inside the light radius.
-				// Define a ray, consisting of origin, direction, and the min-max distance values
-				RayDesc ray;
-				ray.TMin = rayStartDistance;
-				ray.TMax = maxDistance;
-				ray.Origin = worldPosition;
-				ray.Direction = lightVector;
+			// No light is being cast
+			continue;
+		}
 
-				inlineQuery.TraceRayInline(
-					SceneBVH,
-					RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
-					INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
-					ray);
+		if(castsShadows)
+		{
+			RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
 
-				inlineQuery.Proceed(); // Run the tracer.
+			// We are inside the light radius.
+			// Define a ray, consisting of origin, direction, and the min-max distance values
+			RayDesc ray;
+			ray.TMin = rayStartDistance;
+			ray.TMax = maxDistance;
+			ray.Origin = worldPosition;
+			ray.Direction = lightVector;
+
+			inlineQuery.TraceRayInline(
+				SceneBVH,
+				RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
+				INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
+				ray);
+
+			inlineQuery.Proceed(); // Run the tracer.
 				
-				if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
-				{
-					continue; // We hit a shadow so we should not add any data to the colors
-				}
-			}
-
-			if (intensity > 0.0)
+			if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
 			{
-				localDiffuse += (light.color.rgb * lightColor);
-				localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, 2.0 /* Keeping consistant original method */);
+				continue; // We hit a shadow so we should not add any data to the colors
 			}
 		}
+
+		localDiffuse += (light.color.rgb * lightColor);
+		localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, 2.0 /* Keeping consistant original method */);
 	}
 
 	diffuseResult = saturate(localDiffuse / lightRayCount); // TODO: Change this to a colour light space

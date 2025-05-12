@@ -3360,6 +3360,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			DX12Rendering::eRenderSurface::Normal,
 			DX12Rendering::eRenderSurface::FlatNormal,
 			DX12Rendering::eRenderSurface::RaytraceShadowMask,
+			DX12Rendering::eRenderSurface::GlobalIllumination,
 			DX12Rendering::eRenderSurface::Diffuse,
 			DX12Rendering::eRenderSurface::Specular,
 			DX12Rendering::eRenderSurface::Albedo,
