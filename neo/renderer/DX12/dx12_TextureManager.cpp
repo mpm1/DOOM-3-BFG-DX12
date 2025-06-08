@@ -113,6 +113,11 @@ namespace DX12Rendering
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 			break;
 
+		case eGlobalTexture::RAYTRACED_GLI:
+			name = "raytraced_global_illumination";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
 		case eGlobalTexture::WORLD_FLAT_NORMALS:
 			name = "world_flat_normals";
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;

@@ -75,6 +75,20 @@ float3 rand3(float3 st) {
 	);
 }
 
+// Generates a random point on a unit sphere centered at 0.
+inline float3 RandomSphericalPoint(float3 seed)
+{
+	return normalize((rand3(seed) * 2.0) - 1.0);
+}
+
+// Generates a random point on a hemisphere aligned with the normal vector. Centered at 0.
+float RandomHemisphericalPoint(float3 normal, float3 seed)
+{
+	float3 spherePoint = RandomSphericalPoint(seed);
+
+	return dot(normal, spherePoint) < 0 ? -spherePoint : spherePoint;
+}
+
 #define _half2( x )		half2( x, x )
 #define _half3( x )		half3( x, x, x )
 #define _half4( x )		half4( x, x, x, x )

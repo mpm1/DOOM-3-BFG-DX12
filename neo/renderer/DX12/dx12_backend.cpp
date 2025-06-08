@@ -2659,6 +2659,7 @@ void RB_DrawCombinedGBufferResults()
 		auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
 		auto albedo = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
 		auto specularColor = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
+		auto globalIllumination = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_GLI);
 
 		// Prepare the surfaces for rendering
 		commandList->AddPreFenceWait(diffuse->GetLastFenceValue());
@@ -2674,6 +2675,9 @@ void RB_DrawCombinedGBufferResults()
 		GL_SelectTexture(3);
 		dxRenderer.SetTexture(specularColor);
 
+		GL_SelectTexture(4);
+		dxRenderer.SetTexture(globalIllumination);
+
 		commandList->Close();
 	}
 
@@ -2688,6 +2692,7 @@ void RB_DrawCombinedGBufferResults()
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR), D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO), D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_GLI), D3D12_RESOURCE_STATE_COMMON, commandList);
 
 		commandList->Close();
 	}

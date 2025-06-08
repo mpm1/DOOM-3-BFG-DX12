@@ -1418,6 +1418,11 @@ bool DX12Renderer::DXR_CastRays()
 		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
 		specularMap->CopySurfaceToTexture(specularTexture, textureManager);
 
+		// Copy the global illumination data
+		auto globalIllumination = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination);
+		DX12Rendering::TextureBuffer* gliTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_GLI);
+		globalIllumination->CopySurfaceToTexture(gliTexture, textureManager);
+
 		// Wait for all copies to complete.
 		DX12Rendering::Commands::FenceValue fenceValue = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
 		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();

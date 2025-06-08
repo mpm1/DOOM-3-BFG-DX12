@@ -32,6 +32,7 @@ uniform Texture2D<float4> samp0 : register(t0); // Diffuse light
 uniform Texture2D<float4> samp1 : register(t1); // Specular light
 uniform Texture2D<float4> samp2 : register(t2); // Albedo Color
 uniform Texture2D<float4> samp3 : register(t3); // Specular Color. Essentially this is the amount of specular that can be added to the diffuse.
+uniform Texture2D<float4> samp4 : register(t4); // Global illumination
 
 struct PS_IN {
 	float4 position : SV_POSITION;
@@ -45,9 +46,13 @@ struct PS_OUT {
 void main( PS_IN fragment, out PS_OUT result ) {
 	float2 tCoords = fragment.texcoord0;
 
-	float4 diffuse = samp0.Sample(baseSampler, tCoords) * samp2.Sample(baseSampler, tCoords);
+	float4 albedo = samp2.Sample(baseSampler, tCoords);
+
+	float4 globalIllumination = samp4.Sample(baseSampler, tCoords) * albedo;
+
+	float4 diffuse = samp0.Sample(baseSampler, tCoords) * albedo;
 	float4 specular = samp1.Sample(baseSampler, tCoords) * samp3.Sample(baseSampler, tCoords);
 	
-	result.color = diffuse + specular;
+	result.color = globalIllumination + diffuse + specular;
 	result.color.w = 1.0;
 }

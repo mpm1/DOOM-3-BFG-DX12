@@ -55,14 +55,6 @@ namespace DX12Rendering {
 		COUNT
 	};
 
-	struct dxr_global_illumination_t
-	{
-		UINT xDelta;
-		UINT yDelta;
-		UINT maxBounce;
-		UINT pad0;
-	};
-
 	struct dxr_lightData_t
 	{
 		UINT lightIndex;
@@ -96,6 +88,25 @@ namespace DX12Rendering {
 		XMFLOAT4	projectionT;
 		XMFLOAT4	projectionQ;
 		XMFLOAT4	falloffS;
+	};
+
+	struct dxr_global_illumination_t
+	{
+		UINT xDelta;
+		UINT yDelta;
+		UINT maxBounce;
+		UINT sampleCount; // Total sample rays per hit point (this * max bounce gets your total number of rays)
+
+		dxr_lightData_t lights[MAX_SCENE_LIGHTS];
+
+		dxr_global_illumination_t(UINT xDelta, UINT yDelta, UINT maxBounce, UINT sampleCount, dxr_lightData_t* lightsIn, UINT lightCount) :
+			xDelta(xDelta),
+			yDelta(yDelta),
+			maxBounce(maxBounce),
+			sampleCount(sampleCount)
+		{
+			std::memcpy(lights, lightsIn, sizeof(dxr_lightData_t) * lightCount);
+		};
 	};
 
 	struct dxr_sceneConstants_t

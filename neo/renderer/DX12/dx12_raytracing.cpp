@@ -12,7 +12,7 @@
 idCVar s_raysCastPerLight("s_raysCastPerLight", "20", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "number of shadow rays per light per pixel.", 0, 1000);
 idCVar s_lightEmissiveRadius("s_lightEmissiveRadius", "20.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "the radius of a light. The larger the value, the softer shadows will be.", 0.0f, 100.0f);
 idCVar r_useGli("r_useGli", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "use raytraced global illumination.");
-idCVar r_gliResolution("r_gliResolution", "0.125", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "the percentage of global illumination points to cast per screen axis.", 0.0f, 1.0f);
+idCVar r_gliResolution("r_gliResolution", "0.33" /*"0.125"*/, CVAR_RENDERER | CVAR_FLOAT, "the percentage of global illumination points to cast per screen axis.", 0.0f, 1.0f);
 idCVar r_gliBounces("r_gliBounces", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "the max number of global illumination bounces allowed.", 0, 10);
 
 namespace DX12Rendering {
@@ -46,7 +46,7 @@ namespace DX12Rendering {
 		isRaytracingSupported(CheckRaytracingSupport()),
 		m_rayGenSignature(WRITE_OUTPUT | READ_ENVIRONMENT),
 		m_missSignature(NONE),
-		m_hitSignature(NONE),
+		m_hitSignature(WRITE_OUTPUT | READ_ENVIRONMENT),
 		m_width(screenWidth),
 		m_height(screenHeight),
 		m_tlasManager(&m_blasManager),
@@ -351,15 +351,15 @@ namespace DX12Rendering {
 
 		const UINT objectIndex = RequestNewObjectIndex();
 
-		LONG xResolution = static_cast<LONG>(std::max(viewport.Width * r_gliResolution.GetFloat(), 1.0f));
-		LONG yResolution = static_cast<LONG>(std::max(viewport.Height * r_gliResolution.GetFloat(), 1.0f));
+		LONG xResolution = static_cast<LONG>(std::max(viewport.Width * r_gliResolution.GetFloat(), 2.0f));
+		LONG yResolution = static_cast<LONG>(std::max(viewport.Height * r_gliResolution.GetFloat(), 2.0f));
 
-		dxr_global_illumination_t constants =
-		{
+		dxr_global_illumination_t constants(
 			viewport.Width / xResolution, viewport.Height / yResolution,
 			r_gliBounces.GetInteger(),
-			0
-		};
+			s_raysCastPerLight.GetInteger(), // TODO: Give it's own variable.
+			m_lights, m_constantBuffer.lightCount
+		);
 
 		SetCBVDescriptorTable(sizeof(dxr_global_illumination_t), &constants, frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::CBV_LightProperties);
 
@@ -624,7 +624,7 @@ namespace DX12Rendering {
 			// Create the SBT structure
 			m_generalSBTDesc.AddRayGeneratorProgram(L"RayGen", heapPointers);
 			m_generalSBTDesc.AddRayMissProgram(L"Miss", {});
-			m_generalSBTDesc.AddRayHitGroupProgram(L"HitGroup", {});
+			m_generalSBTDesc.AddRayHitGroupProgram(L"HitGroup", heapPointers);
 
 			// Create the SBT resource
 			const UINT32 tableSize = m_generalSBTDesc.CalculateTableSize();

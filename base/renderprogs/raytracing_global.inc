@@ -48,6 +48,8 @@ struct Attributes
 #define LIGHT_FLAG_AMBIENT_LIGHT (0x01 << 2)
 #define LIGHT_FLAG_FOG_LIGHT     (0x01 << 3)
 
+#define MAX_SCENE_LIGHTS 128
+
 #define INSTANCE_MASK_CAST_SHADOW 0x01
 #define INSTANCE_MASK_SKYBOX 0x02
 
@@ -96,7 +98,7 @@ struct RenderParameters {
 struct RaytracedSceneConstants {
     RenderParameters rp;
 
-    uint lightCount; // Unused. If needed we can use this for something else
+    uint lightCount;
     float noiseOffset;
     uint diffuseTextureIndex;
     uint specularTexureIndex;
@@ -143,6 +145,28 @@ inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in Rayt
     return worldPosition;
 }
 
+float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
+{
+	float2 uv = float2(dot4( worldPosition, light.falloffS ), 0);
+	float4 falloff =  SampleBindlessTexture4fLevel(light.falloffIndex, uv, 0);
+	
+	return falloff.rgb;
+}
+
+float3 CalculateProjection(in SceneLight light, float4 worldPosition)
+{
+	float4 projection = float4(
+		dot4(worldPosition, light.projectionS),
+		dot4(worldPosition, light.projectionT),
+		0.0f,
+		dot4(worldPosition, light.projectionQ)
+	);
+
+	projection.xy /= projection.w;
+
+	return SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb;
+}
+
 uint4 ConvertShadowmapMaskToVector(uint shadowMask)
 {
     uint4 result;
@@ -153,6 +177,16 @@ uint4 ConvertShadowmapMaskToVector(uint shadowMask)
 	result.r = shadowMask & 0xFF;
 
     return result;
+}
+
+#define RAY_MIN_START_DISTANCE 0.001
+#define RAY_MAX_START_DISTANCE 1.0
+
+float StartDistanceFromSurface(in float3 worldPosition, in float3 eyePosition)
+{
+    float depth = distance(worldPosition, eyePosition);
+	
+    return lerp(RAY_MIN_START_DISTANCE, RAY_MAX_START_DISTANCE, depth / 100.0f);
 }
 
 SamplerState    pointSampler : register(s0, space0); // Replace this with Sampler that will grab the exact point information from the shader.

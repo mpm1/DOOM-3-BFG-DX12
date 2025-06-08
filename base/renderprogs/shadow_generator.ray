@@ -18,28 +18,6 @@ bool IsInsideViewport(float2 p, float4 viewport)
 		&& (p.y >= viewport.y && p.y <= viewport.w);
 }
 
-float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
-{
-	float2 uv = float2(dot4( worldPosition, light.falloffS ), 0);
-	float4 falloff =  SampleBindlessTexture4fLevel(light.falloffIndex, uv, 0);
-	
-	return falloff.rgb;
-}
-
-float3 CalculateProjection(in SceneLight light, float4 worldPosition)
-{
-	float4 projection = float4(
-		dot4(worldPosition, light.projectionS),
-		dot4(worldPosition, light.projectionT),
-		0.0f,
-		dot4(worldPosition, light.projectionQ)
-	);
-
-	projection.xy /= projection.w;
-
-	return SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb;
-}
-
 float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 normal, in float3 pointToEye, in float3 pointToLight, in float specMultiplier)
 {
 	const half specularPower = 10.0f;
@@ -194,8 +172,7 @@ void RayGen() {
 
 	// Calculate the offset from the ray start we'd like to use.
 	// This is done to help with precision errors the further away our surface is.
-	float depth = distance(worldPosition, sceneConstants.rp.globalEyePos.xyz);
-	float rayStartDistance = lerp(0.001, 1.0, depth / 100.0f);
+	float rayStartDistance = StartDistanceFromSurface(worldPosition, sceneConstants.rp.globalEyePos.xyz);
 	
 	float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
 
