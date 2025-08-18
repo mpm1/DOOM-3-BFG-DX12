@@ -79,8 +79,8 @@ void HandlePointLight(
 	out float3 diffuseResult, 
 	out float3 specularResult)
 {
-	float3 localDiffuse = float3(0.0, 0.0, 0.0);
-	float3 localSpecular = float3(0.0, 0.0, 0.0);
+	diffuseResult = float3(0.0, 0.0, 0.0);
+	specularResult = float3(0.0, 0.0, 0.0);
 
 	float3 pointToCenter = normalize(light.center - worldPosition);
 
@@ -95,7 +95,17 @@ void HandlePointLight(
 
 		float maxDistance = distance(lightPosition, worldPosition);
 		float3 lightVector = normalize(lightPosition - worldPosition);
-		float intensity = saturate(dot(normal, lightVector));
+
+		float3 localDiffuse = float3(0.0, 0.0, 0.0);
+		float3 localSpecular = float3(0.0, 0.0, 0.0);
+		float intensity = CalcluateLightImpact(
+			light,
+			worldPosition,
+			pointToEye,
+			normal,
+			lightVector,
+			localDiffuse,
+			localSpecular);
 
 		if (intensity <= EPSILON)
 		{
@@ -103,16 +113,6 @@ void HandlePointLight(
 			continue;
 		}
 		
-		float3 lightColor = intensity * 
-				CalculateFalloff(light, float4(worldPosition, 1.0)) * 
-				CalculateProjection(light, float4(worldPosition, 1.0));
-
-		if (length(lightColor) <= EPSILON)
-		{
-			// No light is being cast
-			continue;
-		}
-
 		if(castsShadows)
 		{
 			RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
@@ -139,12 +139,12 @@ void HandlePointLight(
 			}
 		}
 
-		localDiffuse += (light.color.rgb * lightColor);
-		localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, 2.0 /* Keeping consistant original method */);
+		diffuseResult += localDiffuse;
+		specularResult += localSpecular;
 	}
 
-	diffuseResult = localDiffuse / lightRayCount; // TODO: Change this to a colour light space
-	specularResult = localSpecular / lightRayCount;
+	diffuseResult = saturate(diffuseResult / lightRayCount); // TODO: Change this to a colour light space
+	specularResult = saturate(specularResult / lightRayCount);
 }
 
 [shader("raygeneration")]
@@ -210,5 +210,5 @@ void RayGen() {
 	uint2 screenIndex = (uint2)(screenUV * sceneConstants.rp.viewport.zw);
 	shadowMask[screenIndex] += uint4(sceneLight.sceneIndex, 0, 3, 255); //TODO: Remove completely from system.
 	diffuseResult[screenIndex] += float4(resultDiffuse.rgb, 1.0);
-	specularResult[screenIndex] = max(specularResult[screenIndex], float4(resultSpecular.rgb, 1.0)); // Taking max to represent reflections
+	specularResult[screenIndex] += float4(resultSpecular.rgb, 1.0);
 }

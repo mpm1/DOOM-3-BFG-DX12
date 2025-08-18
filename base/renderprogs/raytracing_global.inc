@@ -222,7 +222,7 @@ float3 CalculateProjection(in SceneLight light, float4 worldPosition)
 
 	projection.xy /= projection.w;
 
-	return SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb;
+	return pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 3.2); // Added some correction to match the original art
 }
 
 uint4 ConvertShadowmapMaskToVector(uint shadowMask)
@@ -245,6 +245,92 @@ float StartDistanceFromSurface(in float3 worldPosition, in float3 eyePosition)
     float depth = distance(worldPosition, eyePosition);
 	
     return lerp(RAY_MIN_START_DISTANCE, RAY_MAX_START_DISTANCE, depth / 100.0f);
+}
+
+// Light functions
+// General BRDF functions
+void GeneralBRDF(
+    float3 lightColor,
+    float NdotL,
+    float3 surfaceNormal,
+    float baseReflectivity, //TODO: Add this as a material property to the surface.
+    float roughness, //TODO: Add this as a material property to the surface.
+    float3 viewVector,
+    float3 halfVector,
+    out float3 diffuseContribution,
+    out float3 specularContribution)
+{
+    float fresnelFactor = baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - dot3(viewVector, halfVector), 5.0);
+
+    // Diffuse using the Lambertian Model (we already used L dot N for the light Color)
+    diffuseContribution = lightColor * (1.0 - fresnelFactor) / PI;
+
+    // Useing Cook-Torrance BRDF for specular reflection
+    float NdotH = dot3(surfaceNormal, halfVector);
+
+    float alpha = roughness * roughness;
+    float k = alpha / 2.0;
+
+    float a2 = alpha * alpha;
+    float D = a2 / (PI * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
+
+    float NdotV = dot(surfaceNormal, viewVector);
+    float G1 = NdotV / (NdotV * (1 - k) + k);
+    float G2 = lightColor / (NdotL * (1 - k) + k);
+    float G = G1 * G2; // Smith's shadowing-masking function
+
+    specularContribution = (D * G * fresnelFactor) / (4.0 * NdotL * NdotV);
+}
+
+// Calculates the amount of specular and diffuse light hitting a surface.
+// Return value is the intesity of light reflecting off the surface. An intensity of 0 or less means no light will be reflected on the surface.
+float CalcluateLightImpact(
+    in SceneLight light,
+    in float3 worldPosition,
+    in float3 viewVector, // Hit point to eye vector.
+    in float3 surfaceNormal,
+    in float3 lightVector,
+    out float3 diffuseContribution,
+    out float3 specularContribution
+    )
+{
+    float NdotL = dot3(surfaceNormal, lightVector);
+
+    // TODO: Do we need a modifier here for subsurface scattering?
+
+    if (NdotL <= EPSILON)
+	{
+		// No light is being cast.
+        diffuseContribution = float3(0.0f, 0.0f, 0.0f);
+        specularContribution = float3(0.0f, 0.0f, 0.0f);
+		return NdotL;
+	}
+
+    float3 lightColor = NdotL * 
+				CalculateFalloff(light, float4(worldPosition, 1.0)) * 
+				CalculateProjection(light, float4(worldPosition, 1.0));
+
+    if (length(lightColor) <= EPSILON)
+    {
+        // No light is reflected.
+        diffuseContribution = float3(0.0f, 0.0f, 0.0f);
+        specularContribution = float3(0.0f, 0.0f, 0.0f);
+        return 0.0f;
+    }
+
+    GeneralBRDF(
+        lightColor,
+        NdotL,
+        surfaceNormal,
+        0.5f, // Base reflectivity, we need to eventually adjust this per material.
+        0.5f, // Roughness, we need to eventually adjust this per material.
+        viewVector, // View vector
+        normalize(lightVector + viewVector), // Half vector
+        diffuseContribution,
+        specularContribution
+    );
+
+    return NdotL;
 }
 
 SamplerState    pointSampler : register(s0, space0); // Replace this with Sampler that will grab the exact point information from the shader.
