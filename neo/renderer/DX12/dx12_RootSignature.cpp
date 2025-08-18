@@ -25,6 +25,11 @@ ID3D12DescriptorHeap* DX12RootSignature::GetCBVHeap()
 	return GetDescriptorManager()->GetCBVHeap();
 }
 
+ID3D12DescriptorHeap* DX12RootSignature::GetSamplerHeap()
+{
+	return GetDescriptorManager()->GetSamplerHeap();
+}
+
 void DX12RootSignature::GenerateRootSignature(CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC* rootSignatureDesc, const LPCWSTR name)
 {
 	assert(rootSignatureDesc != nullptr);
@@ -85,7 +90,8 @@ void RenderRootSignature::CreateRootSignature()
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
 
-	CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+	const int rootParameterCount = 4;
+	CD3DX12_ROOT_PARAMETER1 rootParameters[rootParameterCount];
 
 	// Setup the descriptor table
 	{
@@ -100,7 +106,9 @@ void RenderRootSignature::CreateRootSignature()
 		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 		const D3D12_DESCRIPTOR_RANGE1* ranges = textureManager->GetDescriptorRanges();
 
-		rootParameters[1].InitAsDescriptorTable(TextureManager::TEXTURE_SPACE_COUNT, ranges);
+		rootParameters[1].InitAsDescriptorTable(TextureManager::TEXTURE_SPACE_COUNT, &ranges[0]);
+		rootParameters[2].InitAsDescriptorTable(TextureManager::CONSTANT_DESCRIPTOR_COUNT, &ranges[TextureManager::TEXTURE_SPACE_COUNT]);
+		rootParameters[3].InitAsDescriptorTable(TextureManager::SAMPLER_DESCRIPTOR_COUNT, &ranges[TextureManager::TEXTURE_SPACE_COUNT + TextureManager::CONSTANT_DESCRIPTOR_COUNT]);
 	}
 
 	CD3DX12_STATIC_SAMPLER_DESC staticSampler[3];
@@ -109,7 +117,7 @@ void RenderRootSignature::CreateRootSignature()
 	staticSampler[2].Init(2, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // For direct pixel access
 
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init_1_1(2, &rootParameters[0], 3, &staticSampler[0], rootSignatureFlags);
+	rootSignatureDesc.Init_1_1(rootParameterCount, &rootParameters[0], 3, &staticSampler[0], rootSignatureFlags);
 
 	GenerateRootSignature(&rootSignatureDesc, L"Render Root Signature");
 }
@@ -117,15 +125,20 @@ void RenderRootSignature::CreateRootSignature()
 void RenderRootSignature::SetRootDescriptorTable(const UINT objectIndex, DX12Rendering::Commands::CommandList* commandList)
 {
 	const UINT heapIndex = GetHeapIndex(objectIndex, 0);
-
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(GetCBVHeapPartition(), heapIndex);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE textureDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureEntries, 0);
-
+	const eHeapDescriptorPartition heapPartition = GetCBVHeapPartition();
+	
 	// Define the Descriptor Table to use.
-	commandList->AddCommandAction([gpuDescriptorHandle, textureDescriptorHandle](ID3D12GraphicsCommandList4* commandList)
+	commandList->AddCommandAction([heapIndex, heapPartition](ID3D12GraphicsCommandList4* commandList)
 	{
+		CD3DX12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(heapPartition, heapIndex);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE textureDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureEntries, 0);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE textureConstantDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureConstants, 0);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHeapHandle = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorSamplerEntries, 0);
+
 		commandList->SetGraphicsRootDescriptorTable(0, gpuDescriptorHandle);
 		commandList->SetGraphicsRootDescriptorTable(1, textureDescriptorHandle);
+		commandList->SetGraphicsRootDescriptorTable(2, textureConstantDescriptorHandle);
+		commandList->SetGraphicsRootDescriptorTable(3, samplerHeapHandle);
 	});
 }
 
@@ -157,7 +170,8 @@ void ComputeRootSignature::CreateRootSignature()
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_DOMAIN_SHADER_ROOT_ACCESS |
 		D3D12_ROOT_SIGNATURE_FLAG_DENY_GEOMETRY_SHADER_ROOT_ACCESS;
 
-	CD3DX12_ROOT_PARAMETER1 rootParameters[2];
+	const int rootParameterCount = 4;
+	CD3DX12_ROOT_PARAMETER1 rootParameters[rootParameterCount];
 
 	// Setup the descriptor table
 	{
@@ -173,7 +187,9 @@ void ComputeRootSignature::CreateRootSignature()
 		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 		const D3D12_DESCRIPTOR_RANGE1* ranges = textureManager->GetDescriptorRanges();
 
-		rootParameters[1].InitAsDescriptorTable(TextureManager::TEXTURE_SPACE_COUNT, ranges);
+		rootParameters[1].InitAsDescriptorTable(TextureManager::TEXTURE_SPACE_COUNT, &ranges[0]);
+		rootParameters[2].InitAsDescriptorTable(TextureManager::CONSTANT_DESCRIPTOR_COUNT, &ranges[TextureManager::TEXTURE_SPACE_COUNT]);
+		rootParameters[3].InitAsDescriptorTable(TextureManager::SAMPLER_DESCRIPTOR_COUNT, &ranges[TextureManager::TEXTURE_SPACE_COUNT + TextureManager::CONSTANT_DESCRIPTOR_COUNT]);
 	}
 
 	CD3DX12_STATIC_SAMPLER_DESC staticSampler[3];
@@ -182,7 +198,7 @@ void ComputeRootSignature::CreateRootSignature()
 	staticSampler[2].Init(2, D3D12_FILTER_MIN_MAG_MIP_POINT, D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP); // For direct pixel access
 
 	CD3DX12_VERSIONED_ROOT_SIGNATURE_DESC rootSignatureDesc;
-	rootSignatureDesc.Init_1_1(2, &rootParameters[0], 3, &staticSampler[0], rootSignatureFlags);
+	rootSignatureDesc.Init_1_1(rootParameterCount, &rootParameters[0], 3, &staticSampler[0], rootSignatureFlags);
 
 	GenerateRootSignature(&rootSignatureDesc, L"Compute Root Signature");
 }
@@ -190,27 +206,33 @@ void ComputeRootSignature::CreateRootSignature()
 void ComputeRootSignature::SetRootDescriptorTable(const UINT objectIndex, DX12Rendering::Commands::CommandList* commandList)
 {
 	const UINT heapIndex = GetHeapIndex(objectIndex, 0);
+	const eHeapDescriptorPartition heapPartition = GetCBVHeapPartition();
 
-	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(GetCBVHeapPartition(), heapIndex);
-	CD3DX12_GPU_DESCRIPTOR_HANDLE textureDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureEntries, 0);
-
-	ID3D12DescriptorHeap* heap = GetCBVHeap();
+	ID3D12DescriptorHeap* heaps[2] =
+	{
+		GetCBVHeap(),
+		GetSamplerHeap(),
+	};
 
 	ID3D12RootSignature* rootSignature = GetRootSignature();
 
 	// Define the Descriptor Table to use.
-	commandList->AddCommandAction([gpuDescriptorHandle, textureDescriptorHandle, heap, rootSignature](ID3D12GraphicsCommandList4* commandList)
+	commandList->AddCommandAction([heapIndex, heapPartition, heaps, rootSignature](ID3D12GraphicsCommandList4* commandList)
 	{
+		CD3DX12_GPU_DESCRIPTOR_HANDLE gpuDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(heapPartition, heapIndex);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE textureDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureEntries, 0);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE textureConstantDescriptorHandle = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorTextureConstants, 0);
+		CD3DX12_GPU_DESCRIPTOR_HANDLE samplerHeapHandle = GetDescriptorManager()->GetGPUDescriptorHandle(eHeapDescriptorSamplerEntries, 0);
+
 		commandList->SetComputeRootSignature(rootSignature);
 
 		// Setup the initial heap location
-		ID3D12DescriptorHeap* descriptorHeaps[1] = {
-			heap,
-		};
-		commandList->SetDescriptorHeaps(1, descriptorHeaps);
+		commandList->SetDescriptorHeaps(2, heaps);
 
 		commandList->SetComputeRootDescriptorTable(0, gpuDescriptorHandle);
 		commandList->SetComputeRootDescriptorTable(1, textureDescriptorHandle); 
+		commandList->SetComputeRootDescriptorTable(2, textureConstantDescriptorHandle);
+		commandList->SetComputeRootDescriptorTable(3, samplerHeapHandle);
 	});
 }
 

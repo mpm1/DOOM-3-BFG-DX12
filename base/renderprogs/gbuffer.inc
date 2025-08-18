@@ -217,10 +217,10 @@ float4 CalculateVelocity(const float4 lastPosition, const float4 position)
 #endif
 
 void main( PS_IN fragment, out PS_OUT result ) {
-	half4 bumpMap =	GetBindlessTexture4f(gbufferConstants.bumpMapIndex).Sample(baseSampler, fragment.texcoord0.xy );
-	half4 YCoCG = GetBindlessTexture4f(gbufferConstants.albedoIndex).Sample(baseSampler, fragment.texcoord1.xy );
+	half4 bumpMap = SampleBindlessTexture4f(gbufferConstants.bumpMapIndex, fragment.texcoord0.xy );
+	half4 YCoCG = SampleBindlessTexture4f(gbufferConstants.albedoIndex, fragment.texcoord1.xy);
 	
-	result.specularColor = GetBindlessTexture4f(gbufferConstants.specularIndex).Sample(baseSampler, fragment.texcoord2.xy );
+	result.specularColor = SampleBindlessTexture4f(gbufferConstants.specularIndex, fragment.texcoord2.xy );
 	
 	result.albedo.rgb = ConvertYCoCgToRGB( YCoCG ); //we need the diffuse modifier constant?
 

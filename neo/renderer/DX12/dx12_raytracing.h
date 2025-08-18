@@ -31,8 +31,8 @@ namespace DX12Rendering {
 	const UINT VERTCACHE_VERTEX_MEMORY = 31U * 1024U * 1024U * 256U;
 	const UINT VERTCACHE_JOINT_MEMORY= 256U * 1024U * 256U;
 
-	const UINT DESCRIPTOR_HEAP_SIZE = 6 /* basic entries */;
-	const UINT DESCRIPTOR_OBJECT_TOTAL = MAX_SCENE_LIGHTS;
+	const UINT DESCRIPTOR_HEAP_SIZE = 9 /* basic entries */;
+	const UINT DESCRIPTOR_OBJECT_TOTAL = MAX_SCENE_LIGHTS + 2;
 	const UINT DESCRIPTOR_OBJECT_TOTAL_FRAMES = DX12_FRAME_COUNT * DESCRIPTOR_OBJECT_TOTAL;
 	const UINT DESCRIPTOR_HEAP_TOTAL = DESCRIPTOR_HEAP_SIZE * DESCRIPTOR_OBJECT_TOTAL;
 
@@ -90,6 +90,25 @@ namespace DX12Rendering {
 		XMFLOAT4	falloffS;
 	};
 
+	struct dxr_global_illumination_t
+	{
+		UINT xDelta;
+		UINT yDelta;
+		UINT maxBounce;
+		UINT sampleCount; // Total sample rays per hit point (this * max bounce gets your total number of rays)
+
+		dxr_lightData_t lights[MAX_SCENE_LIGHTS];
+
+		dxr_global_illumination_t(UINT xDelta, UINT yDelta, UINT maxBounce, UINT sampleCount, dxr_lightData_t* lightsIn, UINT lightCount) :
+			xDelta(xDelta),
+			yDelta(yDelta),
+			maxBounce(maxBounce),
+			sampleCount(sampleCount)
+		{
+			std::memcpy(lights, lightsIn, sizeof(dxr_lightData_t) * lightCount);
+		};
+	};
+
 	struct dxr_sceneConstants_t
 	{
 		XMFLOAT4 renderParameters[DX12Rendering::dxr_renderParm_t::COUNT];
@@ -127,7 +146,7 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	void ResetLightList();
-	bool AddLight(const UINT index, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4 location, XMFLOAT4 color, const XMFLOAT4 lightProjection[4], const XMFLOAT4 scissorWindow, bool castsShadows);
+	bool AddLight(const UINT index, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4& location, const XMFLOAT4& color, const XMFLOAT4* lightProjection, const XMFLOAT4& scissorWindow, bool castsShadows);
 	UINT GetLightMask(const UINT index);
 
 	void GenerateTLAS();
@@ -139,6 +158,12 @@ public:
 	void EndFrame();
 
 	const DX12Rendering::Commands::FenceValue CastShadowRays(
+		const UINT frameIndex,
+		const CD3DX12_VIEWPORT& viewport,
+		const CD3DX12_RECT& scissorRect
+	);
+
+	const DX12Rendering::Commands::FenceValue CastGlobalIlluminationRays(
 		const UINT frameIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect
@@ -171,6 +196,9 @@ private:
 	ComPtr<ID3D12StateObject> m_shadowStateObject; // Raytracing pipeline state.
 	ComPtr<ID3D12StateObjectProperties> m_shadowStateObjectProps;
 
+	ComPtr<ID3D12StateObject> m_gliStateObject; // Raytracing pipeline state.
+	ComPtr<ID3D12StateObjectProperties> m_gliStateObjectProps;
+
 	ComPtr<ID3D12RootSignature> m_globalRootSignature;
 
 	dxr_sceneConstants_t m_constantBuffer;
@@ -191,11 +219,12 @@ private:
 
 	// Pipeline
 	void CreateShadowPipeline();
+	void CreateGlobalIlluminationPipeline();
 	void CreateOutputBuffers();
 	void CreateShaderResourceHeap();
 
 	void CreateShaderBindingTables();
-	ID3D12Resource* CreateShadowBindingTable(UINT frameIndex, UINT objectIndex);
+	ID3D12Resource* CreateShadowBindingTable(UINT frameIndex, UINT objectIndex, ID3D12StateObjectProperties* props);
 
 	void SetOutputTexture(DX12Rendering::eRenderSurface renderSurface, UINT frameIndex, UINT objectIndex, DX12Rendering::e_RaytracingHeapIndex uav);
 
@@ -208,6 +237,7 @@ private:
 		const DX12Rendering::e_RaytracingHeapIndex heapIndex);
 
 	void UpdateTlasDescriptor(UINT frameIndex, UINT objectIndex);
+	void UpdateGeometryDescriptors(UINT frameIndex, UINT objectIndex);
 
 
 	D3D12_CPU_DESCRIPTOR_HANDLE GetDescriptorHandle(
@@ -231,7 +261,9 @@ private:
 		const UINT objectIndex,
 		const CD3DX12_VIEWPORT& viewport,
 		const CD3DX12_RECT& scissorRect,
-		DX12Rendering::RenderPassBlock& renderPass
+		DX12Rendering::RenderPassBlock& renderPass,
+		ID3D12StateObject* pipelineState,
+		ID3D12StateObjectProperties* stateProperties
 	);
 
 	// Acceleration Structure

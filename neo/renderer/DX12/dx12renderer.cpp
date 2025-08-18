@@ -13,6 +13,8 @@ extern idCVar r_windowWidth; // Used to calculate resize
 extern idCVar r_windowHeight; // Used to calculate resize
 extern idCVar r_fullscreen; // Used to calculate resize
 
+extern idCVar r_useGli; // Use the global illumination system.
+
 idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
 
@@ -317,7 +319,7 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(ComputeConstants));
 		resourceManager.FillConstantBuffer(buffer, &constants);
 
-		m_computeRootSignature->SetConstantBufferView(objectIndex, 2, buffer);
+		m_computeRootSignature->SetConstantBufferView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eSurfaceCBV, buffer);
 	}
 
 	{
@@ -326,15 +328,15 @@ UINT DX12Renderer::ComputeSurfaceBones(DX12Rendering::Geometry::VertexBuffer* sr
 		constantBuffer.bufferLocation.BufferLocation = joints->resource->GetGPUVirtualAddress() + jointOffset;
 		constantBuffer.bufferLocation.SizeInBytes = *joints->GetSize();
 
-		m_computeRootSignature->SetConstantBufferView(objectIndex, 1, constantBuffer);
+		m_computeRootSignature->SetConstantBufferView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eJointCBV, constantBuffer);
 	}
 
 	{
 		// Setup the output buffer
-		m_computeRootSignature->SetUnorderedAccessView(objectIndex, 3, dstBuffer);
+		m_computeRootSignature->SetUnorderedAccessView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture0SRV, dstBuffer);
 
 		// Setup the input buffer
-		m_computeRootSignature->SetShaderResourceView(objectIndex, 4, srcBuffer);
+		m_computeRootSignature->SetShaderResourceView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture1SRV, srcBuffer);
 	}
 
 	m_computeRootSignature->SetRootDescriptorTable(objectIndex, commandList);
@@ -407,9 +409,9 @@ void DX12Renderer::LoadPipelineState(D3D12_GRAPHICS_PIPELINE_STATE_DESC* psoDesc
 }
 
 void DX12Renderer::SetActivePipelineState(ID3D12PipelineState* pPipelineState, DX12Rendering::Commands::CommandList& commandList) {
-	if (pPipelineState != NULL  && pPipelineState != m_activePipelineState) {
+	if (pPipelineState != NULL)
+	{ //TODO: readd this functionality on commandlists with multiple draws. && pPipelineState != m_activePipelineState) {
 		m_activePipelineState = pPipelineState;
-		m_isPipelineStateNew = true;
 
 		if (m_isDrawing) {
 			commandList.CommandSetPipelineState(pPipelineState);
@@ -541,7 +543,6 @@ void DX12Renderer::SetPassDefaults(DX12Rendering::Commands::CommandList* command
 
 			if (m_activePipelineState != nullptr) {
 				commandList->SetPipelineState(m_activePipelineState);
-				m_isPipelineStateNew = false;
 			}
 
 			commandList->RSSetViewports(1, &m_viewport);
@@ -554,41 +555,7 @@ void DX12Renderer::SetPassDefaults(DX12Rendering::Commands::CommandList* command
 	}
 }
 
-void DX12Renderer::SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue)
-{
-	if (!isComputeQueue)
-	{
-		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
-		{
-			auto rootSignature = isComputeQueue ? nullptr : m_rootSignature->GetRootSignature();
-			if (rootSignature != nullptr)
-			{
-				commandList->SetGraphicsRootSignature(rootSignature);
-			}
-
-			if (m_activePipelineState != nullptr) {
-				commandList->SetPipelineState(m_activePipelineState);
-				
-				m_isPipelineStateNew = false;
-			}
-
-			commandList->RSSetViewports(1, &m_viewport);
-			commandList->RSSetScissorRects(1, &m_scissorRect);
-
-			commandList->OMSetStencilRef(m_stencilRef);
-
-			// Setup the initial heap location
-			ID3D12DescriptorHeap* descriptorHeaps[1] = {
-				m_rootSignature->GetCBVHeap(),
-			};
-			commandList->SetDescriptorHeaps(1, descriptorHeaps);
-		});
-
-		EnforceRenderTargets(commandList);
-	}
-}
-
-void DX12Renderer::BeginDraw() {
+void DX12Renderer::BeginDraw(const int frameIndex) {
 	if (m_isDrawing || !m_initialized) {
 		return;
 	}
@@ -598,6 +565,8 @@ void DX12Renderer::BeginDraw() {
 	m_zMax = 1.0f;
 
 	WaitForPreviousFrame();
+
+	DX12Rendering::GetTextureManager()->BeginFrame(frameIndex);
 
 	// Evaluate if we need to update or  resolution
 	if (r_fullscreen.GetInteger() == 0 && // We transferred to fullscreen mode, this will be handled by R_SetNewMode
@@ -713,24 +682,54 @@ void DX12Renderer::EndDraw() {
 	//common->Printf("%d heap objects registered.\n", m_cbvHeapIndex);
 }
 
-UINT DX12Renderer::StartSurfaceSettings() {
+int DX12Renderer::StartSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList) {
 	assert(m_isDrawing);
+
+	ID3D12RootSignature* rootSignature = m_rootSignature->GetRootSignature();
+	if (rootSignature != nullptr)
+	{
+		commandList.AddCommandAction([rootSignature](ID3D12GraphicsCommandList4* cmdList)
+		{
+			cmdList->SetGraphicsRootSignature(rootSignature);
+		});
+	}
+
+	if (!DX12_ActivatePipelineState(variantState, material, commandList)) {
+		// We cant draw the object, so return.
+		return -1;
+	}
+
+	UINT stencilRef = m_stencilRef;
+	CD3DX12_VIEWPORT viewport = m_viewport;
+	CD3DX12_RECT scissor = m_scissorRect;
+	ID3D12DescriptorHeap* heaps[2] = {
+		m_rootSignature->GetCBVHeap(),
+		m_rootSignature->GetSamplerHeap(),
+	};
+
+	commandList.AddCommandAction([stencilRef, viewport, scissor, heaps](ID3D12GraphicsCommandList4* commandList)
+	{
+		commandList->RSSetViewports(1, &viewport);
+		commandList->RSSetScissorRects(1, &scissor);
+
+		commandList->OMSetStencilRef(stencilRef);
+
+		commandList->SetDescriptorHeaps(2, heaps);
+	});
+
+	EnforceRenderTargets(&commandList);
+
 	m_objectIndex = m_rootSignature->RequestNewObjectIndex();
 
 	return m_objectIndex;
 }
 
-bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState, void* surfaceConstants, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList) {
+bool DX12Renderer::EndSurfaceSettings(void* surfaceConstants,  size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList) {
 	// TODO: Define separate CBV for location data and Textures
 	// TODO: add a check if we need to update tehCBV and Texture data.
 
 	assert(m_isDrawing);
 
-	if (!DX12_ActivatePipelineState(variantState, commandList)) {
-		// We cant draw the object, so return.
-		return false;
-	}
-	
 	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
 
 	{
@@ -756,11 +755,20 @@ bool DX12Renderer::EndSurfaceSettings(const DX12Rendering::eSurfaceVariant varia
 		// Copy the Textures
 		DX12Rendering::TextureBuffer* currentTexture;
 		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+		DX12Rendering::TextureConstants textureConstants = {};
+
 		UINT index;
 		for (index = 0; index < TEXTURE_REGISTER_COUNT && (currentTexture = m_activeTextures[index]) != nullptr; ++index) {
 			textureManager->SetTexturePixelShaderState(currentTexture, &commandList);
 			m_rootSignature->SetTextureRegisterIndex(m_objectIndex, index, currentTexture, &commandList);
+
+			textureConstants.textureIndex[index] = currentTexture->GetTextureIndex();
 		}
+
+		// Set our constant buffer values.
+		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(DX12Rendering::TextureConstants));
+		resourceManager.FillConstantBuffer(buffer, &textureConstants);
+		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTextureCBV, buffer); 
 	}
 
 	m_rootSignature->SetRootDescriptorTable(m_objectIndex, &commandList);
@@ -966,6 +974,8 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor)->Resize(width, height);
+
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Resize(width, height);
@@ -1239,6 +1249,8 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 		);
 	}
 
+	m_raytracing->GetBLASManager()->StoreGeometryReferences(blas, surfaceCount, arguments);
+
 	return blas;
 }
 
@@ -1378,6 +1390,11 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
+	if (r_useGli.GetBool())
+	{
+		m_raytracing->CastGlobalIlluminationRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
+	}
+
 	const DX12Rendering::Commands::FenceValue drawFence = m_raytracing->CastShadowRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
 	const bool result = drawFence.value > 0;
 
@@ -1402,6 +1419,11 @@ bool DX12Renderer::DXR_CastRays()
 		auto specularMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular);
 		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_SPECULAR);
 		specularMap->CopySurfaceToTexture(specularTexture, textureManager);
+
+		// Copy the global illumination data
+		auto globalIllumination = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination);
+		DX12Rendering::TextureBuffer* gliTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_GLI);
+		globalIllumination->CopySurfaceToTexture(gliTexture, textureManager);
 
 		// Wait for all copies to complete.
 		DX12Rendering::Commands::FenceValue fenceValue = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
@@ -1429,7 +1451,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 
 		DX12Rendering::DXR_LIGHT_TYPE lightType = DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_POINT; // Default light type.
 
-		bool isAmbientLight = lightShader->IsAmbientLight(); // TODO: add as flag.
+		const bool isAmbientLight = lightShader->IsAmbientLight(); // TODO: add as flag.
 		if (isAmbientLight)
 		{
 			lightType = DX12Rendering::DXR_LIGHT_TYPE::DXR_LIGHT_TYPE_AMBIENT;
@@ -1449,7 +1471,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 			vLight->globalLightOrigin.z,
 			1.0f);
 
-		XMFLOAT4 scissor(
+		const XMFLOAT4 scissor(
 			vLight->scissorRect.x1 + m_viewport.TopLeftX, // left
 			vLight->scissorRect.y1 + m_viewport.TopLeftY, // top
 			vLight->scissorRect.x2 + m_viewport.TopLeftX, //right
@@ -1466,7 +1488,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				continue;
 			}
 
-			XMFLOAT4 lightColor(
+			const XMFLOAT4 lightColor(
 				lightScale * lightRegs[lightStage->color.registers[0]],
 				lightScale * lightRegs[lightStage->color.registers[1]],
 				lightScale * lightRegs[lightStage->color.registers[2]],

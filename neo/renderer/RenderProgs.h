@@ -219,6 +219,15 @@ public:
 
 	int		FindProgram(const char* name, int vIndex, int fIndex); // TODO: Find the program in the list.
 
+	static bool IgnoreMaterial(const int parentState) {
+		return parentState == BUILTIN_DEPTH
+			|| parentState == BUILTIN_DEPTH_SKINNED
+			|| parentState == BUILTIN_SHADOW
+			|| parentState == BUILTIN_SHADOW_SKINNED
+			|| parentState == BUILTIN_SHADOW_DEBUG
+			|| parentState == BUILTIN_SHADOW_DEBUG_SKINNED;
+	}
+
 protected:
 	enum {
 		BUILTIN_GUI,

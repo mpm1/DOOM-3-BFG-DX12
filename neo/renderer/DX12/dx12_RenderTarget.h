@@ -32,6 +32,7 @@ namespace DX12Rendering {
 
 		// RayTracing
 		RaytraceShadowMask, // Each bit is a light mask
+		GlobalIllumination, // The expected global illumination result for the image.
 
 		// Final Result
 		RenderTarget1,
@@ -56,6 +57,8 @@ namespace DX12Rendering {
 		eRenderSurface::Diffuse,
 		eRenderSurface::Specular,
 		eRenderSurface::RaytraceShadowMask,
+		eRenderSurface::GlobalIllumination,
+
 		eRenderSurface::RenderTarget1,
 		eRenderSurface::RenderTarget2,
 	};

@@ -1,3 +1,6 @@
+#define EPSILON 0.0000001
+#define PI 3.14159265358979323846
+
 static float dot2( float2 a, float2 b ) { return dot( a, b ); }
 static float dot3( float3 a, float3 b ) { return dot( a, b ); }
 static float dot3( float3 a, float4 b ) { return dot( a, b.xyz ); }
@@ -73,6 +76,20 @@ float3 rand3(float3 st) {
 	);
 }
 
+// Generates a random point on a unit sphere centered at 0.
+inline float3 RandomSphericalPoint(float3 seed)
+{
+	return normalize((rand3(seed) * 2.0) - 1.0);
+}
+
+// Generates a random point on a hemisphere aligned with the normal vector. Centered at 0.
+float RandomHemisphericalPoint(float3 normal, float3 seed)
+{
+	float3 spherePoint = RandomSphericalPoint(seed);
+
+	return dot(normal, spherePoint) < 0 ? -spherePoint : spherePoint;
+}
+
 #define _half2( x )		half2( x, x )
 #define _half3( x )		half3( x, x, x )
 #define _half4( x )		half4( x, x, x, x )
@@ -82,3 +99,18 @@ float3 rand3(float3 st) {
 
 static float4 idtex2Dproj( Texture2D<float4> samp, SamplerState samplerState, half4 texCoords ) { return samp.Sample( samplerState, texCoords.xy / texCoords.w); } //TODO: old data = texCoords.xyw ); }
 static float4 swizzleColor( float4 c ) { return c; }
+
+// RGB functions
+float4 UnpackR8G8B8A8(uint inputValue)
+{
+	uint4 separatedValue = uint4((inputValue >> 24) & 0xFF, (inputValue >> 16) & 0xFF, (inputValue >> 8) & 0xFF, inputValue & 0xFF);
+
+	return float4(separatedValue) / 255.0;
+}
+
+uint PackR8G8B8A8(float4 inputValue)
+{
+	uint4 values = uint4(inputValue * 255.0);
+
+	return ((values.x & 0xFF) << 24) | ((values.y & 0xFF) << 16) | ((values.z & 0xFF) << 8) | (values.w & 0xFF);
+}

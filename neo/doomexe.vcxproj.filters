@@ -73,6 +73,9 @@
     <Filter Include="Renderer\DX12\debug">
       <UniqueIdentifier>{b6fb3a0f-fd7c-4266-9f13-8acd2651c239}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Renderer\DX12\murmurhash">
+      <UniqueIdentifier>{39c3e1bd-8acc-472a-b7d0-b2f624e38523}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="cm\CollisionModel.h">
@@ -635,6 +638,9 @@
     </ClInclude>
     <ClInclude Include="renderer\DX12\dx12_HeapDescriptorManager.h">
       <Filter>Renderer\DX12</Filter>
+    </ClInclude>
+    <ClInclude Include="renderer\DX12\murmurhash\MurmurHash3.h">
+      <Filter>Renderer\DX12\murmurhash</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -1328,6 +1334,9 @@
     <ClCompile Include="renderer\DX12\dx12_HeapDescriptorManager.cpp">
       <Filter>Renderer\DX12</Filter>
     </ClCompile>
+    <ClCompile Include="renderer\DX12\murmurhash\MurmurHash3.cpp">
+      <Filter>Renderer\DX12\murmurhash</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <None Include="sys\win32\rc\res\doom.ico">
@@ -1511,6 +1520,12 @@
     <None Include="..\base\renderprogs\shadow_ray_base.inc">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\base\renderprogs\interaction.inc">
+      <Filter>Shaders</Filter>
+    </None>
+    <None Include="..\base\renderprogs\geometry.inc">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sys\win32\rc\doom.rc">
@@ -1672,6 +1687,9 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\compute_skinned_offset.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\globalillumination_generator.ray">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

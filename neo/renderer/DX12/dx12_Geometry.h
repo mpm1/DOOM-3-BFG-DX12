@@ -44,8 +44,11 @@ namespace DX12Rendering
 
 			const D3D12_INDEX_BUFFER_VIEW* GetView() { return &m_indexBufferView; }
 			const UINT GetIndexCount() { return m_indexCount; }
+
+			D3D12_SHADER_RESOURCE_VIEW_DESC* GetSrvDescriptorView() { return &m_srvBufferView; }
 		private:
 			D3D12_INDEX_BUFFER_VIEW m_indexBufferView;
+			D3D12_SHADER_RESOURCE_VIEW_DESC m_srvBufferView;
 			UINT m_indexCount;
 		};
 

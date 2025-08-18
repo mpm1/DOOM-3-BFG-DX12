@@ -56,6 +56,66 @@ namespace DX12Rendering {
 		return true;
 	}
 
+#pragma region GenericWriteBuffer
+	void GenericWriteBuffer::Build()
+	{
+		assert(m_stride > 0);
+
+		D3D12_RESOURCE_DESC description = CD3DX12_RESOURCE_DESC::Buffer(m_size, D3D12_RESOURCE_FLAG_NONE);
+		description.Alignment = m_alignment;
+
+		D3D12_HEAP_PROPERTIES heapProps = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_UPLOAD);
+		Allocate(description, D3D12_RESOURCE_STATE_GENERIC_READ, heapProps);
+		
+		if (!Exists())
+		{
+			return;
+		}
+
+#ifdef _DEBUG
+		resource->SetName(m_name);
+#endif
+
+		const UINT numElements = m_size / m_stride;
+
+		m_srvBufferView.Format = description.Format;
+		m_srvBufferView.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+		m_srvBufferView.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		m_srvBufferView.Buffer.FirstElement = 0;
+		m_srvBufferView.Buffer.NumElements = numElements;
+		m_srvBufferView.Buffer.StructureByteStride = m_stride;
+	}
+
+	bool GenericWriteBuffer::Map(const D3D12_RANGE* readRange, void** ppData)
+	{
+		if (!Exists())
+		{
+			Build();
+		}
+
+		if (WarnIfFailed(resource->Map(0, readRange, ppData)))
+		{
+			//TODO: set a write flag to keep track
+			return true;
+		}
+
+		return false;
+	}
+
+	bool GenericWriteBuffer::Unmap(const D3D12_RANGE* pWrittenRange)
+	{
+		//TODO: Check mapped flag
+		resource->Unmap(0, pWrittenRange);
+
+		if (state == eResourceState::Ready)
+		{
+			state = eResourceState::Dirty;
+		}
+
+		return true;
+	}
+#pragma endregion //GenericWriteBuffer
+
 #pragma region ScratchBuffer
 	ID3D12Resource* ScratchBuffer::Build()
 	{
@@ -170,7 +230,9 @@ namespace DX12Rendering {
 
 	ResourceManager::ResourceManager()
 		: m_nextConstantBufferOffset(0)
-		, m_maxCBVHeapSize(DX12_ALIGN(CBV_REGISTER_COUNT * MAX_OBJECT_COUNT * MAX_CONSTANT_BUFFER_SIZE * DX12_FRAME_COUNT, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) // 64kb aligned
+		, m_maxCBVHeapSize(DX12_ALIGN(
+			(((CBV_REGISTER_COUNT * MAX_OBJECT_COUNT) + MAX_GLOBAL_REGISTERS) * MAX_CONSTANT_BUFFER_SIZE) * DX12_FRAME_COUNT, 
+			D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT)) // 64kb aligned
 	{
 		auto device = DX12Rendering::Device::GetDevice();
 

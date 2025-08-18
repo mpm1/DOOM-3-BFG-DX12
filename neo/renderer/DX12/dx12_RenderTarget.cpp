@@ -279,8 +279,8 @@ namespace DX12Rendering
 		{
 			D3D12_CLEAR_VALUE clearValue = {}; // Set to unknown.
 
-			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
-			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
+			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
+			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 			
 			m_surfaces.emplace_back(L"Normal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Normal, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"FlatNormal", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::FlatNormal, RENDER_SURFACE_FLAG_NONE, clearValue);
@@ -289,6 +289,7 @@ namespace DX12Rendering
 			m_surfaces.emplace_back(L"SpecularColor", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::SpecularColor, RENDER_SURFACE_FLAG_NONE, clearValue);
 
 			m_surfaces.emplace_back(L"RaytraceShadowMask", DXGI_FORMAT_R8G8B8A8_UINT, eRenderSurface::RaytraceShadowMask, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
+			m_surfaces.emplace_back(L"Global Illumination", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::GlobalIllumination, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 
 			m_surfaces.emplace_back(L"RenderTarget1", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget1, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);
 			m_surfaces.emplace_back(L"RenderTarget2", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget2, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);

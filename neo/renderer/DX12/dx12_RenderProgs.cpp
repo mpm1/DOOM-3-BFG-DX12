@@ -10,17 +10,49 @@
 static constexpr uint64 STATE_TO_HASH_MASK = ~(0ull | GLS_STENCIL_FUNC_REF_BITS);
 static constexpr uint64 HASH_FACE_CULL_SHIFT = GLS_STENCIL_FUNC_REF_SHIFT;
 
-static constexpr uint64 HASH_VARIANT_INDEX_SHIFT = 0;
-static constexpr uint64 HASH_PARENT_INDEX_SHIFT = HASH_VARIANT_INDEX_SHIFT + 32;
+static constexpr uint64 HASH_VARIANT_INDEX_SHIFT = 32;
+static constexpr uint64 HASH_PARENT_INDEX_SHIFT = HASH_VARIANT_INDEX_SHIFT + 5;
 
 static int activePipelineState = 0;
 
-D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDescriptors[128];
+D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDescriptors[128] = {};
 
-typedef std::unordered_map<int64, ID3D12PipelineState*> PipelineStateMap;
-typedef std::unordered_map<int64, PipelineStateMap> ShaderMap;
+typedef GUID PSOKey;
+struct PSOKeyComparator
+{
+	bool operator()(const PSOKey& a, const PSOKey& b) const
+	{
+		return memcmp(&a, &b, sizeof(PSOKey)) < 0;
+	}
+};
 
-ShaderMap shaderMap(128);
+struct PipelineStateObjectEntry
+{
+	const PSOKey handle;
+	bool isValid;
+	ComPtr<ID3D12PipelineState> pipelineState;
+
+	PipelineStateObjectEntry(const PSOKey handle) :
+		handle(handle),
+		isValid(false),
+		pipelineState(nullptr)
+	{
+
+	}
+
+	~PipelineStateObjectEntry()
+	{
+		if (pipelineState != nullptr)
+		{
+			pipelineState->Release();
+			pipelineState = nullptr;
+		}
+	}
+};
+
+typedef std::map<PSOKey, PipelineStateObjectEntry, PSOKeyComparator> PSOMap;
+
+PSOMap shaderMap;
 
 D3D12_CULL_MODE CalculateCullMode(const int cullType) {
 	switch (cullType) {
@@ -280,27 +312,69 @@ void FillPolygonOffset(D3D12_GRAPHICS_PIPELINE_STATE_DESC& psoDesc, uint64 state
 	}
 }
 
-void LoadStagePipelineState(int parentState, const DX12Rendering::eSurfaceVariant variant, glstate_t state, DX12Rendering::Commands::CommandList& commandList) {
+PSOKey GetPSOHandle(const int parentState, const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, const glstate_t state)
+{
+	byte data[512] = {};
+	int length = 0;
+
+	const byte parentBits = static_cast<byte>(parentState);
+	std::memcpy(&data[length], &parentBits, sizeof(byte));
+	length += sizeof(byte);
+
+	const uint64 stateBits = state.glStateBits & STATE_TO_HASH_MASK;
+	std::memcpy(&data[length], &stateBits, sizeof(uint64));
+	length += sizeof(uint64);
+
+	const int cullingBits = state.faceCulling;
+	std::memcpy(&data[length], &cullingBits, sizeof(int));
+	length += sizeof(int);
+
+	const byte variantBits = static_cast<byte>(variant);
+	std::memcpy(&data[length], &variantBits, sizeof(byte));
+	length += sizeof(byte);
+
+	if (material != nullptr && !idRenderProgManager::IgnoreMaterial(parentState))
+	{
+		const char* name = material->GetName();
+		const int nameLength = std::strlen(name);
+		const int maxCopy = std::min(nameLength, 512 - length);
+
+		std::memcpy(&data[length], name, maxCopy);
+		length += maxCopy;
+	}
+
+	PSOKey key;
+
+	MurmurHash3_x64_128(data, length, 0, &key);
+
+	return key;
+}
+
+void LoadStagePipelineState(const int parentState, const idMaterial* material, const DX12Rendering::eSurfaceVariant variant, glstate_t state, DX12Rendering::Commands::CommandList& commandList) {
 	// Combine the glStateBits with teh faceCulling and parentState index values.
 	// We do not need the stecil ref value as this will be set through the command list. This gives us 8 useable bits.
-	int64 stateIndex = (state.glStateBits & STATE_TO_HASH_MASK) | (state.faceCulling << HASH_FACE_CULL_SHIFT);
-	int64 shaderIndex = (static_cast<uint64>(variant) << HASH_VARIANT_INDEX_SHIFT) | (static_cast<uint64>(parentState) << HASH_PARENT_INDEX_SHIFT);
+	PSOKey shaderIndex = GetPSOHandle(parentState, variant, material, state);
 
-	const auto pipelineStateMapContainer = shaderMap.find(shaderIndex);
-	PipelineStateMap* pipelineStateMap;
+	auto psoMapEntry = shaderMap.find(shaderIndex);
+	PipelineStateObjectEntry* psoEntry;
 
-	if (pipelineStateMapContainer == shaderMap.end())
+	if (psoMapEntry == shaderMap.end())
 	{
-		pipelineStateMap = &shaderMap.emplace(shaderIndex, 128).first->second;
+		psoEntry = &shaderMap.emplace(shaderIndex, shaderIndex).first->second;
 	}
 	else
 	{
-		pipelineStateMap = &pipelineStateMapContainer->second;
+		psoEntry = &psoMapEntry->second;
 	}
+	
+	if (!psoEntry->isValid) {
+		if (psoEntry->pipelineState != nullptr)
+		{
+			// Remove invalid state.
+			psoEntry->pipelineState->Release();
+			psoEntry->isValid = false;
+		}
 
-	const auto result = pipelineStateMap->find(stateIndex);
-
-	if (result == pipelineStateMap->end()) {
 		// No PipelineState found. Create a new one.
 
 		// Define the vertex input layout
@@ -322,33 +396,38 @@ void LoadStagePipelineState(int parentState, const DX12Rendering::eSurfaceVarian
 
 		psoDesc.BlendState = CalculateBlendMode(state.glStateBits);
 		psoDesc.DepthStencilState = CalculateDepthStencilMode(state.glStateBits);
-		
+
 		FillPolygonOffset(psoDesc, state.glStateBits);
 
 		DX12_ApplyPSOVariant(psoDesc, variant);
 
-		ID3D12PipelineState* renderState;
-		dxRenderer.LoadPipelineState(&psoDesc, &renderState);
+		dxRenderer.LoadPipelineState(&psoDesc, &psoEntry->pipelineState);
 
-		wchar_t resourceName[64];
-		wsprintfW(resourceName, L"Shader: 0x%x", stateIndex);
-		renderState->SetName(resourceName);
+		wchar_t resourceName[128];
 
-		pipelineStateMap->insert({ stateIndex, renderState });
+		if (material == nullptr)
+		{
+			wsprintfW(resourceName, L"Shader: 0x%x", shaderIndex);
+		}
+		else
+		{
+			wsprintfW(resourceName, L"Shader: %S", material->GetName());
+		}
+		psoEntry->pipelineState->SetName(resourceName);
 
-		dxRenderer.SetActivePipelineState(renderState, commandList);
+		psoEntry->isValid = true;
 	}
-	else {
-		dxRenderer.SetActivePipelineState(result->second, commandList);
-	}
+	
+	dxRenderer.SetActivePipelineState(psoEntry->pipelineState.Get(), commandList);
 }
 
-bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, DX12Rendering::Commands::CommandList& commandList) {
-	if (activePipelineState < 0) {
+bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList) {
+	if (activePipelineState < 0)
+	{
 		return false;
 	}
 
-	LoadStagePipelineState(activePipelineState, variant, backEnd.glState, commandList);
+	LoadStagePipelineState(activePipelineState, material, variant, backEnd.glState, commandList);
 
 	return true;
 }

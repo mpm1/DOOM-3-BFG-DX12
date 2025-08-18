@@ -1,0 +1,251 @@
+#include "raytracing_global.inc"
+
+struct GlobalIlluminationContants
+{
+	uint2 delta; // Pixel coverage in the x,y direction
+	uint maxBounce; // Total number of light bounces allowed. 0 means no global illumination.
+	uint sampleCount; // Total sample rays per hit point (this * max bounce gets your total number of rays)
+
+	SceneLight lights[MAX_SCENE_LIGHTS];
+};
+
+struct GlobalIlluminationPayload
+{
+	float3 color;
+	uint bouncesRemaining;
+};
+
+ConstantBuffer<RaytracedSceneConstants> sceneConstants : register(b0, space0);
+ConstantBuffer<GlobalIlluminationContants> gliConstants : register(b1, space0);
+
+// For now we output to the Global Illumination UAV. 
+// Later we will be outputting to a cache and the UAV will calculate from the cache.
+RWTexture2D<float4> globalDiffuse :register(u0);
+
+float2 GetScreenPoint(in float2 pixelLocation)
+{
+	float2 uv = ((pixelLocation + 0.5) + sceneConstants.rp.viewport.xy) / sceneConstants.rp.viewport.zw;
+	uv.y = 1.0 - uv.y;
+
+	return uv;
+}
+
+float2 GetWeightedPixelPoint()
+{
+	// We need to find the point within our screen block that will provide the best result for Global Illumination.
+	// This usually means weighing to point closer to larger surface normal contrast.
+	const float2 ddx = float2(1.0, 0.0) / sceneConstants.rp.viewport.zw;
+	const float2 ddy = float2(0.0, 1.0) / sceneConstants.rp.viewport.zw;
+	const float2 startLocation = (float2)(DispatchRaysIndex() * gliConstants.delta);
+
+	float2 totalUV = float2(0.0, 0.0);
+	uint2 offset = uint2(0, 0);
+	float totalWeight = 0.0;
+
+	float largestWeight = -1.0;
+	float2 largestUV = float2(0, 0);
+
+	for (offset.y = 0; offset.y < gliConstants.delta.y; ++offset.y)
+	{
+		for (offset.x = 0; offset.x < gliConstants.delta.x; ++offset.x)
+		{
+			float2 uv = GetScreenPoint(startLocation + offset);
+			float weight = pow(length(GetBindlessTexture4f(sceneConstants.normalIndex).SampleGrad(pointSampler, uv, ddx, ddy)), 3.0);
+
+			if (weight > largestWeight)
+			{
+				largestWeight = weight;
+				largestUV = uv;
+			}
+
+			totalUV += (offset * weight);
+			totalWeight += weight;
+		}
+	}
+
+	return GetScreenPoint(startLocation + (totalUV / totalWeight));
+}
+
+float3 CalculateIndirectLight(in float3 worldPosition, in float3 rayStartDistance, in uint raysToCast, in int bouncesRemaining, in float3 normal)
+{
+	if (bouncesRemaining > 0 && raysToCast > 0)
+	{
+		
+		float noiseOffset = noiseOffset;
+		float color = float3(0.0, 0.0, 0.0);
+
+		for(uint i = 0; i < raysToCast; ++i)
+		{
+			GlobalIlluminationPayload payload;
+			payload.color = float3(0.0, 0.0, 0.0);
+			payload.bouncesRemaining = bouncesRemaining - 1;
+
+			float3 rayDirection = RandomHemisphericalPoint(normal, worldPosition * sceneConstants.noiseOffset);
+			noiseOffset += 0.227;
+
+			RayDesc ray;
+			ray.TMin = rayStartDistance;
+			ray.TMax = 1000.0f; // TODO: find a better distance
+			ray.Origin = worldPosition;
+			ray.Direction = rayDirection;
+
+			TraceRay(
+				SceneBVH,
+				RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH,
+				INSTANCE_MASK_CAST_SHADOW, // TODO: Change for all objects of ambiance
+				0, // 0 Offset hit group
+				0, // No stride
+				0, // 0 Miss shader offset
+				ray,
+				payload
+			);
+
+			color += payload.color * dot(normal, rayDirection);
+		}
+
+		// TODO: Get albed to modify the light color.
+
+		return color / float(raysToCast);
+	}
+
+	return float3(0.0, 0.0, 0.0);
+}
+
+SceneLight GetRandomLight(in float3 worldPosition, in float3 normal, in float2 seed)
+{
+	// TODO: Find the most impactful lights and place our ray in that direction.
+
+	float2 randCheck = worldPosition.xy + normal.xy + float2(normal.z, worldPosition.z);
+	uint index = floor(rand(randCheck + seed) * sceneConstants.lightCount);
+
+	return gliConstants.lights[index];
+}
+
+inline float3 GetLightImpact(in SceneLight light, in float3 worldPosition, in float3 normal)
+{
+	float maxDistance = distance(light.center, worldPosition);
+	float3 lightVector = normalize(light.center - worldPosition);
+	float intensity = 1.0f; //TODO: Set to saturate(dot(normal, lightVector)) when we have the normal
+
+	if (intensity <= EPSILON)
+	{
+		return float3(0.0, 0.0, 0.0);
+	}
+
+	float3 lightColor = intensity *
+			CalculateFalloff(light, float4(worldPosition, 1.0));
+	
+	if(light.flags & LIGHT_FLAG_POINT_LIGHT != 0)
+	{
+		return lightColor;
+	}
+
+	lightColor = lightColor *
+			CalculateProjection(light, float4(worldPosition, 1.0));
+
+	if (length(lightColor) <= EPSILON)
+	{
+		return float3(0.0, 0.0, 0.0);
+	}
+	
+	if((light.flags & LIGHT_FLAG_CASTS_SHADOWS) > 0)
+	{
+		// We'll assume all lights cast shadows.
+		// TODO: Limit the list to only shadow casting lights.
+		RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
+
+		// We are inside the light radius.
+		// Define a ray, consisting of origin, direction, and the min-max distance values
+		RayDesc ray;
+		ray.TMin = RAY_MIN_START_DISTANCE;
+		ray.TMax = maxDistance;
+		ray.Origin = worldPosition;
+		ray.Direction = lightVector;
+
+		// TODO: Remove this and do a normal trace ray that only uses the miss shader. That way we can skip this vlaue if we hit anything
+		inlineQuery.TraceRayInline(
+			SceneBVH,
+			RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
+			INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
+			ray);
+
+		inlineQuery.Proceed(); // Run the tracer.
+
+		if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+		{
+			return float3(0.0, 0.0, 0.0); // We hit a shadow so we should not add any data to the colors
+		}
+	}
+
+	return lightColor;
+}
+
+float3 CalculateDirectLight(in float3 worldPosition, in float3 normal, in uint lightRayCount)
+{
+	if (lightRayCount < 1)
+	{
+		return float3(0.0, 0.0, 0.0);
+	}
+
+	float3 diffuseResult = float3(0.0, 0.0, 0.0);
+
+	for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
+	{
+		// We're assuming it's point lights. We're also only going for sharp shadows at the moment.
+		SceneLight light = GetRandomLight(worldPosition, normal, float2(float(rayIndex), sceneConstants.noiseOffset));
+		diffuseResult += GetLightImpact(light, worldPosition, normal);
+	}
+
+	return diffuseResult / float(lightRayCount);
+}
+
+[shader("raygeneration")]
+void RayGen()
+{
+	float2 screenUV = GetWeightedPixelPoint();
+
+	float3 worldPosition = GetBindlessTexture4f(sceneConstants.positionTextureIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz;
+	float3 normal = normalize((GetBindlessTexture4f(sceneConstants.normalIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz * 2.0) - 1.0);
+
+	// Calculate the offset from the ray start we'd like to use.
+	// This is done to help with precision errors the further away our surface is.
+	float rayStartDistance = StartDistanceFromSurface(worldPosition, sceneConstants.rp.globalEyePos.xyz);
+
+	float3 color = CalculateIndirectLight(worldPosition, rayStartDistance, gliConstants.sampleCount, gliConstants.maxBounce, normal);
+
+	uint2 screenIndex = (uint2)(screenUV * sceneConstants.rp.viewport.zw);
+	globalDiffuse[screenIndex] = float4(color.rgb, 1.0);
+}
+
+[shader("closesthit")] 
+void ClosestHit(inout GlobalIlluminationPayload payload, in Attributes attrib) 
+{
+	if(payload.bouncesRemaining < 0)
+	{
+		return;
+	}
+
+	uint blasObject = InstanceID();
+	uint geometryIndex = GeometryIndex();
+	uint triangleIndex = PrimitiveIndex();
+	BLASVertex vertex = GetVertex(blasObject, geometryIndex, triangleIndex, triangleIndex + 1, triangleIndex + 2, attrib.location);
+
+	// TEMP for testing
+	payload.color = UnpackR8G8B8A8(vertex.normal).xyz; 
+	return;
+	/*
+	float3 normal = float3(0.0, 1.0, 0.0); // TODO: Grab from the current surface
+	float3 worldPosition = WorldRayOrigin() + (RayTCurrent() * WorldRayDirection());
+	float3 albedoColor = float3(1.0, 1.0, 1.0); // TODO: Get the texture at the is point;
+
+	payload.color += CalculateDirectLight(attrib.location.xyz, normal, gliConstants.sampleCount) * albedoColor;
+	payload.color += CalculateIndirectLight(worldPosition, RAY_MIN_START_DISTANCE, gliConstants.sampleCount, payload.bouncesRemaining, normal) * albedoColor;
+	*/
+}
+
+[shader("miss")]
+void Miss(inout GlobalIlluminationPayload payload : SV_RayPayload)
+{
+    payload.color = float3(0.0, 0.0, 0.0);
+	payload.bouncesRemaining = 0;
+}

@@ -5,9 +5,6 @@ RWTexture2D<uint4> shadowMask :register(u0);
 RWTexture2D<float4> diffuseResult :register(u1);
 RWTexture2D<float4> specularResult :register(u2);
 
-// Raytracing acceleration structure, accessed as a SRV
-RaytracingAccelerationStructure SceneBVH :register(t0);
-
 // Constants used to define the camera state
 ConstantBuffer<RaytracedSceneConstants> sceneConstants : register(b0, space0);
 ConstantBuffer<SceneLight> sceneLight: register(b1, space0);
@@ -18,36 +15,13 @@ bool IsInsideViewport(float2 p, float4 viewport)
 		&& (p.y >= viewport.y && p.y <= viewport.w);
 }
 
-float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
-{
-	Texture2D<float4> falloffTexture =  GetBindlessTexture4f(light.falloffIndex);
-	float4 falloff = falloffTexture.SampleLevel(projectionSampler, float2(dot4( worldPosition, light.falloffS ), 0), 0);
-	
-	return falloff.rgb;
-}
-
-float3 CalculateProjection(in SceneLight light, float4 worldPosition)
-{
-	float4 projection = float4(
-		dot4(worldPosition, light.projectionS),
-		dot4(worldPosition, light.projectionT),
-		0.0f,
-		dot4(worldPosition, light.projectionQ)
-	);
-
-	projection.xy /= projection.w;
-	Texture2D<float4> projectionTexture = GetBindlessTexture4f(light.projectionIndex);
-
-	return projectionTexture.SampleLevel(projectionSampler, projection.xy, 0).rgb;
-}
-
-float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 normal, in float3 pointToEye, in float3 pointToLight, in float3 specularColor, in float specMultiplier)
+float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 normal, in float3 pointToEye, in float3 pointToLight, in float specMultiplier)
 {
 	const half specularPower = 10.0f;
 	half hDotN = dot3(normalize(pointToEye + pointToLight), normal);
 	half3 specularContribution = _half3(pow( hDotN, specularPower ));
 
-	return specularColor.rgb * specularContribution * (light.color.rgb * specMultiplier) * lightFalloff.rgb;
+	return specularContribution * (light.color.rgb * specMultiplier) * lightFalloff.rgb;
 }
 
 float3 GetValidLightLocation(in SceneLight light, in Plane surfacePlane, in float3 randomOffset)
@@ -69,8 +43,6 @@ void HandleAmbientLight(
 	in float3 worldPosition,
 	in float3 normal,
 	in float3 pointToEye,
-	in float3 diffuseColor,
-	in float3 specularColor,
 	out float3 diffuseResult, 
 	out float3 specularResult)
 {
@@ -90,8 +62,8 @@ void HandleAmbientLight(
 			CalculateProjection(light, float4(worldPosition, 1.0));
 	}
 
-	diffuseResult = saturate(diffuseColor * light.color.rgb * lightColor.rgb);
-	specularResult = GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, specularColor, 2.0 /* Keeping consistant original method */);
+	diffuseResult = light.color.rgb * lightColor.rgb;
+	specularResult = GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, 2.0 /* Keeping consistant original method */);
 }
 
 void HandlePointLight(
@@ -104,17 +76,13 @@ void HandlePointLight(
 	in float3 worldPosition, 
 	in float2 screenUV,
 	in float rayStartDistance,
-	in float3 diffuseColor,
-	in float3 specularColor,
 	out float3 diffuseResult, 
 	out float3 specularResult)
 {
-	float3 localDiffuse = float3(0.0, 0.0, 0.0);
-	float3 localSpecular = float3(0.0, 0.0, 0.0);
+	diffuseResult = float3(0.0, 0.0, 0.0);
+	specularResult = float3(0.0, 0.0, 0.0);
 
 	float3 pointToCenter = normalize(light.center - worldPosition);
-
-	RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
 
 	for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
 	{
@@ -126,55 +94,57 @@ void HandlePointLight(
 			: light.center;
 
 		float maxDistance = distance(lightPosition, worldPosition);
-
 		float3 lightVector = normalize(lightPosition - worldPosition);
 
-		float intensity = saturate(dot(normal, lightVector));
-		float3 lightColor = float3(intensity, intensity, intensity);
+		float3 localDiffuse = float3(0.0, 0.0, 0.0);
+		float3 localSpecular = float3(0.0, 0.0, 0.0);
+		float intensity = CalcluateLightImpact(
+			light,
+			worldPosition,
+			pointToEye,
+			normal,
+			lightVector,
+			localDiffuse,
+			localSpecular);
 
-		if(intensity > 0.0) //TODO: Do this only for point lights and find the true radius distance based on the 3d radius vector and center offset.
+		if (intensity <= EPSILON)
 		{
-			lightColor = lightColor * 
-				CalculateFalloff(light, float4(worldPosition, 1.0)) * 
-				CalculateProjection(light, float4(worldPosition, 1.0));
+			// No light is being cast.
+			continue;
 		}
-
-		if(intensity > 0 && length(lightColor) > 0)
+		
+		if(castsShadows)
 		{
-			if(castsShadows)
-			{
-				// We are inside the light radius.
-				// Define a ray, consisting of origin, direction, and the min-max distance values
-				RayDesc ray;
-				ray.TMin = rayStartDistance;
-				ray.TMax = maxDistance;
-				ray.Origin = worldPosition;
-				ray.Direction = lightVector;
+			RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
 
-				inlineQuery.TraceRayInline(
-					SceneBVH,
-					RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
-					INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
-					ray);
+			// We are inside the light radius.
+			// Define a ray, consisting of origin, direction, and the min-max distance values
+			RayDesc ray;
+			ray.TMin = rayStartDistance;
+			ray.TMax = maxDistance;
+			ray.Origin = worldPosition;
+			ray.Direction = lightVector;
 
-				inlineQuery.Proceed(); // Run the tracer.
+			inlineQuery.TraceRayInline(
+				SceneBVH,
+				RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
+				INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
+				ray);
+
+			inlineQuery.Proceed(); // Run the tracer.
 				
-				if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
-				{
-					continue; // We hit a shadow so we should not add any data to the colors
-				}
-			}
-
-			if (intensity > 0.0)
+			if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
 			{
-				localDiffuse += (light.color.rgb * lightColor * diffuseColor);
-				localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, specularColor, 2.0 /* Keeping consistant original method */);
+				continue; // We hit a shadow so we should not add any data to the colors
 			}
 		}
+
+		diffuseResult += localDiffuse;
+		specularResult += localSpecular;
 	}
 
-	diffuseResult = saturate(localDiffuse / lightRayCount); // TODO: Change this to a colour light space
-	specularResult = saturate(localSpecular / lightRayCount);
+	diffuseResult = saturate(diffuseResult / lightRayCount); // TODO: Change this to a colour light space
+	specularResult = saturate(specularResult / lightRayCount);
 }
 
 [shader("raygeneration")]
@@ -196,13 +166,10 @@ void RayGen() {
 	float3 worldPosition = GetBindlessTexture4f(sceneConstants.positionTextureIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz;
 	float3 flatNormal = normalize((GetBindlessTexture4f(sceneConstants.flatNormalIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz * 2.0) - 1.0);
 	float3 normal = normalize((GetBindlessTexture4f(sceneConstants.normalIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz * 2.0) - 1.0);
-	float3 diffuse = GetBindlessTexture4f(sceneConstants.diffuseTextureIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz;
-	float3 specular = GetBindlessTexture4f(sceneConstants.specularTexureIndex).SampleLevel(pointSampler, screenUV.xy, 0).xyz;
 
 	// Calculate the offset from the ray start we'd like to use.
 	// This is done to help with precision errors the further away our surface is.
-	float depth = distance(worldPosition, sceneConstants.rp.globalEyePos.xyz);
-	float rayStartDistance = lerp(0.001, 1.0, depth / 100.0f);
+	float rayStartDistance = StartDistanceFromSurface(worldPosition, sceneConstants.rp.globalEyePos.xyz);
 	
 	float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
 
@@ -221,7 +188,6 @@ void RayGen() {
 			HandleAmbientLight(
 				sceneLight, 
 				worldPosition, normal, pointToEye,
-				diffuse, specular,
 				resultDiffuse, resultSpecular);
 		}
 		else if((sceneLight.flags & LIGHT_FLAG_POINT_LIGHT) > 0)
@@ -230,14 +196,19 @@ void RayGen() {
 				sceneLight, lightRayCount, 
 				castsShadows, surfacePlane, normal,
 				pointToEye, worldPosition, screenUV,
-				rayStartDistance, diffuse, specular,
-				resultDiffuse, resultSpecular);
+				rayStartDistance, resultDiffuse, resultSpecular);
+		}
+
+		if((sceneLight.flags & LIGHT_FLAG_FOG_LIGHT))
+		{
+			// TODO: Light Fog
+			// Should we send this data to a separate texture, or do all fodg lights at once?
 		}
 	//}
 
 	// Send to the output buffers
 	uint2 screenIndex = (uint2)(screenUV * sceneConstants.rp.viewport.zw);
 	shadowMask[screenIndex] += uint4(sceneLight.sceneIndex, 0, 3, 255); //TODO: Remove completely from system.
-	diffuseResult[screenIndex] += float4(saturate(resultDiffuse.rgb), 1.0);
-	specularResult[screenIndex] += float4(saturate(resultSpecular.rgb), 1.0);
+	diffuseResult[screenIndex] += float4(resultDiffuse.rgb, 1.0);
+	specularResult[screenIndex] += float4(resultSpecular.rgb, 1.0);
 }

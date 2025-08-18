@@ -46,6 +46,11 @@ namespace DX12Rendering {
 		VARIANT_COUNT
 	};
 
+	struct TextureConstants
+	{
+		UINT textureIndex[8];
+	};
+
 	// TODO: Start setting frame data to it's own object to make it easier to manage.
 	struct DX12FrameDataBuffer
 	{
@@ -61,7 +66,7 @@ namespace DX12Rendering {
 }
 
 //TODO: move everything into the correct namespace
-bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, DX12Rendering::Commands::CommandList& commandList);
+bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList);
 
 class DX12Renderer {
 public:
@@ -105,14 +110,13 @@ public:
 	void SetTexture(DX12Rendering::TextureBuffer* buffer);
 
 	// Draw commands
-	void BeginDraw();
+	void BeginDraw(const int frameIndex);
 	DX12Rendering::Commands::CommandList* Clear(const bool color, const bool depth, bool stencil, byte stencilValue, const float colorRGBA[4], DX12Rendering::Commands::CommandList* commandList);
 	void EndDraw();
 	void PresentBackbuffer();
 	void SetPassDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
-	void SetCommandListDefaults(DX12Rendering::Commands::CommandList* commandList, const bool isComputeQueue);
-	UINT StartSurfaceSettings(); // Starts a new heap entry for the surface.
-	bool EndSurfaceSettings(const DX12Rendering::eSurfaceVariant variant, void* surfaceConstants, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList); // Records the the surface entry into the heap.
+	int StartSurfaceSettings(const DX12Rendering::eSurfaceVariant variantState, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList); // Starts a new heap entry for the surface.
+	bool EndSurfaceSettings(void* surfaceConstants, size_t surfaceConstantsSize, DX12Rendering::Commands::CommandList& commandList); // Records the the surface entry into the heap.
 	void DrawModel(DX12Rendering::Commands::CommandList& commandList, DX12Rendering::Geometry::VertexBuffer* vertexBuffer, UINT vertexOffset, DX12Rendering::Geometry::IndexBuffer* indexBuffer, UINT indexOffset, UINT indexCount, size_t vertexStrideOverride /* 0 means no override */);
 
 #pragma region RayTracing
@@ -188,7 +192,6 @@ private:
 	XMFLOAT4 m_constantBuffer[57/* RENDERPARM_TOTAL */];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
-	bool m_isPipelineStateNew = false; // When we set the active pipeline state, we will use this to define that the state has changed and we must set new properties.
 	UINT m_stencilRef = 0;
 
 	UINT m_objectIndex = 0;

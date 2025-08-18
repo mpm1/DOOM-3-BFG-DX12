@@ -1,27 +1,17 @@
 #pragma hdrstop
 
 #include "./dx12_RaytracingPipeline.h"
+#include "./RaytracingRootSignature.h"
 
 namespace DX12Rendering {
 	RaytracingPipeline::RaytracingPipeline(ID3D12Device5* device, ID3D12RootSignature* globalRootSignature)
 		: m_device(device),
 		m_globalRootSignature(globalRootSignature)
 	{
-		// Build Empty RootSignature
-		D3D12_ROOT_SIGNATURE_DESC rootDesc = {};
-		rootDesc.NumParameters = 0;
-		rootDesc.pParameters = nullptr;
-		rootDesc.Flags = D3D12_ROOT_SIGNATURE_FLAG_LOCAL_ROOT_SIGNATURE;
-
-		ID3DBlob* rootSignature;
-		ID3DBlob* error;
-
-		HRESULT hr = D3D12SerializeRootSignature(&rootDesc, D3D_ROOT_SIGNATURE_VERSION_1, &rootSignature, &error);
-		DX12Rendering::ThrowIfFailed(hr);
-
-		hr = m_device->CreateRootSignature(0, rootSignature->GetBufferPointer(), rootSignature->GetBufferSize(), IID_PPV_ARGS(&m_localRootSignature));
-		rootSignature->Release();
-		DX12Rendering::ThrowIfFailed(hr);
+		
+		// Build Local RootSignature
+		RaytracingRootSignature localRootSignature(ALL);
+		m_localRootSignature = localRootSignature.GetRootSignature();
 	}
 
 	RaytracingPipeline::~RaytracingPipeline() {
