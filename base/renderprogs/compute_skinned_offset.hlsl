@@ -1,15 +1,7 @@
 // Calculates the BLAS animations through sekleton manipulation.
 #include "global.inc"
+#include "geometry.inc"
 #include "joints.inc"
-
-struct BLASVertex { // TODO: modify this to take our entire structure properly
-	float3 position; //DXGI_FORMAT_R32G32B32_FLOAT
-	uint texcoord; // DXGI_FORMAT_R16G16_FLOAT
-	uint normal; // DXGI_FORMAT_R8G8B8A8_UNORM
-	uint tangent; // DXGI_FORMAT_R8G8B8A8_UNORM
-	uint color; // DXGI_FORMAT_R8G8B8A8_UNORM
-	uint color2; // DXGI_FORMAT_R8G8B8A8_UNORM
-};
 
 struct ComputeBLASConstants {
 	uint vertCount;
@@ -26,19 +18,6 @@ RWStructuredBuffer<BLASVertex>	vertecies_uav : register(u0);
 
 StructuredBuffer<BLASVertex>	inputVertecies_srv : register(t0);
 
-float4 UnpackR8G8B8A8(uint inputValue)
-{
-	uint4 separatedValue = uint4((inputValue >> 24) & 0xFF, (inputValue >> 16) & 0xFF, (inputValue >> 8) & 0xFF, inputValue & 0xFF);
-
-	return float4(separatedValue) / 255.0;
-}
-
-uint PackR8G8B8A8(float4 inputValue)
-{
-	uint4 values = uint4(inputValue * 255.0);
-
-	return ((values.x & 0xFF) << 24) | ((values.y & 0xFF) << 16) | ((values.z & 0xFF) << 8) | (values.w & 0xFF);
-}
 
 void Skinning(in uint startIndex, in uint endIndex, in uint outputIndex)
 {

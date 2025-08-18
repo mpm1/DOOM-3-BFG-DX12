@@ -53,6 +53,6 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	float4 diffuse = samp0.Sample(baseSampler, tCoords) * albedo;
 	float4 specular = samp1.Sample(baseSampler, tCoords) * samp3.Sample(baseSampler, tCoords);
 	
-	result.color = globalIllumination + diffuse + specular;
+	result.color = saturate(globalIllumination + diffuse + specular); //TODO: move this to and HDR texture then have a separate shader to filter it down.
 	result.color.w = 1.0;
 }

@@ -112,13 +112,41 @@ namespace DX12Rendering {
 		m_cbvHeapIncrementor = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 	}
 
+	void Raytracing::UpdateGeometryDescriptors(UINT frameIndex, UINT objectIndex)
+	{
+		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
+
+		{
+			D3D12_CPU_DESCRIPTOR_HANDLE handle = GetDescriptorHandle(frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::SRV_GEOMETRY);
+			
+			GenericWriteBuffer* resourceBuffer = m_blasManager.GetGeometryBuffer();
+			device->CreateShaderResourceView(resourceBuffer->resource.Get(), resourceBuffer->GetSrvDescriptorView(), handle);
+		}
+
+		{
+			D3D12_CPU_DESCRIPTOR_HANDLE handle = GetDescriptorHandle(frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::SRV_VERTEX);
+
+			DX12Rendering::Geometry::VertexBuffer*  vertexBuffer = static_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexCache.staticData.vertexBuffer.GetAPIObject());
+
+			device->CreateShaderResourceView(vertexBuffer->resource.Get(), vertexBuffer->GetSrvDescriptorView(), handle);
+		}
+
+		{
+			D3D12_CPU_DESCRIPTOR_HANDLE handle = GetDescriptorHandle(frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::SRV_INDEX);
+
+			DX12Rendering::Geometry::IndexBuffer* indexBuffer = static_cast<DX12Rendering::Geometry::IndexBuffer*>(vertexCache.staticData.indexBuffer.GetAPIObject());
+
+			device->CreateShaderResourceView(indexBuffer->resource.Get(), indexBuffer->GetSrvDescriptorView(), handle);
+		}
+	}
+
 	void Raytracing::UpdateTlasDescriptor(const UINT frameIndex, const UINT objectIndex)
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
 		// Write the acceleration structure to the view.
 		D3D12_CPU_DESCRIPTOR_HANDLE shadowHandle = GetDescriptorHandle(frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::SRV_TLAS);
-
+		
 		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
 		srvDesc.Format = DXGI_FORMAT_UNKNOWN;
 		srvDesc.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
@@ -460,6 +488,7 @@ namespace DX12Rendering {
 		SetCBVDescriptorTable(sizeof(m_constantBuffer), &m_constantBuffer, frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::CBV_CameraProperties);
 		
 		UpdateTlasDescriptor(frameIndex, objectIndex);
+		UpdateGeometryDescriptors(frameIndex, objectIndex);
 
 		commandList->AddCommandAction([&](ID3D12GraphicsCommandList4* commandList)
 		{

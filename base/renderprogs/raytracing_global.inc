@@ -1,5 +1,19 @@
 #include "functions.inc"
 #include "bindless_textures.inc"
+#include "geometry.inc"
+
+// Copied from VertexCache.h
+const int VERTCACHE_STATIC = 1;					// in the static set, not the per-frame set
+const int VERTCACHE_SIZE_SHIFT = 1;
+const int VERTCACHE_SIZE_MASK = 0x7fffff;		// 8 megs 
+const int VERTCACHE_OFFSET_SHIFT = 24;
+const int VERTCACHE_OFFSET_MASK = 0x1ffffff;	// 32 megs 
+const int VERTCACHE_FRAME_SHIFT = 49;
+const int VERTCACHE_FRAME_MASK = 0x7fff;		// 15 bits = 32k frames to wrap around
+
+const int VERTEX_CACHE_ALIGN		= 32;
+const int INDEX_CACHE_ALIGN			= 16;
+const int JOINT_CACHE_ALIGN			= 16;
 
 // Minimum distance from the surface, based on the normal vector, where we begin to cast rays.
 static const float k_minSurfaceDistance = 0.01;
@@ -40,7 +54,7 @@ struct ShadowHitInfo
 // Attributes output by the raytracing when hitting a surface:
 struct Attributes
 {
-  float4	location; // Location of the hit.
+  float2	location; // Location of the hit.
 };
 
 #define LIGHT_FLAG_CASTS_SHADOWS (0x01 << 0)
@@ -108,6 +122,50 @@ struct RaytracedSceneConstants {
     uint normalIndex;
     uint raysPerLight;
 };
+
+// Raytracing acceleration structure, accessed as a SRV
+RaytracingAccelerationStructure SceneBVH :register(t0);
+
+// Storage for the geometry information
+#define MAX_BLAS_GEOMETRY 2048
+
+StructuredBuffer<RaytracingGeometryArgument>    geometry_srv : register(t1);
+StructuredBuffer<BLASVertex>                    vertecies_srv : register(t2);
+StructuredBuffer<BLASIndex>                     indecies_srv : register(t3);
+
+inline uint GetByteOffsetFromHandle(in uint64_t bufferHandle)
+{
+    return int(bufferHandle >> VERTCACHE_OFFSET_SHIFT) & VERTCACHE_OFFSET_MASK;
+}
+
+inline RaytracingGeometryArgument GetGeometryArgument(in uint blasIndex, in uint geometryIndex)
+{
+    uint index = blasIndex + geometryIndex;
+
+    if(index > MAX_BLAS_GEOMETRY)
+    {
+        // TODO: implement error
+        index = 0;
+    }
+
+    return geometry_srv[index];
+}
+
+inline BLASVertex GetVertex(in uint blasIndex, in uint geometryIndex, in uint index1, in uint index2, in uint index3, in float2 coord)
+{
+    RaytracingGeometryArgument geometry = GetGeometryArgument(blasIndex, geometryIndex);
+    uint indexOffset = GetByteOffsetFromHandle(geometry.indexHandle) / 2 + index1; // We devide by 2 because the indices are 16-bits (or two bytes) each
+    uint vertOffset = GetByteOffsetFromHandle(geometry.vertexHandle) / sizeof(BLASVertex);
+
+    uint checkIndex = UnpackBLASIndex(indexOffset, indecies_srv);
+    BLASVertex vert1;// = vertecies_srv[vertOffset + checkIndex];
+    //TODO: When we get back to GI, fix our calls to indecies_srv and vertecies_srv. These cause issues with the root signature
+    vert1.normal = float3(0.0f, 0.0f, 1.0f); // Default normal, we will calculate it later
+    // TODO: Add the dynamic vectors as well
+
+    // TODO: calculate the connection between all points. We're just sending the first for testing 
+    return vert1;
+}
 
 inline float4 GetInverseProjection(float4 location, in RaytracedSceneConstants constants)
 {

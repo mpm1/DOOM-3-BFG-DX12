@@ -1,5 +1,7 @@
 #pragma hdrstop
 
+#include "../tr_local.h"
+
 #include "./dx12_AccelerationStructure.h"
 #include "./dx12_DeviceManager.h"
 #include "./dx12_CommandList.h"
@@ -14,8 +16,8 @@ namespace
 	{
 		bool result = true;
 
-		desc.InstanceID = instance.instanceId;
-		desc.InstanceContributionToHitGroupIndex = instance.hitGroupIndex;
+		desc.InstanceID = instance.geometryStartIndex;
+		desc.InstanceContributionToHitGroupIndex = 0;
 		desc.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_NONE;// | D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE; // Should we implement back face culling?
 
 		// Model View Matrix matrix
@@ -229,7 +231,8 @@ namespace DX12Rendering {
 #pragma endregion
 #pragma region BLASContainer
 	BLASManager::BLASManager() :
-		m_scratchBuffer(DEFAULT_BLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"BLAS Scratch Buffer")
+		m_scratchBuffer(DEFAULT_BLAS_SCRATCH_SIZE, D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BYTE_ALIGNMENT, kDefaultHeapProps, D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, L"BLAS Scratch Buffer"),
+		m_geometryArgumentBuffer(sizeof(RaytracingGeometryArgument) * MAX_BLAS_GEOMETRY, D3D12_DEFAULT_RESOURCE_PLACEMENT_ALIGNMENT, sizeof(RaytracingGeometryArgument), L"Geometry Arguments")
 	{
 	}
 
@@ -240,6 +243,8 @@ namespace DX12Rendering {
 
 	BottomLevelAccelerationStructure* BLASManager::CreateBLAS(const dxHandle_t& key, const bool isStatic, const bool isBuilt, const LPCWSTR name)
 	{
+		assert(key != HANDLE_NONE);
+
 		BottomLevelAccelerationStructure* blas = GetBLAS(key);
 		if (blas)
 		{
@@ -271,19 +276,106 @@ namespace DX12Rendering {
 		return nullptr;
 	}
 
+	bool BLASManager::StoreGeometryReferences(BottomLevelAccelerationStructure* blas, const size_t count, RaytracingGeometryArgument* geometry)
+	{
+		if (blas == nullptr || count > MAX_BLAS_GEOMETRY)
+		{
+			return false;
+		}
+		
+		const dxHandle_t& blasKey = blas->id;
+		int runIndex = -1;
+		int runCount = 0;
+
+		// Find the free space
+		for (int index = m_blasGeometryIndex + 1; index != m_blasGeometryIndex; ++index)
+		{
+			if (index >= MAX_BLAS_GEOMETRY)
+			{
+				index = 0;
+				runIndex = -1;
+				runCount = 0;
+			}
+
+			if (m_blasGeometryMap[index] == HANDLE_NONE)
+			{
+				if (runIndex >= 0)
+				{
+					++runCount;
+				}
+				else
+				{
+					runIndex = index;
+					runCount = 1;
+				}
+			}
+			else
+			{
+				runIndex = -1;
+				runCount = 0;
+			}
+
+			if (runCount == count)
+			{
+				break;
+			}
+		}
+
+		if (runCount != count)
+		{
+			// Space could not be allocated.
+			return false;
+		}
+
+		// Fill in each entry on the GPU, and store the handle reference in the map.
+		std::fill_n(&m_blasGeometryMap[runIndex], count, blasKey);
+		blas->geometryOffset = runIndex;
+
+		// Send the Geometry to the GPU resource.
+		D3D12_RANGE range = { runIndex * sizeof(RaytracingGeometryArgument), 0 };
+		range.End = range.Begin + (runCount * sizeof(RaytracingGeometryArgument));
+		RaytracingGeometryArgument* buffer = nullptr;
+
+		if (m_geometryArgumentBuffer.Map(&range, reinterpret_cast<void**>(&buffer)))
+		{
+			memcpy(buffer, geometry, range.End - range.Begin);
+			m_geometryArgumentBuffer.Unmap(&range);
+		}
+		else
+		{
+			common->Warning("Could not store geometry data.");
+			return false;
+		}
+
+		return true;
+	}
+
+	void BLASManager::ClearGeometryReferences(BottomLevelAccelerationStructure* blas)
+	{
+		if (blas == nullptr || blas->geometryOffset < 0)
+		{
+			return;
+		}
+
+		std::fill_n(&m_blasGeometryMap[blas->geometryOffset], blas->geometry.size(), HANDLE_NONE);
+		blas->geometryOffset = -1;
+	}
+
 	void BLASManager::RemoveBLAS(const dxHandle_t& key)
 	{
 		BottomLevelAccelerationStructure* result = GetBLAS(key);
 
 		if (result != nullptr)
 		{
+			ClearGeometryReferences(result);
 			m_objectMap.erase(key);
 		}
 	}
 
 	void BLASManager::Reset()
 	{
-		m_blasIndex = 0;
+		m_blasGeometryIndex = 0;
+		std::fill_n(m_blasGeometryMap, MAX_BLAS_GEOMETRY, HANDLE_NONE);
 
 		m_objectMap.clear();
 	}
@@ -590,6 +682,9 @@ namespace DX12Rendering {
 
 		m_instances[frameIndex].clear();
 		m_instances[frameIndex].reserve(DEFAULT_TLAS_COUNT);
+
+		m_instances[frameIndex].clear();
+		m_instances[frameIndex].reserve(DEFAULT_TLAS_COUNT);
 	}
 
 	void TLASManager::UpdateDynamicInstances()
@@ -665,9 +760,14 @@ namespace DX12Rendering {
 				memcpy(instance->transformation, transform, sizeof(float[3][4]));
 				return;
 			}
+			
+			m_instances[frameIndex].emplace_back(
+				transform, entityId, blas->id, 
+				blas->geometryOffset,
+				//0, 0, // TODO: Get the albedo and normal indecies. We may want to move this to a material constant buffer.
+				instanceMask, instanceTypes);
 
-			UINT hitShaderIndex = 0; /* TODO: Find the hit group index containing the normal map of the surface. */
-			m_instances[frameIndex].emplace_back(transform, entityId, blas->id, hitShaderIndex, instanceMask, instanceTypes);
+			m_instances[frameIndex].back().flagValue.isDynamic = !blas->m_isStatic;
 		}
 	}
 

@@ -67,6 +67,7 @@ namespace DX12Rendering {
 #pragma region IndexBuffer
 	Geometry::IndexBuffer::IndexBuffer(const UINT numBytes, const LPCWSTR name) :
 		GeometryResource(name),
+		m_srvBufferView({}),
 		m_indexCount(numBytes / 16)
 	{
 		// Allocate at the start
@@ -78,6 +79,13 @@ namespace DX12Rendering {
 		m_indexBufferView.BufferLocation = state == Unallocated ? NULL : resource->GetGPUVirtualAddress();
 		m_indexBufferView.SizeInBytes = numBytes;
 		m_indexBufferView.Format = DXGI_FORMAT_R16_UINT;
+
+		m_srvBufferView.Format = description.Format;
+		m_srvBufferView.ViewDimension = D3D12_SRV_DIMENSION_BUFFER;
+		m_srvBufferView.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		m_srvBufferView.Buffer.FirstElement = 0;
+		m_srvBufferView.Buffer.NumElements = m_indexCount;
+		m_srvBufferView.Buffer.StructureByteStride = 16;
 	}
 #pragma endregion
 

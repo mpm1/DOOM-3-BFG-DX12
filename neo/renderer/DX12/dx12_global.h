@@ -52,6 +52,7 @@ using namespace DirectX;
 using namespace Microsoft::WRL;
 
 typedef UINT64 dxHandle_t;
+constexpr dxHandle_t HANDLE_NONE = 0;
 
 namespace DX12Rendering {
 	enum e_RaytracingHeapIndex
@@ -60,6 +61,9 @@ namespace DX12Rendering {
 		UAV_DiffuseMap,
 		UAV_SpecularMap,
 		SRV_TLAS,
+		SRV_GEOMETRY,
+		SRV_VERTEX,
+		SRV_INDEX,
 		CBV_CameraProperties,
 		CBV_LightProperties
 	};

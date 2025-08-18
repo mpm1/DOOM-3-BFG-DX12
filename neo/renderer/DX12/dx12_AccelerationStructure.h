@@ -17,6 +17,8 @@ using namespace Microsoft::WRL;
 
 #define DEFAULT_TLAS_COUNT 512
 
+#define MAX_BLAS_GEOMETRY 2048
+
 namespace DX12Rendering 
 {
 	/// <summary>
@@ -30,7 +32,7 @@ namespace DX12Rendering
 	class TLASManager;
 
 	typedef
-		enum ACCELERATION_INSTANCE_TYPE
+		enum ACCELERATION_INSTANCE_TYPE : UINT
 	{
 		INSTANCE_TYPE_NONE = 0,
 		INSTANCE_TYPE_STATIC = 1 << 0,
@@ -38,7 +40,7 @@ namespace DX12Rendering
 	} 	ACCELERATION_INSTANCE_TYPE;
 
 	typedef
-		enum ACCELLERATION_INSTANCE_MASK
+		enum ACCELLERATION_INSTANCE_MASK : UINT
 	{
 		INSTANCE_MASK_NONE = 0,
 		INSTANCE_MASK_CAST_SHADOW = 1 << 0,
@@ -49,19 +51,20 @@ namespace DX12Rendering
 
 	DEFINE_ENUM_FLAG_OPERATORS(ACCELERATION_INSTANCE_TYPE);
 
-	struct RaytracingGeometryArgument {
+	struct RaytracingGeometryArgument { // 128 bit Aligned for shaders
 		dxHandle_t meshIndex; // If we use multiple meshes, this is the index on the top model.
-		
 		dxHandle_t vertexHandle;
+		dxHandle_t indexHandle;
+		dxHandle_t jointsHandle;
+
 		UINT vertCounts;
 
 		// Used only if we are creating a dynamic BLAS
 		UINT vertexOffset;
 		
-		dxHandle_t indexHandle;
 		UINT indexCounts;
 
-		dxHandle_t jointsHandle;
+		UINT pad0;
 	};
 
 	struct DX12AccelerationObject {
@@ -74,25 +77,36 @@ namespace DX12Rendering
 	};
 
 	struct Instance {
-		ACCELERATION_INSTANCE_TYPE blasType; // Dynamic instances will need to have their BLAS updated.
+		ACCELERATION_INSTANCE_TYPE	blasType; // Dynamic instances will need to have their BLAS updated.
+		ACCELLERATION_INSTANCE_MASK	mask; // ACCELLERATION_INSTANCE_MASK
+		
+		union
+		{
+			UINT flags;
+			struct {
+				bool isDynamic : 1;
+				bool flagPad[sizeof(UINT) - 2];
+			} flagValue;
+		};
 
-		float				transformation[3][4];
+		UINT geometryStartIndex;
+		
 		const dxHandle_t	instanceId;
 		dxHandle_t			blasId;
-		UINT				hitGroupIndex; // TODO: We will change this to point to the hitGroup in the stack that contains the normal map for the surface.
-		UINT				mask; // ACCELLERATION_INSTANCE_MASK
 
-		/* Dynamic Object Properties */
-		UINT originalBlasId;								   //TODO: Add support for bone information.
+		float				transformation[3][4];
 
-		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId, UINT hitGroupIndex, ACCELLERATION_INSTANCE_MASK mask, ACCELERATION_INSTANCE_TYPE accelerationType) :
+		Instance(const float srcTransformation[16], const dxHandle_t& id, const dxHandle_t& blasId,
+			UINT geometryStartIndex,
+			ACCELLERATION_INSTANCE_MASK mask, ACCELERATION_INSTANCE_TYPE accelerationType) :
 			instanceId(id),
 			blasId(blasId),
-			hitGroupIndex(hitGroupIndex),
+			geometryStartIndex(geometryStartIndex),
 			mask(mask),
 			blasType(accelerationType),
 			transformation{}
 		{
+			flags = 0;
 			std::memcpy(transformation, srcTransformation, sizeof(float[3][4]));
 		}
 	};
@@ -115,6 +129,7 @@ namespace DX12Rendering
 	struct BottomLevelAccelerationStructure : public Resource
 	{
 		const dxHandle_t id;
+		int geometryOffset; // Offset into the geometry map.
 		std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> geometry = {};
 		std::vector<dxHandle_t> joints = {};
 		const bool m_isStatic;
@@ -126,7 +141,8 @@ namespace DX12Rendering
 			m_sizeInBytes(0),
 			m_isStatic(isStatic),
 			isBuilt(false),
-			m_lastFenceValue(Commands::COMPUTE, 0)
+			m_lastFenceValue(Commands::COMPUTE, 0),
+			geometryOffset(-1)
 		{}
 
 		~BottomLevelAccelerationStructure()
@@ -199,6 +215,10 @@ public:
 	BottomLevelAccelerationStructure* GetBLAS(const dxHandle_t& key);
 	void RemoveBLAS(const dxHandle_t& key);
 
+	bool StoreGeometryReferences(BottomLevelAccelerationStructure* blas, const size_t count, RaytracingGeometryArgument* geometry);
+	void ClearGeometryReferences(BottomLevelAccelerationStructure* blas);
+	GenericWriteBuffer* GetGeometryBuffer() { return &m_geometryArgumentBuffer; }
+
 	void Reset();
 
 	/// <summary>
@@ -211,11 +231,12 @@ public:
 #endif
 private:
 	const UINT m_blasPerFrame = 100; // The maximum available BLAS objects to be processed per frame.
-	UINT m_blasIndex; // Used to tell the next BLAS index to process each frame.
 	std::map<dxHandle_t, BottomLevelAccelerationStructure> m_objectMap = {};
 	ScratchBuffer m_scratchBuffer;
 
-	
+	UINT m_blasGeometryIndex = MAX_BLAS_GEOMETRY - 1; // Used to tell last geometry index filled. Starting at the end of the line
+	dxHandle_t m_blasGeometryMap[MAX_BLAS_GEOMETRY]; // This map helps us point to the structure of geometry that is sent to the GPU. a value of 0 means that the space is free.
+	GenericWriteBuffer m_geometryArgumentBuffer;
 };
 
 class DX12Rendering::TLASManager

@@ -1523,6 +1523,9 @@
     <None Include="..\base\renderprogs\interaction.inc">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\base\renderprogs\geometry.inc">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sys\win32\rc\doom.rc">

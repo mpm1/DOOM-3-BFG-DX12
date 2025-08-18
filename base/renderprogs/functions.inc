@@ -98,3 +98,18 @@ float RandomHemisphericalPoint(float3 normal, float3 seed)
 
 static float4 idtex2Dproj( Texture2D<float4> samp, SamplerState samplerState, half4 texCoords ) { return samp.Sample( samplerState, texCoords.xy / texCoords.w); } //TODO: old data = texCoords.xyw ); }
 static float4 swizzleColor( float4 c ) { return c; }
+
+// RGB functions
+float4 UnpackR8G8B8A8(uint inputValue)
+{
+	uint4 separatedValue = uint4((inputValue >> 24) & 0xFF, (inputValue >> 16) & 0xFF, (inputValue >> 8) & 0xFF, inputValue & 0xFF);
+
+	return float4(separatedValue) / 255.0;
+}
+
+uint PackR8G8B8A8(float4 inputValue)
+{
+	uint4 values = uint4(inputValue * 255.0);
+
+	return ((values.x & 0xFF) << 24) | ((values.y & 0xFF) << 16) | ((values.z & 0xFF) << 8) | (values.w & 0xFF);
+}

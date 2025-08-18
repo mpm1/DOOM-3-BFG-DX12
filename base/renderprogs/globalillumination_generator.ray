@@ -22,9 +22,6 @@ ConstantBuffer<GlobalIlluminationContants> gliConstants : register(b1, space0);
 // Later we will be outputting to a cache and the UAV will calculate from the cache.
 RWTexture2D<float4> globalDiffuse :register(u0);
 
-// Raytracing acceleration structure, accessed as a SRV
-RaytracingAccelerationStructure SceneBVH :register(t0);
-
 float2 GetScreenPoint(in float2 pixelLocation)
 {
 	float2 uv = ((pixelLocation + 0.5) + sceneConstants.rp.viewport.xy) / sceneConstants.rp.viewport.zw;
@@ -106,6 +103,8 @@ float3 CalculateIndirectLight(in float3 worldPosition, in float3 rayStartDistanc
 			color += payload.color * dot(normal, rayDirection);
 		}
 
+		// TODO: Get albed to modify the light color.
+
 		return color / float(raysToCast);
 	}
 
@@ -163,6 +162,7 @@ inline float3 GetLightImpact(in SceneLight light, in float3 worldPosition, in fl
 		ray.Origin = worldPosition;
 		ray.Direction = lightVector;
 
+		// TODO: Remove this and do a normal trace ray that only uses the miss shader. That way we can skip this vlaue if we hit anything
 		inlineQuery.TraceRayInline(
 			SceneBVH,
 			RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
@@ -225,15 +225,22 @@ void ClosestHit(inout GlobalIlluminationPayload payload, in Attributes attrib)
 		return;
 	}
 
-	uint blasObject = GeometryIndex();
+	uint blasObject = InstanceID();
+	uint geometryIndex = GeometryIndex();
 	uint triangleIndex = PrimitiveIndex();
+	BLASVertex vertex = GetVertex(blasObject, geometryIndex, triangleIndex, triangleIndex + 1, triangleIndex + 2, attrib.location);
 
+	// TEMP for testing
+	payload.color = UnpackR8G8B8A8(vertex.normal).xyz; 
+	return;
+	/*
 	float3 normal = float3(0.0, 1.0, 0.0); // TODO: Grab from the current surface
 	float3 worldPosition = WorldRayOrigin() + (RayTCurrent() * WorldRayDirection());
 	float3 albedoColor = float3(1.0, 1.0, 1.0); // TODO: Get the texture at the is point;
 
 	payload.color += CalculateDirectLight(attrib.location.xyz, normal, gliConstants.sampleCount) * albedoColor;
 	payload.color += CalculateIndirectLight(worldPosition, RAY_MIN_START_DISTANCE, gliConstants.sampleCount, payload.bouncesRemaining, normal) * albedoColor;
+	*/
 }
 
 [shader("miss")]

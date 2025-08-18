@@ -31,8 +31,8 @@ namespace DX12Rendering {
 	const UINT VERTCACHE_VERTEX_MEMORY = 31U * 1024U * 1024U * 256U;
 	const UINT VERTCACHE_JOINT_MEMORY= 256U * 1024U * 256U;
 
-	const UINT DESCRIPTOR_HEAP_SIZE = 6 /* basic entries */;
-	const UINT DESCRIPTOR_OBJECT_TOTAL = MAX_SCENE_LIGHTS;
+	const UINT DESCRIPTOR_HEAP_SIZE = 9 /* basic entries */;
+	const UINT DESCRIPTOR_OBJECT_TOTAL = MAX_SCENE_LIGHTS + 2;
 	const UINT DESCRIPTOR_OBJECT_TOTAL_FRAMES = DX12_FRAME_COUNT * DESCRIPTOR_OBJECT_TOTAL;
 	const UINT DESCRIPTOR_HEAP_TOTAL = DESCRIPTOR_HEAP_SIZE * DESCRIPTOR_OBJECT_TOTAL;
 
@@ -237,6 +237,7 @@ private:
 		const DX12Rendering::e_RaytracingHeapIndex heapIndex);
 
 	void UpdateTlasDescriptor(UINT frameIndex, UINT objectIndex);
+	void UpdateGeometryDescriptors(UINT frameIndex, UINT objectIndex);
 
 
 	D3D12_CPU_DESCRIPTOR_HANDLE GetDescriptorHandle(

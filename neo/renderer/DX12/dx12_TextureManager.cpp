@@ -105,17 +105,17 @@ namespace DX12Rendering
 
 		case eGlobalTexture::RAYTRACED_DIFFUSE:
 			name = "raytraced_diffuse";
-			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			textureDesc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;
 			break;
 
 		case eGlobalTexture::RAYTRACED_SPECULAR:
 			name = "raytraced_specular";
-			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			textureDesc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;
 			break;
 
 		case eGlobalTexture::RAYTRACED_GLI:
 			name = "raytraced_global_illumination";
-			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			textureDesc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;
 			break;
 
 		case eGlobalTexture::WORLD_FLAT_NORMALS:

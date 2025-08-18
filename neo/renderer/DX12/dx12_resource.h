@@ -53,6 +53,37 @@ namespace DX12Rendering {
 		D3D12_RESOURCE_STATES m_resourceState;
 	};
 
+	// Generic buffer that can only be written to on the CPU, and read from the GPU
+	struct GenericWriteBuffer : public Resource
+	{
+		const UINT64 m_size; // The total memory size of the buffer
+#ifdef _DEBUG
+		const LPCWSTR m_name;
+#endif
+
+		GenericWriteBuffer(const UINT64 size, const UINT alignment, const UINT stride, const LPCWSTR name) :
+#ifdef _DEBUG
+			m_name(name),
+#endif
+			m_size(DX12_ALIGN(size, static_cast<UINT64>(alignment))),
+			m_alignment(alignment),
+			m_stride(stride),
+			m_srvBufferView({})
+		{}
+
+		bool Map(const D3D12_RANGE* pReadRange, void** ppData);
+		bool Unmap(const D3D12_RANGE* pWrittenRange);
+
+		D3D12_SHADER_RESOURCE_VIEW_DESC* GetSrvDescriptorView() { return &m_srvBufferView; }
+
+	private:
+		const UINT m_stride;
+		const UINT m_alignment;
+		D3D12_SHADER_RESOURCE_VIEW_DESC m_srvBufferView;
+
+		void Build();
+	};
+
 	struct ScratchBuffer : public Resource
 	{
 		const UINT64 m_size; // The total memory size of the buffer

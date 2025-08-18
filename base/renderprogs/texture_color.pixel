@@ -25,6 +25,7 @@ If you have questions concerning this license or the applicable additional terms
 
 ===========================================================================
 */
+#define SUPPORTS_TEXTURE_CONSTANTS
 
 #include "global.inc"
 #include "bindless_textures.inc"

@@ -1249,6 +1249,8 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 		);
 	}
 
+	m_raytracing->GetBLASManager()->StoreGeometryReferences(blas, surfaceCount, arguments);
+
 	return blas;
 }
 

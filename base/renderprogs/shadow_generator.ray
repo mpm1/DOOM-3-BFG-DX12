@@ -5,9 +5,6 @@ RWTexture2D<uint4> shadowMask :register(u0);
 RWTexture2D<float4> diffuseResult :register(u1);
 RWTexture2D<float4> specularResult :register(u2);
 
-// Raytracing acceleration structure, accessed as a SRV
-RaytracingAccelerationStructure SceneBVH :register(t0);
-
 // Constants used to define the camera state
 ConstantBuffer<RaytracedSceneConstants> sceneConstants : register(b0, space0);
 ConstantBuffer<SceneLight> sceneLight: register(b1, space0);
@@ -65,7 +62,7 @@ void HandleAmbientLight(
 			CalculateProjection(light, float4(worldPosition, 1.0));
 	}
 
-	diffuseResult = saturate(light.color.rgb * lightColor.rgb);
+	diffuseResult = light.color.rgb * lightColor.rgb;
 	specularResult = GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, 2.0 /* Keeping consistant original method */);
 }
 
@@ -146,8 +143,8 @@ void HandlePointLight(
 		localSpecular += GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, 2.0 /* Keeping consistant original method */);
 	}
 
-	diffuseResult = saturate(localDiffuse / lightRayCount); // TODO: Change this to a colour light space
-	specularResult = saturate(localSpecular / lightRayCount);
+	diffuseResult = localDiffuse / lightRayCount; // TODO: Change this to a colour light space
+	specularResult = localSpecular / lightRayCount;
 }
 
 [shader("raygeneration")]
@@ -212,6 +209,6 @@ void RayGen() {
 	// Send to the output buffers
 	uint2 screenIndex = (uint2)(screenUV * sceneConstants.rp.viewport.zw);
 	shadowMask[screenIndex] += uint4(sceneLight.sceneIndex, 0, 3, 255); //TODO: Remove completely from system.
-	diffuseResult[screenIndex] += float4(saturate(resultDiffuse.rgb), 1.0);
-	specularResult[screenIndex] = max(specularResult[screenIndex], float4(saturate(resultSpecular.rgb), 1.0)); // Taking max to represent reflections
+	diffuseResult[screenIndex] += float4(resultDiffuse.rgb, 1.0);
+	specularResult[screenIndex] = max(specularResult[screenIndex], float4(resultSpecular.rgb, 1.0)); // Taking max to represent reflections
 }
