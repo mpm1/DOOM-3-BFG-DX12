@@ -15,6 +15,18 @@ bool IsInsideViewport(float2 p, float4 viewport)
 		&& (p.y >= viewport.y && p.y <= viewport.w);
 }
 
+void ExtractMaterialProperties(
+	in float2 screenUV,
+	out float roughness,
+	out float baseReflection)
+{
+	float3 specular = GetBindlessTexture4f(sceneConstants.specularTexureIndex).SampleLevel(pointSampler, screenUV.xy, 0).rgb;
+
+	float glossiness = max(specular.r, max(specular.g, specular.b));
+	roughness = 1.0 - glossiness;
+	baseReflection = 0.04 + (0.96 * glossiness); // Suggested value based on 0.04 being the usual base reflectivene.
+}
+
 float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 normal, in float3 pointToEye, in float3 pointToLight, in float specMultiplier)
 {
 	const half specularPower = 10.0f;
@@ -82,6 +94,10 @@ void HandlePointLight(
 	diffuseResult = float3(0.0, 0.0, 0.0);
 	specularResult = float3(0.0, 0.0, 0.0);
 
+	float baseReflection;
+	float roughness;
+	ExtractMaterialProperties(screenUV, roughness, baseReflection);
+
 	float3 pointToCenter = normalize(light.center - worldPosition);
 
 	for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
@@ -104,6 +120,8 @@ void HandlePointLight(
 			pointToEye,
 			normal,
 			lightVector,
+			baseReflection,
+			roughness,
 			localDiffuse,
 			localSpecular);
 

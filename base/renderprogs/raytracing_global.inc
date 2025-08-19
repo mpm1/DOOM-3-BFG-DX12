@@ -222,7 +222,7 @@ float3 CalculateProjection(in SceneLight light, float4 worldPosition)
 
 	projection.xy /= projection.w;
 
-	return pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 3.2); // Added some correction to match the original art
+	return pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 2.2); // Added some correction to match the original art
 }
 
 uint4 ConvertShadowmapMaskToVector(uint shadowMask)
@@ -263,10 +263,10 @@ void GeneralBRDF(
     float fresnelFactor = baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - dot3(viewVector, halfVector), 5.0);
 
     // Diffuse using the Lambertian Model (we already used L dot N for the light Color)
-    diffuseContribution = lightColor * (1.0 - fresnelFactor) / PI;
+    diffuseContribution = (lightColor * NdotL * (1.0 - fresnelFactor)) / PI;
 
     // Useing Cook-Torrance BRDF for specular reflection
-    float NdotH = dot3(surfaceNormal, halfVector);
+    float NdotH = max(dot3(surfaceNormal, halfVector), 0.0);
 
     float alpha = roughness * roughness;
     float k = alpha / 2.0;
@@ -274,12 +274,12 @@ void GeneralBRDF(
     float a2 = alpha * alpha;
     float D = a2 / (PI * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
 
-    float NdotV = dot(surfaceNormal, viewVector);
+    float NdotV = max(dot(surfaceNormal, viewVector), 0.0);
     float G1 = NdotV / (NdotV * (1 - k) + k);
-    float G2 = lightColor / (NdotL * (1 - k) + k);
+    float G2 = NdotL / (NdotL * (1 - k) + k);
     float G = G1 * G2; // Smith's shadowing-masking function
 
-    specularContribution = (D * G * fresnelFactor) / (4.0 * NdotL * NdotV);
+    specularContribution = lightColor * ((D * G * fresnelFactor) / (4.0 * NdotL * NdotV));
 }
 
 // Calculates the amount of specular and diffuse light hitting a surface.
@@ -290,6 +290,8 @@ float CalcluateLightImpact(
     in float3 viewVector, // Hit point to eye vector.
     in float3 surfaceNormal,
     in float3 lightVector,
+    float baseReflectivity, //TODO: Add this as a material property to the surface.
+    float roughness, //TODO: Add this as a material property to the surface.
     out float3 diffuseContribution,
     out float3 specularContribution
     )
@@ -306,8 +308,8 @@ float CalcluateLightImpact(
 		return NdotL;
 	}
 
-    float3 lightColor = NdotL * 
-				CalculateFalloff(light, float4(worldPosition, 1.0)) * 
+    float3 lightColor = 
+                CalculateFalloff(light, float4(worldPosition, 1.0)) * 
 				CalculateProjection(light, float4(worldPosition, 1.0));
 
     if (length(lightColor) <= EPSILON)
@@ -322,8 +324,8 @@ float CalcluateLightImpact(
         lightColor,
         NdotL,
         surfaceNormal,
-        0.5f, // Base reflectivity, we need to eventually adjust this per material.
-        0.5f, // Roughness, we need to eventually adjust this per material.
+        baseReflectivity, // Base reflectivity, we need to eventually adjust this per material.
+        roughness, // Roughness, we need to eventually adjust this per material.
         viewVector, // View vector
         normalize(lightVector + viewVector), // Half vector
         diffuseContribution,
