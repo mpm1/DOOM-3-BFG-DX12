@@ -120,12 +120,13 @@ void HandlePointLight(
 			pointToEye,
 			normal,
 			lightVector,
+			1.0, // Since we divide by our count later, we can just use 1.0 here. Original algorithm calls for PI
 			baseReflection,
 			roughness,
 			localDiffuse,
 			localSpecular);
 
-		if (intensity <= EPSILON)
+		if (intensity <= 0.0)
 		{
 			// No light is being cast.
 			continue;

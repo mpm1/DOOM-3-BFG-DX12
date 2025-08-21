@@ -222,7 +222,7 @@ float3 CalculateProjection(in SceneLight light, float4 worldPosition)
 
 	projection.xy /= projection.w;
 
-	return pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 2.2); // Added some correction to match the original art
+	return SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb;//pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 2.2); // Added some correction to match the original art
 }
 
 uint4 ConvertShadowmapMaskToVector(uint shadowMask)
@@ -250,20 +250,21 @@ float StartDistanceFromSurface(in float3 worldPosition, in float3 eyePosition)
 // Light functions
 // General BRDF functions
 void GeneralBRDF(
-    float3 lightColor,
-    float NdotL,
-    float3 surfaceNormal,
-    float baseReflectivity, //TODO: Add this as a material property to the surface.
-    float roughness, //TODO: Add this as a material property to the surface.
-    float3 viewVector,
-    float3 halfVector,
+    in float3 lightColor,
+    in float NdotL,
+    in float3 surfaceNormal,
+    in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
+    in float baseReflectivity, //TODO: Add this as a material property to the surface.
+    in float roughness, //TODO: Add this as a material property to the surface.
+    in float3 viewVector,
+    in float3 halfVector,
     out float3 diffuseContribution,
     out float3 specularContribution)
 {
     float fresnelFactor = baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - dot3(viewVector, halfVector), 5.0);
 
     // Diffuse using the Lambertian Model (we already used L dot N for the light Color)
-    diffuseContribution = (lightColor * NdotL * (1.0 - fresnelFactor)) / PI;
+    diffuseContribution = (lightColor * NdotL * (1.0 - fresnelFactor)) / distribution;
 
     // Useing Cook-Torrance BRDF for specular reflection
     float NdotH = max(dot3(surfaceNormal, halfVector), 0.0);
@@ -272,7 +273,7 @@ void GeneralBRDF(
     float k = alpha / 2.0;
 
     float a2 = alpha * alpha;
-    float D = a2 / (PI * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
+    float D = a2 / (distribution * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
 
     float NdotV = max(dot(surfaceNormal, viewVector), 0.0);
     float G1 = NdotV / (NdotV * (1 - k) + k);
@@ -290,8 +291,9 @@ float CalcluateLightImpact(
     in float3 viewVector, // Hit point to eye vector.
     in float3 surfaceNormal,
     in float3 lightVector,
-    float baseReflectivity, //TODO: Add this as a material property to the surface.
-    float roughness, //TODO: Add this as a material property to the surface.
+    in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
+    in float baseReflectivity, //TODO: Add this as a material property to the surface.
+    in float roughness, //TODO: Add this as a material property to the surface.
     out float3 diffuseContribution,
     out float3 specularContribution
     )
@@ -300,7 +302,7 @@ float CalcluateLightImpact(
 
     // TODO: Do we need a modifier here for subsurface scattering?
 
-    if (NdotL <= EPSILON)
+    if (NdotL <= 0.0)
 	{
 		// No light is being cast.
         diffuseContribution = float3(0.0f, 0.0f, 0.0f);
@@ -312,7 +314,7 @@ float CalcluateLightImpact(
                 CalculateFalloff(light, float4(worldPosition, 1.0)) * 
 				CalculateProjection(light, float4(worldPosition, 1.0));
 
-    if (length(lightColor) <= EPSILON)
+    if (length(lightColor) <= 0.0)
     {
         // No light is reflected.
         diffuseContribution = float3(0.0f, 0.0f, 0.0f);
@@ -324,6 +326,7 @@ float CalcluateLightImpact(
         lightColor,
         NdotL,
         surfaceNormal,
+        distribution,
         baseReflectivity, // Base reflectivity, we need to eventually adjust this per material.
         roughness, // Roughness, we need to eventually adjust this per material.
         viewVector, // View vector

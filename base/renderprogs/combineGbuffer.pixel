@@ -52,7 +52,7 @@ float3 ColorCorrection(float3 color, float gamma)
 void main( PS_IN fragment, out PS_OUT result ) {
 	float2 tCoords = fragment.texcoord0;
 
-	float3 albedo = ColorCorrection(samp2.Sample(baseSampler, tCoords).rgb, 2.2);
+	float3 albedo = samp2.Sample(baseSampler, tCoords).rgb;// ColorCorrection(samp2.Sample(baseSampler, tCoords).rgb, 2.2); Mark fix so the color constrast is still as bold and our fringing isnt as sharp.
 
 	float3 globalIllumination = samp4.Sample(baseSampler, tCoords).rgb * albedo;
 
