@@ -15,16 +15,16 @@ bool IsInsideViewport(float2 p, float4 viewport)
 		&& (p.y >= viewport.y && p.y <= viewport.w);
 }
 
-void ExtractMaterialProperties(
+void ExtractMaterialPropertiesFromGBuffer(
 	in float2 screenUV,
 	out float roughness,
-	out float baseReflection)
+	out float3 baseReflection)
 {
 	float3 specular = GetBindlessTexture4f(sceneConstants.specularTexureIndex).SampleLevel(pointSampler, screenUV.xy, 0).rgb;
 
-	float glossiness = max(specular.r, max(specular.g, specular.b));
-	roughness = 1.0 - glossiness;
-	baseReflection = 0.04 + (0.96 * glossiness); // Suggested value based on 0.04 being the usual base reflectivene.
+	ExtractMaterialProperties(
+	specular, float3(0.0, 0.0, 0.0),
+	roughness, baseReflection);
 }
 
 float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 normal, in float3 pointToEye, in float3 pointToLight, in float specMultiplier)
@@ -94,9 +94,9 @@ void HandlePointLight(
 	diffuseResult = float3(0.0, 0.0, 0.0);
 	specularResult = float3(0.0, 0.0, 0.0);
 
-	float baseReflection;
+	float3 baseReflection;
 	float roughness;
-	ExtractMaterialProperties(screenUV, roughness, baseReflection);
+	ExtractMaterialPropertiesFromGBuffer(screenUV, roughness, baseReflection);
 
 	float3 pointToCenter = normalize(light.center - worldPosition);
 
@@ -133,15 +133,15 @@ void HandlePointLight(
 		}
 		
 		if(castsShadows)
-		{
+		{ 
 			RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
 
 			// We are inside the light radius.
 			// Define a ray, consisting of origin, direction, and the min-max distance values
 			RayDesc ray;
-			ray.TMin = rayStartDistance;
+			ray.TMin = 0.0001;
 			ray.TMax = maxDistance;
-			ray.Origin = worldPosition;
+			ray.Origin = worldPosition + (normal * rayStartDistance);
 			ray.Direction = lightVector;
 
 			inlineQuery.TraceRayInline(

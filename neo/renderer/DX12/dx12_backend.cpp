@@ -3073,13 +3073,14 @@ public:
 
 	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
 	{
-		constexpr UINT surfaceCount = 5;
+		constexpr UINT surfaceCount = 6;
 		const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 			DX12Rendering::eRenderSurface::FlatNormal,
 			DX12Rendering::eRenderSurface::Position,
 			DX12Rendering::eRenderSurface::Normal,
 			DX12Rendering::eRenderSurface::Albedo,
-			DX12Rendering::eRenderSurface::SpecularColor
+			DX12Rendering::eRenderSurface::SpecularColor,
+			DX12Rendering::eRenderSurface::MaterialProperties,
 		};
 
 		DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
@@ -3369,7 +3370,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			DX12Rendering::eRenderSurface::Diffuse,
 			DX12Rendering::eRenderSurface::Specular,
 			DX12Rendering::eRenderSurface::Albedo,
-			DX12Rendering::eRenderSurface::SpecularColor
+			DX12Rendering::eRenderSurface::SpecularColor,
+			DX12Rendering::eRenderSurface::Reflectivity,
+			DX12Rendering::eRenderSurface::MaterialProperties
 		};
 
 		auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();

@@ -11,7 +11,7 @@
 
 idCVar s_raysCastPerLight("s_raysCastPerLight", "20", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "number of shadow rays per light per pixel.", 0, 1000);
 idCVar s_lightEmissiveRadius("s_lightEmissiveRadius", "20.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "the radius of a light. The larger the value, the softer shadows will be.", 0.0f, 100.0f);
-idCVar r_useGli("r_useGli", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "use raytraced global illumination.");
+idCVar r_useGli("r_useGli", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "use raytraced global illumination.");
 idCVar r_gliResolution("r_gliResolution", "0.33" /*"0.125"*/, CVAR_RENDERER | CVAR_FLOAT, "the percentage of global illumination points to cast per screen axis.", 0.0f, 1.0f);
 idCVar r_gliBounces("r_gliBounces", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "the max number of global illumination bounces allowed.", 0, 10);
 

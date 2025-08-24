@@ -199,6 +199,7 @@ struct PS_OUT {
 #ifdef WRITE_VELOCITY
 	float4 velocity		: SV_TARGET5;
 #endif
+	half4 materialProps	: SV_TARGET6;
 };
 
 #ifdef WRITE_VELOCITY
@@ -223,6 +224,12 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	result.specularColor = SampleBindlessTexture4f(gbufferConstants.specularIndex, fragment.texcoord2.xy );
 	
 	result.albedo.rgb = ConvertYCoCgToRGB( YCoCG ); //we need the diffuse modifier constant?
+
+	float3 reflectivity;
+	float roughness;
+
+	ExtractMaterialProperties(result.specularColor, result.albedo, roughness, reflectivity);
+	result.materialProps.rgb = half3(roughness, 0.0f, 0.0f);
 
 #ifdef WRITE_VELOCITY
 	result.velocity = CalculateVelocity(fragment.lastPosition, fragment.position);

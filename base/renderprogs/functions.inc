@@ -114,3 +114,22 @@ uint PackR8G8B8A8(float4 inputValue)
 
 	return ((values.x & 0xFF) << 24) | ((values.y & 0xFF) << 16) | ((values.z & 0xFF) << 8) | (values.w & 0xFF);
 }
+
+// Material functions
+void ExtractMaterialProperties(
+	in float3 specularColor,
+	in float3 albedoColor,
+	out float roughness,
+	out float3 baseReflection
+)
+{
+	float glossiness = max(specularColor.r, max(specularColor.g, specularColor.b));
+	roughness = 1.0 - glossiness;
+	baseReflection = specularColor; // Suggested value based on 0.04 being the usual base reflectivene.
+}
+
+// Lighting Helpers
+inline float3 CalculateFresnel(in float3 baseReflectivity, in float3 viewVector, in float3 halfVector)
+{
+	return baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - dot3(viewVector, halfVector), 5.0);
+}

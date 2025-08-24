@@ -254,14 +254,14 @@ void GeneralBRDF(
     in float NdotL,
     in float3 surfaceNormal,
     in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
-    in float baseReflectivity, //TODO: Add this as a material property to the surface.
+    in float3 baseReflectivity, //TODO: Add this as a material property to the surface.
     in float roughness, //TODO: Add this as a material property to the surface.
     in float3 viewVector,
     in float3 halfVector,
     out float3 diffuseContribution,
     out float3 specularContribution)
 {
-    float fresnelFactor = baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - dot3(viewVector, halfVector), 5.0);
+    float3 fresnelFactor = CalculateFresnel(baseReflectivity, viewVector, halfVector);
 
     // Diffuse using the Lambertian Model (we already used L dot N for the light Color)
     diffuseContribution = (lightColor * NdotL * (1.0 - fresnelFactor)) / distribution;
@@ -276,9 +276,15 @@ void GeneralBRDF(
     float D = a2 / (distribution * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
 
     float NdotV = max(dot(surfaceNormal, viewVector), 0.0);
-    float G1 = NdotV / (NdotV * (1 - k) + k);
-    float G2 = NdotL / (NdotL * (1 - k) + k);
+    float G1 = NdotV / max(NdotV * (1 - k) + k, 0.0000001);
+    float G2 = NdotL / max(NdotL * (1 - k) + k, 0.0000001);
     float G = G1 * G2; // Smith's shadowing-masking function
+
+    if(G <= 0.0)
+    {
+        specularContribution = float3(0.0f, 0.0f, 0.0f);
+        return;  
+    }
 
     specularContribution = lightColor * ((D * G * fresnelFactor) / (4.0 * NdotL * NdotV));
 }
@@ -292,7 +298,7 @@ float CalcluateLightImpact(
     in float3 surfaceNormal,
     in float3 lightVector,
     in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
-    in float baseReflectivity, //TODO: Add this as a material property to the surface.
+    in float3 baseReflectivity, //TODO: Add this as a material property to the surface.
     in float roughness, //TODO: Add this as a material property to the surface.
     out float3 diffuseContribution,
     out float3 specularContribution

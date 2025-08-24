@@ -974,6 +974,8 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Reflectivity)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::MaterialProperties)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination)->Resize(width, height);
 
@@ -1390,7 +1392,7 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
-	if (r_useGli.GetBool())
+	if (false && r_useGli.GetBool()) //TODO: Re-enable when continuing global illumination.
 	{
 		m_raytracing->CastGlobalIlluminationRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
 	}
@@ -1421,9 +1423,9 @@ bool DX12Renderer::DXR_CastRays()
 		specularMap->CopySurfaceToTexture(specularTexture, textureManager);
 
 		// Copy the global illumination data
-		auto globalIllumination = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination);
+		/*auto globalIllumination = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination);
 		DX12Rendering::TextureBuffer* gliTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_GLI);
-		globalIllumination->CopySurfaceToTexture(gliTexture, textureManager);
+		globalIllumination->CopySurfaceToTexture(gliTexture, textureManager);*/
 
 		// Wait for all copies to complete.
 		DX12Rendering::Commands::FenceValue fenceValue = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
