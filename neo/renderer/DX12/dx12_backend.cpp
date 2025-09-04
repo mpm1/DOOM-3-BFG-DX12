@@ -66,6 +66,53 @@ UINT GetVertexBufferSize(const vertCacheHandle_t vbHandle)
 	return (vbHandle >> VERTCACHE_SIZE_SHIFT) & VERTCACHE_SIZE_MASK;
 }
 
+void ExtractMaterialProperties(const idMaterial* material, float& roughness, float& metalic)
+{
+	metalic = 0.0f;
+
+	if (material == nullptr)
+	{
+		roughness = 0.5f;
+		return;
+	}
+
+	surfTypes_t surfaceType = material->GetSurfaceType();
+
+	switch (surfaceType)
+	{
+	case SURFTYPE_METAL:
+		metalic = 0.9f;
+		roughness = 0.3f;
+		break;
+	case SURFTYPE_STONE:
+		roughness = 0.9f;
+		break;
+	case SURFTYPE_FLESH:
+		roughness = 0.7f;
+		break;
+	case SURFTYPE_WOOD:
+		roughness = 0.8f;
+		break;
+	case SURFTYPE_CARDBOARD:
+		roughness = 0.75f;
+		break;
+	case SURFTYPE_LIQUID:
+		roughness = 0.1f;
+		break;
+	case SURFTYPE_GLASS:
+		roughness = 0.2f;
+		break;
+	case SURFTYPE_PLASTIC:
+		roughness = 0.3f;
+		break;
+	case SURFTYPE_RICOCHET:
+		roughness = 0.18f;
+		break;
+	default:
+		roughness = 0.5f;
+	}
+}
+
 idVertexBuffer* GetVertexBuffer(const vertCacheHandle_t vbHandle)
 {
 	// TODO: Add check here to grab the current frames joint model if it exists.
@@ -831,6 +878,8 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 		// draw the entire surface solid
 		if (drawSolid) {
 			if (shader->GetSort() == SS_SUBVIEW) {
+				continue; // TODO: Not yet implemented
+
 				renderProgManager.BindShader_Color();
 				GL_Color(color);
 				GL_State(surfGLState);
@@ -2709,6 +2758,14 @@ public:
 	// Inherited via RenderPass
 	virtual void Gather(const drawSurf_t* ds, const int index) override
 	{
+		const idMaterial* shader = ds->material;
+
+		if (shader->GetSort() == SS_SUBVIEW)
+		{
+			// We may need to handle this later
+			return;
+		}
+
 		if (ds->jointCache)
 		{
 			m_surfaces.push_back(ds);
@@ -2853,7 +2910,6 @@ public:
 		}
 
 		// Update/Create the BLASa and create a list for the TLAS structure 
-		UINT blasResult = 0;
 		if (raytracedEnabled) {
 			viewEntity_t* viewEntity = viewDef->viewEntitys;
 			for (; viewEntity != NULL; viewEntity = viewEntity->next)
@@ -2877,8 +2933,6 @@ public:
 						static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
 				}
 			}
-
-			blasResult = dxRenderer.DXR_UpdatePendingBLAS();
 		}
 	}
 
@@ -3038,6 +3092,65 @@ private:
 	*/
 };
 
+class TransparentPass : public RenderPass
+{
+public:
+	TransparentPass(const int size, bool ignoreDecals, bool usePBRLighting) :
+		m_ignoreDecals(ignoreDecals),
+		m_usePBRLighting(usePBRLighting)
+	{
+		m_surfaces.reserve(size);
+	}
+
+	// Inherited via RenderPass
+	virtual void Gather(const drawSurf_t* ds, const int index) override
+	{
+		const idMaterial* shader = ds->material;
+
+		if (shader->Coverage() == MC_TRANSLUCENT)
+		{
+			m_surfaces.push_back(ds);
+		}
+		else if (shader->GetSort() == SS_DECAL && !m_ignoreDecals)
+		{
+			m_surfaces.push_back(ds); 
+		}
+	}
+
+	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
+	{
+		// TODO: Finish this up
+	}
+
+private:
+	std::vector<const drawSurf_t*> m_surfaces;
+	const bool m_ignoreDecals;
+	const bool m_usePBRLighting;
+};
+
+class GBufferDecalPass : public RenderPass
+{
+public:
+	GBufferDecalPass(const int size)
+	{
+		m_surfaces.reserve(size);
+	}
+
+	// Inherited via RenderPass
+	virtual void Gather(const drawSurf_t* ds, const int index) override
+	{
+		// TODO: Gather all the decals.
+		// We want to then also add and Emissive buffer to the GBuffer pass, this will allow us to build our emissives early
+	}
+
+	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
+	{
+	}
+
+private:
+	std::vector<const drawSurf_t*> m_surfaces;
+};
+
 class GBufferPass : public RenderPass
 {
 public:
@@ -3156,6 +3269,10 @@ public:
 			}
 
 			const idMaterial* surfaceShader = surf->material;
+			idVec4 materialProps(0, 0, 0, 0);
+			ExtractMaterialProperties(surfaceShader, materialProps.x, materialProps.y);
+			SetVertexParm(RENDERPARAM_MATERIAL_PROPERTIES, materialProps.ToFloatPtr());
+
 			if (surfaceShader->GetFastPathBumpImage() && !r_skipInteractionFastPath.GetBool()) {
 				// texture 0 will be the per-surface bump map
 				surfaceConstants.bumpMapIndex = LoadBindlessTexture(surfaceShader->GetFastPathBumpImage());
@@ -3295,6 +3412,14 @@ private:
 };
 
 void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
+	if(viewDef->isSubview)
+	{
+		// Currently we are not supporting subviews.
+		// This is currently causing a crash due to timeouts
+		// TODO: Implement
+		return;
+	}
+
 	renderLog.OpenBlock("RB_DrawViewInternal");
 
 	//-------------------------------------------------
@@ -3500,6 +3625,11 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	bool raytraceUpdated = false;
 	if (backEnd.viewDef->viewEntitys != NULL) {
+		if (raytracedEnabled) 
+		{
+			dxRenderer.DXR_UpdatePendingBLAS(); // Make sure all BLAS are updated.
+		}
+
 		//-------------------------------------------------
 		// fill the depth buffer and clear color buffer to black except on subviews
 		//-------------------------------------------------
@@ -3539,6 +3669,11 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			auto specular = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor);
 			DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
 			specular->CopySurfaceToTexture(specularTexture, textureManager);
+
+			// Copy the material properties
+			auto material = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::MaterialProperties);
+			DX12Rendering::TextureBuffer* materialTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES);
+			material->CopySurfaceToTexture(materialTexture, textureManager);
 
 			// Copy the flat normal map to a texture
 			auto normalFlatMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal);

@@ -113,14 +113,19 @@ struct RaytracedSceneConstants {
     RenderParameters rp;
 
     uint lightCount;
-    float noiseOffset;
     uint diffuseTextureIndex;
     uint specularTexureIndex;
+    uint materialTextureIndex;
 
     uint positionTextureIndex;
 	uint flatNormalIndex;
     uint normalIndex;
     uint raysPerLight;
+
+    float noiseOffset;
+	uint pad0;
+	uint pad1;
+	uint pad2;
 };
 
 // Raytracing acceleration structure, accessed as a SRV
@@ -316,7 +321,7 @@ float CalcluateLightImpact(
 		return NdotL;
 	}
 
-    float3 lightColor = 
+    float3 lightColor = light.color.rgb *
                 CalculateFalloff(light, float4(worldPosition, 1.0)) * 
 				CalculateProjection(light, float4(worldPosition, 1.0));
 

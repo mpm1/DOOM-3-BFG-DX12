@@ -86,6 +86,7 @@ namespace DX12Rendering {
 			m_constantBuffer.normalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)->GetTextureIndex();
 			m_constantBuffer.diffuseTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO)->GetTextureIndex();
 			m_constantBuffer.specularTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR)->GetTextureIndex();
+			m_constantBuffer.materialTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::MATERIAL_PROPERTIES)->GetTextureIndex();
 
 			m_constantBuffer.raysPerLight = s_raysCastPerLight.GetInteger();
 

@@ -106,6 +106,9 @@ struct SceneConstants {
 	float4 rpEnableSkinning;
 	float4 rpAlphaTest;
 
+	float4 rpMaterialProperties;
+
+	// Not yet setup
 	float4 rpPrevMVPmatrixX;
 	float4 rpPrevMVPmatrixY;
 	float4 rpPrevMVPmatrixZ;

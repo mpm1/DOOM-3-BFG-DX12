@@ -103,6 +103,11 @@ namespace DX12Rendering
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 			break;
 
+		case eGlobalTexture::MATERIAL_PROPERTIES:
+			name = "material_properties";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
 		case eGlobalTexture::RAYTRACED_DIFFUSE:
 			name = "raytraced_diffuse";
 			textureDesc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;

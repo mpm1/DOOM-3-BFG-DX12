@@ -13,6 +13,7 @@ namespace DX12Rendering
 		POSITION,
 		ALBEDO,
 		SPECULAR_COLOR,
+		MATERIAL_PROPERTIES, // r = Roughness, g = Metallic, b = occlusion? (not implemented)
 		WORLD_NORMALS,
 		WORLD_FLAT_NORMALS,
 		RAYTRACED_SHADOWMAP,

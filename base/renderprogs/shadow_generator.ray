@@ -18,13 +18,15 @@ bool IsInsideViewport(float2 p, float4 viewport)
 void ExtractMaterialPropertiesFromGBuffer(
 	in float2 screenUV,
 	out float roughness,
-	out float3 baseReflection)
+	out float3 baseReflection,
+	out float metalness)
 {
 	float3 specular = GetBindlessTexture4f(sceneConstants.specularTexureIndex).SampleLevel(pointSampler, screenUV.xy, 0).rgb;
+	float3 materialProperties = GetBindlessTexture4f(sceneConstants.materialTextureIndex).SampleLevel(pointSampler, screenUV.xy, 0).rgb;
 
 	ExtractMaterialProperties(
-	specular, float3(0.0, 0.0, 0.0),
-	roughness, baseReflection);
+	specular, materialProperties,
+	roughness, baseReflection, metalness);
 }
 
 float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 normal, in float3 pointToEye, in float3 pointToLight, in float specMultiplier)
@@ -94,9 +96,16 @@ void HandlePointLight(
 	diffuseResult = float3(0.0, 0.0, 0.0);
 	specularResult = float3(0.0, 0.0, 0.0);
 
+	if(isnan(worldPosition.x) || isnan(worldPosition.y) || isnan(worldPosition.z))
+	{
+		// Invalid world position
+		return;
+	}
+
 	float3 baseReflection;
 	float roughness;
-	ExtractMaterialPropertiesFromGBuffer(screenUV, roughness, baseReflection);
+	float metalness;
+	ExtractMaterialPropertiesFromGBuffer(screenUV, roughness, baseReflection, metalness);
 
 	float3 pointToCenter = normalize(light.center - worldPosition);
 
@@ -111,6 +120,12 @@ void HandlePointLight(
 
 		float maxDistance = distance(lightPosition, worldPosition);
 		float3 lightVector = normalize(lightPosition - worldPosition);
+
+		if(isnan(lightVector.x) || isnan(lightVector.y) || isnan(lightVector.z))
+		{
+			// Invalid light position
+			continue;
+		}
 
 		float3 localDiffuse = float3(0.0, 0.0, 0.0);
 		float3 localSpecular = float3(0.0, 0.0, 0.0);
@@ -140,16 +155,21 @@ void HandlePointLight(
 			// Define a ray, consisting of origin, direction, and the min-max distance values
 			RayDesc ray;
 			ray.TMin = 0.0001;
-			ray.TMax = maxDistance;
+			ray.TMax = maxDistance - ray.TMin;
 			ray.Origin = worldPosition + (normal * rayStartDistance);
 			ray.Direction = lightVector;
+
+			if(ray.TMin >= ray.TMax)
+			{
+				// Ray is too short to trace.
+				continue;
+			}
 
 			inlineQuery.TraceRayInline(
 				SceneBVH,
 				RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
 				INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
 				ray);
-
 			inlineQuery.Proceed(); // Run the tracer.
 				
 			if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
@@ -188,7 +208,7 @@ void RayGen() {
 
 	// Calculate the offset from the ray start we'd like to use.
 	// This is done to help with precision errors the further away our surface is.
-	float rayStartDistance = StartDistanceFromSurface(worldPosition, sceneConstants.rp.globalEyePos.xyz);
+	float rayStartDistance = 0.001; //StartDistanceFromSurface(worldPosition, sceneConstants.rp.globalEyePos.xyz);
 	
 	float3 pointToEye = normalize(sceneConstants.rp.globalEyePos.xyz - worldPosition);
 

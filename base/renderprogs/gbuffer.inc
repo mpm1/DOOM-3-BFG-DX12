@@ -196,10 +196,10 @@ struct PS_OUT {
 #endif
 	half4 albedo		: SV_TARGET3;
 	half4 specularColor	: SV_TARGET4;
+	half4 materialProps	: SV_TARGET5;
 #ifdef WRITE_VELOCITY
-	float4 velocity		: SV_TARGET5;
+	float4 velocity		: SV_TARGET6;
 #endif
-	half4 materialProps	: SV_TARGET6;
 };
 
 #ifdef WRITE_VELOCITY
@@ -228,8 +228,8 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	float3 reflectivity;
 	float roughness;
 
-	ExtractMaterialProperties(result.specularColor, result.albedo, roughness, reflectivity);
-	result.materialProps.rgb = half3(roughness, 0.0f, 0.0f);
+	//ExtractMaterialProperties(result.specularColor, result.albedo, roughness, reflectivity);
+	result.materialProps = sceneConstants.rpMaterialProperties;
 
 #ifdef WRITE_VELOCITY
 	result.velocity = CalculateVelocity(fragment.lastPosition, fragment.position);

@@ -118,6 +118,8 @@ enum renderParm_t {
 	RENDERPARM_ENABLE_SKINNING,
 	RENDERPARM_ALPHA_TEST,
 
+	RENDERPARAM_MATERIAL_PROPERTIES, // x = Roughness, y = Metallic, z = unused, w = unused
+
 	RENDERPARM_TOTAL,
 	RENDERPARM_USER = 128,
 };

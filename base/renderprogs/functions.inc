@@ -118,14 +118,17 @@ uint PackR8G8B8A8(float4 inputValue)
 // Material functions
 void ExtractMaterialProperties(
 	in float3 specularColor,
-	in float3 albedoColor,
+	in float3 materialProperties,
 	out float roughness,
-	out float3 baseReflection
+	out float3 baseReflection,
+	out float metalness
 )
 {
-	float glossiness = max(specularColor.r, max(specularColor.g, specularColor.b));
-	roughness = 1.0 - glossiness;
-	baseReflection = specularColor; // Suggested value based on 0.04 being the usual base reflectivene.
+	roughness = materialProperties.x;
+	metalness = materialProperties.y;
+
+	// Approximate the base reflectivity from the specular color.
+	baseReflection = specularColor;
 }
 
 // Lighting Helpers

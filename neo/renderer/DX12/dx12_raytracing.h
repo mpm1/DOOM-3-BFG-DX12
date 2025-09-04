@@ -114,14 +114,19 @@ namespace DX12Rendering {
 		XMFLOAT4 renderParameters[DX12Rendering::dxr_renderParm_t::COUNT];
 
 		UINT lightCount; // Note: This is no longer needed and can be changed if we would like.
-		float noiseOffset;
 		UINT diffuseTextureIndex;
 		UINT specularTextureIndex;
+		UINT materialTextureIndex;
 
 		UINT positionTextureIndex;
 		UINT flatNormalIndex;
 		UINT normalIndex;
 		UINT raysPerLight; // Number of shadow rays cast per light per pixel
+
+		float noiseOffset;
+		UINT pad0;
+		UINT pad1;
+		UINT pad2;
 	};
 
 	struct TopLevelAccelerationStructure;
