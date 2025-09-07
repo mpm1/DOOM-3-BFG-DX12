@@ -24,7 +24,7 @@ static const float4 matrixCoCg1YtoRGB1Z = float4( -1.0, -1.0,  1.00392156, 1.0 )
 static half3 ConvertDiffuseToAlbedo(in half3 rgbDiffuse)
 {
 	half3 albedoColor;
-	float invertLumminance = 1.0 - saturate(0.299 * rgbDiffuse.r + 0.587 * rgbDiffuse.g + 0.114 * rgbDiffuse.b);
+	float invertLumminance = 1.0 - saturate(0.299 * rgbDiffuse.r + 0.587 * rgbDiffuse.g + 0.114 * rgbDiffuse.b); //TODO: this works ok, but we need to keep finer details in the darks. maybe a cavity texture.
 	float L2 = 2.0 * invertLumminance;
 
 	if(invertLumminance < 0.5)

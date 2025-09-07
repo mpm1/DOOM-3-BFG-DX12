@@ -109,55 +109,46 @@ void HandlePointLight(
 
 	float3 pointToCenter = normalize(light.center - worldPosition);
 
-	for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
+	// We'll keep the lights as a point and only the shadows are affected by the light radius.
+	float3 lightPosition = light.center;
+	float3 lightVector = normalize(lightPosition - worldPosition);
+
+	float intensity = CalcluateLightImpact(
+		light,
+		worldPosition,
+		pointToEye,
+		normal,
+		lightVector,
+		PI, // Since we divide by our count later, we can just use 1.0 here. Original algorithm calls for PI
+		baseReflection,
+		roughness,
+		diffuseResult,
+		specularResult);
+
+	if(intensity > 0.0 && castsShadows)
 	{
-		float3 lightPosition = castsShadows ?
-			GetValidLightLocation(
-				light, surfacePlane,
-				normalize(float3(screenUV.xy + float2(light.sceneIndex, rayIndex) + sceneConstants.noiseOffset, rayIndex + light.sceneIndex))
-				)
-			: light.center;
-
-		float maxDistance = distance(lightPosition, worldPosition);
-		float3 lightVector = normalize(lightPosition - worldPosition);
-
-		if(isnan(lightVector.x) || isnan(lightVector.y) || isnan(lightVector.z))
-		{
-			// Invalid light position
-			continue;
-		}
-
-		float3 localDiffuse = float3(0.0, 0.0, 0.0);
-		float3 localSpecular = float3(0.0, 0.0, 0.0);
-		float intensity = CalcluateLightImpact(
-			light,
-			worldPosition,
-			pointToEye,
-			normal,
-			lightVector,
-			PI, // Since we divide by our count later, we can just use 1.0 here. Original algorithm calls for PI
-			baseReflection,
-			roughness,
-			localDiffuse,
-			localSpecular);
-
-		if (intensity <= 0.0)
-		{
-			// No light is being cast.
-			continue;
-		}
+		float lightMultiplier = 0.0;
 		
-		if(castsShadows)
-		{ 
+		for(uint rayIndex = 0; rayIndex < lightRayCount; ++rayIndex)
+		{
+			float3 shadowLightPosition =
+				GetValidLightLocation(
+					light, surfacePlane,
+					normalize(float3(screenUV.xy + float2(light.sceneIndex, rayIndex) + sceneConstants.noiseOffset, rayIndex + light.sceneIndex))
+					);
+
+			float maxDistance = distance(shadowLightPosition, worldPosition);
+			float3 shadowLightVector = normalize(shadowLightPosition - worldPosition);
+
 			RayQuery<RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH> inlineQuery;
 
 			// We are inside the light radius.
 			// Define a ray, consisting of origin, direction, and the min-max distance values
 			RayDesc ray;
-			ray.TMin = lerp(1.2, 0.3, max(dot(normal, lightVector), 0.0)); // To avoid precision issues, we want to start the ray a little off the surface. The more shallow the andle with the light, the further off we move.
+			ray.TMin = lerp(1.2, 0.3, max(dot(normal, shadowLightVector), 0.0)); // To avoid precision issues, we want to start the ray a little off the surface. The more shallow the andle with the light, the further off we move.
 			ray.TMax = maxDistance;
 			ray.Origin = worldPosition;// + (normal * rayStartDistance);
-			ray.Direction = lightVector;
+			ray.Direction = shadowLightVector;
 
 			if(ray.TMin < ray.TMax)
 			{ // Only trace if we have a valid distance to trace. Otherwise we can assume we are inside the light or too close to the surface.
@@ -174,14 +165,18 @@ void HandlePointLight(
 				}
 			}
 
+			lightMultiplier += 1.0;
+		}
+		
+		
+		if(lightMultiplier > 0.0)
+		{
+			lightMultiplier = lightMultiplier / lightRayCount;
 		}
 
-		diffuseResult += localDiffuse;
-		specularResult += localSpecular;
+		diffuseResult = diffuseResult * lightMultiplier;
+		specularResult = specularResult * lightMultiplier;
 	}
-
-	diffuseResult = diffuseResult / lightRayCount;
-	specularResult = specularResult / lightRayCount;
 }
 
 [shader("raygeneration")]
