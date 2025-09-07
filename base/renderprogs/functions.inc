@@ -21,6 +21,26 @@ static const float4 matrixCoCg1YtoRGB1X = float4(  1.0, -1.0,  0.0,        1.0 )
 static const float4 matrixCoCg1YtoRGB1Y = float4(  0.0,  1.0, -0.50196078, 1.0 ); // -0.5 * 256.0 / 255.0
 static const float4 matrixCoCg1YtoRGB1Z = float4( -1.0, -1.0,  1.00392156, 1.0 ); // +1.0 * 256.0 / 255.0
 
+static half3 ConvertDiffuseToAlbedo(in half3 rgbDiffuse)
+{
+	half3 albedoColor;
+	float invertLumminance = 1.0 - saturate(0.299 * rgbDiffuse.r + 0.587 * rgbDiffuse.g + 0.114 * rgbDiffuse.b);
+	float L2 = 2.0 * invertLumminance;
+
+	if(invertLumminance < 0.5)
+	{
+		albedoColor = (rgbDiffuse * L2) + pow(rgbDiffuse, 2.0) * (1.0 - L2);
+	}
+	else
+	{
+		albedoColor = (2.0 * rgbDiffuse * (1.0 - invertLumminance)) + (sqrt(rgbDiffuse) * (2.0 * invertLumminance - 1.0));
+	}
+
+	//albedoColor = ((1.0 - L2) * pow(rgbDiffuse, 2.0)) + (L2 * rgbDiffuse);
+
+	return albedoColor;
+}
+
 static half3 ConvertYCoCgToRGB( half4 YCoCg ) {
 	half3 rgbColor;
 
@@ -128,7 +148,7 @@ void ExtractMaterialProperties(
 	metalness = materialProperties.y;
 
 	// Approximate the base reflectivity from the specular color.
-	baseReflection = specularColor;
+	baseReflection = specularColor * materialProperties.z;
 }
 
 // Lighting Helpers

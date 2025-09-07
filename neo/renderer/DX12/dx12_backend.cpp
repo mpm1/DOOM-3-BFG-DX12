@@ -66,9 +66,10 @@ UINT GetVertexBufferSize(const vertCacheHandle_t vbHandle)
 	return (vbHandle >> VERTCACHE_SIZE_SHIFT) & VERTCACHE_SIZE_MASK;
 }
 
-void ExtractMaterialProperties(const idMaterial* material, float& roughness, float& metalic)
+void ExtractMaterialProperties(const idMaterial* material, float& roughness, float& metalic, float& specularMultiplier /* Used to modify the specular map to reflectance */)
 {
 	metalic = 0.0f;
+	specularMultiplier = 0.4f;
 
 	if (material == nullptr)
 	{
@@ -3270,7 +3271,7 @@ public:
 
 			const idMaterial* surfaceShader = surf->material;
 			idVec4 materialProps(0, 0, 0, 0);
-			ExtractMaterialProperties(surfaceShader, materialProps.x, materialProps.y);
+			ExtractMaterialProperties(surfaceShader, materialProps.x, materialProps.y, materialProps.z);
 			SetVertexParm(RENDERPARAM_MATERIAL_PROPERTIES, materialProps.ToFloatPtr());
 
 			if (surfaceShader->GetFastPathBumpImage() && !r_skipInteractionFastPath.GetBool()) {

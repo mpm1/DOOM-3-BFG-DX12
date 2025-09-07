@@ -223,7 +223,7 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	
 	result.specularColor = SampleBindlessTexture4f(gbufferConstants.specularIndex, fragment.texcoord2.xy );
 	
-	result.albedo.rgb = ConvertYCoCgToRGB( YCoCG ); //we need the diffuse modifier constant?
+	result.albedo.rgb = ConvertDiffuseToAlbedo(ConvertYCoCgToRGB( YCoCG )); //we need the diffuse modifier constant?
 
 	float3 reflectivity;
 	float roughness;

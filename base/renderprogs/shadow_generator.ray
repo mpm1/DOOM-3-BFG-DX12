@@ -135,7 +135,7 @@ void HandlePointLight(
 			pointToEye,
 			normal,
 			lightVector,
-			1.0, // Since we divide by our count later, we can just use 1.0 here. Original algorithm calls for PI
+			PI, // Since we divide by our count later, we can just use 1.0 here. Original algorithm calls for PI
 			baseReflection,
 			roughness,
 			localDiffuse,
@@ -154,36 +154,34 @@ void HandlePointLight(
 			// We are inside the light radius.
 			// Define a ray, consisting of origin, direction, and the min-max distance values
 			RayDesc ray;
-			ray.TMin = 0.0001;
-			ray.TMax = maxDistance - ray.TMin;
-			ray.Origin = worldPosition + (normal * rayStartDistance);
+			ray.TMin = lerp(1.2, 0.3, max(dot(normal, lightVector), 0.0)); // To avoid precision issues, we want to start the ray a little off the surface. The more shallow the andle with the light, the further off we move.
+			ray.TMax = maxDistance;
+			ray.Origin = worldPosition;// + (normal * rayStartDistance);
 			ray.Direction = lightVector;
 
-			if(ray.TMin >= ray.TMax)
-			{
-				// Ray is too short to trace.
-				continue;
+			if(ray.TMin < ray.TMax)
+			{ // Only trace if we have a valid distance to trace. Otherwise we can assume we are inside the light or too close to the surface.
+				inlineQuery.TraceRayInline(
+					SceneBVH,
+					RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
+					INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
+					ray);
+				inlineQuery.Proceed(); // Run the tracer.
+				
+				if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
+				{
+					continue; // We hit a shadow so we should not add any data to the colors
+				}
 			}
 
-			inlineQuery.TraceRayInline(
-				SceneBVH,
-				RAY_FLAG_CULL_NON_OPAQUE | RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH, // OR'd with flags above
-				INSTANCE_MASK_CAST_SHADOW, // Only cast against shadow casting objects.
-				ray);
-			inlineQuery.Proceed(); // Run the tracer.
-				
-			if(inlineQuery.CommittedStatus() == COMMITTED_TRIANGLE_HIT)
-			{
-				continue; // We hit a shadow so we should not add any data to the colors
-			}
 		}
 
 		diffuseResult += localDiffuse;
 		specularResult += localSpecular;
 	}
 
-	diffuseResult = saturate(diffuseResult / lightRayCount); // TODO: Change this to a colour light space
-	specularResult = saturate(specularResult / lightRayCount);
+	diffuseResult = diffuseResult / lightRayCount;
+	specularResult = specularResult / lightRayCount;
 }
 
 [shader("raygeneration")]
