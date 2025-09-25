@@ -23,6 +23,14 @@ extern idCommon* common;
 
 namespace
 {
+	static void DX12_GlobalPlaneToLocal(const float modelMatrix[16], const idPlane& in, XMFLOAT4& out)
+	{
+		out.x = in[0] * modelMatrix[0 * 4 + 0] + in[1] * modelMatrix[0 * 4 + 1] + in[2] * modelMatrix[0 * 4 + 2];
+		out.y = in[0] * modelMatrix[1 * 4 + 0] + in[1] * modelMatrix[1 * 4 + 1] + in[2] * modelMatrix[1 * 4 + 2];
+		out.z = in[0] * modelMatrix[2 * 4 + 0] + in[1] * modelMatrix[2 * 4 + 1] + in[2] * modelMatrix[2 * 4 + 2];
+		out.w = in[0] * modelMatrix[3 * 4 + 0] + in[1] * modelMatrix[3 * 4 + 1] + in[2] * modelMatrix[3 * 4 + 2] + in[3];
+	}
+
 	static void DX12_GetShaderTextureMatrix(const float* shaderRegisters, const textureStage_t* texture, float matrix[16]) {
 		// Copied from RB_GetShaderTextureMatrix
 		matrix[0 * 4 + 0] = shaderRegisters[texture->matrix[0][0]];
@@ -55,7 +63,7 @@ namespace
 		matrix[3 * 4 + 3] = 1.0f;
 	}
 
-	static void DX12_BakeTectureMatrixIntoTexgen(XMFLOAT4 lightProject[3], const float* textureMatrix)
+	static void DX12_BakeTextureMatrixIntoTexgen(XMFLOAT4* lightProject, const float* textureMatrix)
 	{
 		float genMatrix[16];
 		float final[16];
@@ -971,6 +979,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatTangent)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor)->Resize(width, height);
@@ -1306,7 +1315,13 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 			continue;
 		}
 
-		if (!surf.shader->ReceivesLighting() && !surf.shader->LightCastsShadows()) // We're assuming all light receiving objects cast shadows in this model.
+		if (surf.shader->GetSort() == SS_DECAL)
+		{
+			// We are not adding translucent surfaces to the trace.
+			continue;
+		}
+
+		if (!surf.shader->ReceivesLighting() || !surf.shader->LightCastsShadows()) // We're assuming all light receiving objects cast shadows in this model.
 		{
 			// If we dont cast shadows, drop it.
 			continue;
@@ -1481,6 +1496,9 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 
 		const float lightScale = r_lightScale.GetFloat();
 
+		const bool castsShadows = r_allLightsCastShadows.GetBool() || vLight->castsShadows;
+		const float shadowStartDistance = castsShadows ? 0.1f : 0.0f;
+
 		for (int lightStageNum = 0; lightStageNum < lightShader->GetNumStages(); lightStageNum++) 
 		{
 			const shaderStage_t* lightStage = lightShader->GetStage(lightStageNum);
@@ -1495,7 +1513,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				lightScale * lightRegs[lightStage->color.registers[1]],
 				lightScale * lightRegs[lightStage->color.registers[2]],
 				lightRegs[lightStage->color.registers[3]]);
-			
+
 			// apply the world-global overbright and the 2x factor for specular
 			const XMFLOAT4 diffuseColor = lightColor;
 			//const XMFLOAT4 specularColor = lightColor * 2.0f;
@@ -1503,22 +1521,21 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 			// transform the light project into model local space
 			XMFLOAT4 lightProjection[4];
 			for (int i = 0; i < 4; i++) {
-				memcpy(&lightProjection[i], vLight->lightProject[i].ToFloatPtr(), sizeof(float) * 4);
+				DX12_GlobalPlaneToLocal(worldMatrix, vLight->lightProject[i], lightProjection[i]);
+				//memcpy(&lightProjection[i], vLight->lightProject[i].ToFloatPtr(), sizeof(float) * 4);
 			}
 
 			// optionally multiply the local light projection by the light texture matrix
 			if (lightStage->texture.hasMatrix) {
 				float lightTextureMatrix[16];
 				DX12_GetShaderTextureMatrix(lightRegs, &lightStage->texture, lightTextureMatrix);
-				DX12_BakeTectureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
+				DX12_BakeTextureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
 			}
-
-			const bool castsShadows = r_allLightsCastShadows.GetBool() || vLight->castsShadows;
 
 			if (!m_raytracing->AddLight(vLight->sceneIndex, lightType,
 				static_cast<const DX12Rendering::TextureBuffer*>(vLight->falloffImage->Bindless()), 
 				static_cast<const DX12Rendering::TextureBuffer*>(lightStage->texture.image->Bindless()), 
-				vLight->shadowMask, location, lightColor, lightProjection, scissor, castsShadows))
+				vLight->shadowMask, location, lightColor, lightProjection, scissor, castsShadows, shadowStartDistance))
 			{
 				// Could not add the raytraced light
 				shadowMask = 0;

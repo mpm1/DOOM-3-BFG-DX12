@@ -83,6 +83,7 @@ namespace DX12Rendering {
 			//Update the resources
 			m_constantBuffer.positionTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::POSITION)->GetTextureIndex();
 			m_constantBuffer.flatNormalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS)->GetTextureIndex();
+			m_constantBuffer.flatTangentIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_TANGENT)->GetTextureIndex();
 			m_constantBuffer.normalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)->GetTextureIndex();
 			m_constantBuffer.diffuseTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO)->GetTextureIndex();
 			m_constantBuffer.specularTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR)->GetTextureIndex();
@@ -271,6 +272,7 @@ namespace DX12Rendering {
 	void Raytracing::ResetLightList()
 	{
 		m_constantBuffer.lightCount = 0;
+		memset(m_lights, 0, sizeof(m_lights));
 	}
 
 	UINT Raytracing::GetLightMask(const UINT lightIndex)
@@ -286,7 +288,7 @@ namespace DX12Rendering {
 		return 0x00000000;
 	}
 
-	bool Raytracing::AddLight(const UINT lightIndex, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4& location, const XMFLOAT4& color, const XMFLOAT4* lightProjection, const XMFLOAT4& scissorWindow, bool castsShadows)
+	bool Raytracing::AddLight(const UINT lightIndex, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4& location, const XMFLOAT4& color, const XMFLOAT4* lightProjection, const XMFLOAT4& scissorWindow, bool castsShadows, float shadowStartDistance)
 	{
 		static UINT padValue = 0;
 		padValue = (padValue + 1) % 3459871;
@@ -294,6 +296,7 @@ namespace DX12Rendering {
 		UINT index = m_constantBuffer.lightCount;
 		if(index >= MAX_SCENE_LIGHTS)
 		{ 
+			m_constantBuffer.lightCount = MAX_SCENE_LIGHTS;
 			//assert(false, "Raytracing::AddLight: Too many lights.");
 			return false;
 		}
@@ -304,6 +307,7 @@ namespace DX12Rendering {
 		m_lights[index].flags = 0;
 
 		m_lights[index].flagValue.castsShadows = castsShadows;
+		m_lights[index].shadowStartDistance = shadowStartDistance;
 
 		{
 			// Calculate type properties
@@ -334,10 +338,10 @@ namespace DX12Rendering {
 
 		m_lights[index].color = color;
 
-		m_lights[index].projectionS = lightProjection[0];
-		m_lights[index].projectionT = lightProjection[1];
-		m_lights[index].projectionQ = lightProjection[2];
-		m_lights[index].falloffS = lightProjection[3];
+		memcpy(&m_lights[index].projectionS, &lightProjection[0], sizeof(float) * 4);
+		memcpy(&m_lights[index].projectionT, &lightProjection[1], sizeof(float) * 4);
+		memcpy(&m_lights[index].projectionQ, &lightProjection[2], sizeof(float) * 4);
+		memcpy(&m_lights[index].falloffS, &lightProjection[3],sizeof(float) * 4);
 
 		m_lights[index].falloffIndex = falloffTexture->GetTextureIndex();
 		m_lights[index].projectionIndex = projectionTexture->GetTextureIndex();
@@ -439,10 +443,9 @@ namespace DX12Rendering {
 		commandManager->InsertFenceWait(DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->GetLastFenceValue());
 		commandManager->InsertFenceWait(m_tlasManager.GetCurrent().GetLastFenceValue());
 
-		//for (UINT index = 0; index < m_constantBuffer.lightCount; ++index)
-		std::for_each(std::begin(m_lights), std::begin(m_lights) + m_constantBuffer.lightCount,
-				[&](dxr_lightData_t& light)
+		for (UINT lightIndex = 0; lightIndex < m_constantBuffer.lightCount; ++lightIndex)
 		{
+			const dxr_lightData_t& light = m_lights[lightIndex];
 			const UINT objectIndex = RequestNewObjectIndex();
 
 			SetCBVDescriptorTable(sizeof(light), &light, frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::CBV_LightProperties);
@@ -458,7 +461,7 @@ namespace DX12Rendering {
 			SetOutputTexture(eRenderSurface::Specular, frameIndex, objectIndex, e_RaytracingHeapIndex::UAV_SpecularMap);
 
 			CastRays(frameIndex, objectIndex, viewport, lightViewport, renderPass, m_shadowStateObject.Get(), m_shadowStateObjectProps.Get());
-		});
+		};
 
 		const DX12Rendering::Commands::FenceValue result = commandManager->InsertFenceSignal();
 

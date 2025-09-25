@@ -16,6 +16,7 @@ namespace DX12Rendering
 		MATERIAL_PROPERTIES, // r = Roughness, g = Metallic, b = occlusion? (not implemented)
 		WORLD_NORMALS,
 		WORLD_FLAT_NORMALS,
+		WORLD_FLAT_TANGENT,
 		RAYTRACED_SHADOWMAP,
 
 		RAYTRACED_DIFFUSE,

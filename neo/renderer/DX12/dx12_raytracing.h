@@ -70,10 +70,9 @@ namespace DX12Rendering {
 				bool isPointLight : 1;
 				bool isAmbientLight : 1;
 				bool isFogLight : 1;
-				bool flagPad[sizeof(UINT) - 2];
 			} flagValue;
 		};
-		UINT pad1;
+		float shadowStartDistance;
 		UINT pad2;
 		float emissiveRadius; // Radius used to calculate soft shadows.
 
@@ -124,7 +123,7 @@ namespace DX12Rendering {
 		UINT raysPerLight; // Number of shadow rays cast per light per pixel
 
 		float noiseOffset;
-		UINT pad0;
+		UINT flatTangentIndex;
 		UINT pad1;
 		UINT pad2;
 	};
@@ -151,7 +150,7 @@ public:
 	void Uniform4f(UINT index, const float* uniform);
 
 	void ResetLightList();
-	bool AddLight(const UINT index, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4& location, const XMFLOAT4& color, const XMFLOAT4* lightProjection, const XMFLOAT4& scissorWindow, bool castsShadows);
+	bool AddLight(const UINT index, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4& location, const XMFLOAT4& color, const XMFLOAT4* lightProjection, const XMFLOAT4& scissorWindow, bool castsShadows, float shadowStartDistance);
 	UINT GetLightMask(const UINT index);
 
 	void GenerateTLAS();

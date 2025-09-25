@@ -57,10 +57,10 @@ struct Attributes
   float2	location; // Location of the hit.
 };
 
-#define LIGHT_FLAG_CASTS_SHADOWS (0x01 << 0)
-#define LIGHT_FLAG_POINT_LIGHT   (0x01 << 1)
-#define LIGHT_FLAG_AMBIENT_LIGHT (0x01 << 2)
-#define LIGHT_FLAG_FOG_LIGHT     (0x01 << 3)
+#define LIGHT_FLAG_CASTS_SHADOWS (0x0001 << 0)
+#define LIGHT_FLAG_POINT_LIGHT   (0x0001 << 1)
+#define LIGHT_FLAG_AMBIENT_LIGHT (0x0001 << 2)
+#define LIGHT_FLAG_FOG_LIGHT     (0x0001 << 3)
 
 #define MAX_SCENE_LIGHTS 128
 
@@ -74,7 +74,7 @@ struct SceneLight {
     uint    projectionIndex;
 
     uint    flags;
-    uint    pad1;
+    float   shadowStartDistance; // Distance from the light to start the shadow casting. 
     uint    pad2;
     float   emissiveRadius;
 
@@ -123,7 +123,7 @@ struct RaytracedSceneConstants {
     uint raysPerLight;
 
     float noiseOffset;
-	uint pad0;
+	uint flatTangentIndex;
 	uint pad1;
 	uint pad2;
 };
@@ -210,24 +210,33 @@ inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in Rayt
 
 float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
 {
-	float2 uv = float2(dot4( worldPosition, light.falloffS ), 0);
-	float4 falloff =  SampleBindlessTexture4fLevel(light.falloffIndex, uv, 0);
-	
+	float4 uv = dot4( worldPosition, light.falloffS );
+	float4 falloff =  SampleBindlessTexture4fLevel(light.falloffIndex, uv.xy, 0);
+
 	return falloff.rgb;
 }
 
-float3 CalculateProjection(in SceneLight light, float4 worldPosition)
+float3 GetLightSpacePosition(in SceneLight light,  in float3 worldPosition)
+{
+    // Given a light, calculate the position of the point with respect to the light in the world.
+    //float3 location = worldPosition.xyz - light.center; //TODO: Realign the light to match the perspective angle of the point
+   
+    //return location;
+    return worldPosition;
+}
+
+float3 CalculateProjection(in SceneLight light, in float4 location)
 {
 	float4 projection = float4(
-		dot4(worldPosition, light.projectionS),
-		dot4(worldPosition, light.projectionT),
+		dot4(location, light.projectionS),
+		dot4(location, light.projectionT),
 		0.0f,
-		dot4(worldPosition, light.projectionQ)
+		dot4(location, light.projectionQ)
 	);
 
-	projection.xy /= projection.w;
-
-	return SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb;//pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 2.2); // Added some correction to match the original art
+	projection.xy /= projection.w; //This is done to match idtex2Dproj
+    
+	return SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 1).rgb;//pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 2.2); // Added some correction to match the original art
 }
 
 uint4 ConvertShadowmapMaskToVector(uint shadowMask)
@@ -310,6 +319,7 @@ float CalcluateLightImpact(
     )
 {
     float NdotL = dot3(surfaceNormal, lightVector);
+    float3 lightWorldPosition = GetLightSpacePosition(light, worldPosition);
 
     // TODO: Do we need a modifier here for subsurface scattering?
 
@@ -322,8 +332,8 @@ float CalcluateLightImpact(
 	}
 
     float3 lightColor = light.color.rgb *
-                CalculateFalloff(light, float4(worldPosition, 1.0)) * 
-				CalculateProjection(light, float4(worldPosition, 1.0));
+                CalculateFalloff(light, float4(lightWorldPosition, 1.0)) *
+				CalculateProjection(light, float4(lightWorldPosition, 1.0));
 
     if (length(lightColor) <= 0.0)
     {
