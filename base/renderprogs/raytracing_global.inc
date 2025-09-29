@@ -234,7 +234,7 @@ float3 CalculateProjection(in SceneLight light, in float4 location)
 		dot4(location, light.projectionQ)
 	);
 
-	projection.xy /= projection.w; //This is done to match idtex2Dproj
+    projection.xy /= projection.w; //This is done to match idtex2Dproj
     
 	return SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 1).rgb;//pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 2.2); // Added some correction to match the original art
 }

@@ -1179,6 +1179,11 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 	if (!IsRaytracingEnabled()) {
 		return nullptr;
 	}
+
+	if (surfaceCount == 0)
+	{
+		return nullptr;
+	}
 	
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
@@ -1321,7 +1326,7 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 			continue;
 		}
 
-		if (!surf.shader->ReceivesLighting() || !surf.shader->LightCastsShadows()) // We're assuming all light receiving objects cast shadows in this model.
+		if (!surf.shader->LightCastsShadows())
 		{
 			// If we dont cast shadows, drop it.
 			continue;
