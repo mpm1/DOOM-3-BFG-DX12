@@ -336,7 +336,12 @@ namespace DX12Rendering {
 
 		m_lights[index].scissor = scissorWindow;
 
-		m_lights[index].color = color;
+		m_lights[index].diffuseColor = color;
+
+		m_lights[index].specularColor.x = color.x * 2.0f;
+		m_lights[index].specularColor.y = color.y * 2.0f;
+		m_lights[index].specularColor.z = color.z * 2.0f;
+		m_lights[index].specularColor.w = color.w * 2.0f;
 
 		memcpy(&m_lights[index].projectionS, &lightProjection[0], sizeof(float) * 4);
 		memcpy(&m_lights[index].projectionT, &lightProjection[1], sizeof(float) * 4);

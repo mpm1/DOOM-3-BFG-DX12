@@ -35,7 +35,7 @@ float3 GetSpecularResult(in SceneLight light, in float3 lightFalloff, in float3 
 	half hDotN = dot3(normalize(pointToEye + pointToLight), normal);
 	half3 specularContribution = _half3(pow( hDotN, specularPower ));
 
-	return specularContribution * (light.color.rgb * specMultiplier) * lightFalloff.rgb;
+	return specularContribution * (light.specularColor.rgb * specMultiplier) * lightFalloff.rgb;
 }
 
 float3 GetValidLightLocation(in SceneLight light, in Plane surfacePlane, in float3 randomOffset)
@@ -76,7 +76,7 @@ void HandleAmbientLight(
 			CalculateProjection(light, float4(worldPosition, 1.0));
 	}
 
-	diffuseResult = light.color.rgb * lightColor.rgb;
+	diffuseResult = light.diffuseColor.rgb * lightColor.rgb;
 	specularResult = GetSpecularResult(light, lightColor, normal, pointToEye, lightVector, 2.0 /* Keeping consistant original method */);
 }
 

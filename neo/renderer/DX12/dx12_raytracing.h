@@ -76,7 +76,8 @@ namespace DX12Rendering {
 		UINT pad2;
 		float emissiveRadius; // Radius used to calculate soft shadows.
 
-		XMFLOAT4 color;
+		XMFLOAT4 diffuseColor;
+		XMFLOAT4 specularColor; // The engine uses a different value for the two results. Usually specular is 2.0x
 
 		XMFLOAT4	center;
 

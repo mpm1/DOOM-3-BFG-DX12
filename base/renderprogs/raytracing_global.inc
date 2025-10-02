@@ -78,7 +78,8 @@ struct SceneLight {
     uint    pad2;
     float   emissiveRadius;
 
-    float4   color;
+    float4   diffuseColor;
+    float4   specularColor;
 
     float4  center;
     
@@ -265,6 +266,8 @@ float StartDistanceFromSurface(in float3 worldPosition, in float3 eyePosition)
 // General BRDF functions
 void GeneralBRDF(
     in float3 lightColor,
+    in float3 diffuseColor,
+    in float3 specularColor,
     in float NdotL,
     in float3 surfaceNormal,
     in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
@@ -278,7 +281,7 @@ void GeneralBRDF(
     float3 fresnelFactor = CalculateFresnel(baseReflectivity, viewVector, halfVector);
 
     // Diffuse using the Lambertian Model (we already used L dot N for the light Color)
-    diffuseContribution = (lightColor * NdotL * (1.0 - fresnelFactor)) / distribution;
+    diffuseContribution = lightColor * (diffuseColor * NdotL * (1.0 - fresnelFactor)) / distribution;
 
     // Useing Cook-Torrance BRDF for specular reflection
     float NdotH = max(dot3(surfaceNormal, halfVector), 0.0);
@@ -300,7 +303,7 @@ void GeneralBRDF(
         return;  
     }
 
-    specularContribution = lightColor * ((D * G * fresnelFactor) / (4.0 * NdotL * NdotV));
+    specularContribution = lightColor * specularColor * ((D * G * fresnelFactor) / (4.0 * NdotL * NdotV));
 }
 
 // Calculates the amount of specular and diffuse light hitting a surface.
@@ -331,7 +334,7 @@ float CalcluateLightImpact(
 		return NdotL;
 	}
 
-    float3 lightColor = light.color.rgb *
+    float3 lightColor = 
                 CalculateFalloff(light, float4(lightWorldPosition, 1.0)) *
 				CalculateProjection(light, float4(lightWorldPosition, 1.0));
 
@@ -345,6 +348,8 @@ float CalcluateLightImpact(
 
     GeneralBRDF(
         lightColor,
+        light.diffuseColor.rgb,
+        light.specularColor.rgb,
         NdotL,
         surfaceNormal,
         distribution,
