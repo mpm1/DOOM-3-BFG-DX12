@@ -359,6 +359,9 @@ struct viewEntity_t {
 	// be linked to the lights or added to the drawsurf list in a serial code section
 	drawSurf_t *			drawSurfs;
 
+	// Used to calculate Dynamic bones later on.
+	drawSurf_t*				dynamicSurfaces;
+
 	// R_AddSingleModel will build a chain of parameters here to setup shadow volumes
 	staticShadowVolumeParms_t *		staticShadowVolumes;
 	dynamicShadowVolumeParms_t *	dynamicShadowVolumes;

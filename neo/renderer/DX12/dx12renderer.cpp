@@ -237,7 +237,7 @@ void DX12Renderer::CreateDynamicPerFrameData()
 {
 	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex)
 	{
-		m_dynamicVertexBuffer[frameIndex] = AllocVertexBuffer(DX12_ALIGN(DYNAMIC_VERTEX_MEMORY_PER_FRAME, DYNAMIC_VERTEX_ALIGNMENT), std::wstring(L"Dynamic Vertex Data %d", frameIndex).c_str(), true);
+		m_dynamicVertexBuffer[frameIndex] = AllocVertexBuffer(DX12_ALIGN(DYNAMIC_VERTEX_MEMORY_PER_FRAME, DYNAMIC_VERTEX_ALIGNMENT), std::wstring(L"Dynamic Vertex Data ").append(std::to_wstring(frameIndex)).c_str(), true);
 	}
 }
 
@@ -1174,7 +1174,7 @@ UINT DX12Renderer::DXR_UpdatePendingBLAS()
 	return result;
 }
 
-DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments)
+DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(const dxHandle_t id, const LPCWSTR name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments)
 {
 	if (!IsRaytracingEnabled()) {
 		return nullptr;
@@ -1187,9 +1187,7 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(co
 	
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	std::string blasName = std::string(name);
-
-	DX12Rendering::BottomLevelAccelerationStructure* blas = m_raytracing->GetBLASManager()->CreateBLAS(id, isStatic, true, std::wstring(blasName.begin(), blasName.end()).c_str());
+	DX12Rendering::BottomLevelAccelerationStructure* blas = m_raytracing->GetBLASManager()->CreateBLAS(id, isStatic, true, name);
 
 	if (blas == nullptr)
 	{
@@ -1366,7 +1364,14 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 		geometry.emplace_back(geo);
 	}
 
-	return DXR_UpdateBLAS(index, model->Name(), isStatic, geometry.size(), geometry.data());
+	LPCWSTR name = nullptr;
+
+#if defined(_DEBUG)
+	std::string stringName(model->Name());
+	name = std::wstring(stringName.begin(), stringName.end()).c_str();
+#endif
+
+	return DXR_UpdateBLAS(index, name, isStatic, geometry.size(), geometry.data());
 }
 
 void DX12Renderer::DXR_AddModelBLASToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)

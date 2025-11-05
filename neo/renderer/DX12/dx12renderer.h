@@ -126,7 +126,7 @@ public:
 	bool DXR_BLASExists(const dxHandle_t id);
 	dxHandle_t DXR_GetBLASHandle(const idRenderModel* model);
 	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateModelInBLAS(const idRenderModel* model);
-	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments);
+	DX12Rendering::BottomLevelAccelerationStructure* DXR_UpdateBLAS(const dxHandle_t id, const LPCWSTR name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments);
 	UINT DXR_UpdatePendingBLAS();
 
 	void DXR_RemoveModelInBLAS(const idRenderModel* model);

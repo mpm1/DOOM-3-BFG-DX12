@@ -2929,192 +2929,127 @@ class DynamicSurfacesPass : public RenderPass
 public:
 	DynamicSurfacesPass(const int size)
 	{
-		m_surfaces.reserve(size);
 	}
 
 	// Inherited via RenderPass
 	virtual void Gather(const drawSurf_t* ds, const int index) override
 	{
-		const idMaterial* shader = ds->material;
-
-		if (shader->GetSort() == SS_SUBVIEW)
-		{
-			// We may need to handle this later
-			return;
-		}
-
-		if (ds->jointCache)
-		{
-			m_surfaces.push_back(ds);
-		}
 	}
 
 	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
 	{
-		// Update all surfaces and bones as needed
-		{
-			DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
-			DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_DrawViewInternal::ComputeBones");
+		DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RB_DrawViewInternal::ComputeBones");
 
-			dxRenderer.StartComputeSurfaceBones();
-			commandManager->Execute();
+		dxRenderer.StartComputeSurfaceBones();
+		commandManager->Execute();
 
-			// Entity definitions are gouped together. This way we can put them into a single blas
-			const viewEntity_t* lastEntity = nullptr;
-			dxHandle_t blasHandle = 1;
-			std::vector<DX12Rendering::RaytracingGeometryArgument> rtGeometry;
-			rtGeometry.reserve(16);
+		dxHandle_t blasHandle = 1;
+		UINT count = 0;
 
-			UINT outVertexBufferOffset = 0;
+		UINT outVertexBufferOffset = 0;
+			
+		std::vector<DX12Rendering::RaytracingGeometryArgument> rtGeometry;
+		rtGeometry.reserve(16);
 
-			std::vector<const drawSurf_t*>::iterator it = m_surfaces.begin();
-			UINT count = 0;
+		for (viewEntity_t* viewEntity = viewDef->viewEntitys; viewEntity != NULL; viewEntity = viewEntity->next)
+		{		
+			for (drawSurf_t* ds = viewEntity->dynamicSurfaces; ds != NULL; ds = ds->nextOnLight)
+			{
+				const idMaterial* shader = ds->material;
 
-			while(it != m_surfaces.end()) {
-				const drawSurf_t* ds = *it;
-				++it; // Setup next iterator.
+				// Get vertex buffer
+				idVertexBuffer* const vertexBuffer = GetVertexBuffer(ds->ambientCache);
+				const int vertOffset = GetVertexBufferOffset(ds->ambientCache);
+				const UINT vertSize = GetVertexBufferSize(ds->ambientCache);
+				const UINT vertIndexCount = vertSize / sizeof(idDrawVert);
+
+				if (vertexBuffer == nullptr)
+				{
+					// An error occured when grabbing the vertex buffer data.
+					continue;
+				}
+
+				DX12Rendering::Geometry::VertexBuffer* const apiVertexBuffer = static_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject());
+
+				// Get joint buffer
+				idJointBuffer jointBuffer;
+				if (!vertexCache.GetJointBuffer(ds->jointCache, &jointBuffer)) {
+					// No joint buffer. This can be caused by objects not yet loaded into the scene
+					// Logging  messages here will dramatically slo down the scene.
+					continue;
+				}
+
 				const UINT index = count++;
 
-				if (ds->space != lastEntity)
+				DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
+
+				// Update the vert structure.
+				const UINT bufferOffset = dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, outVertexBufferOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
+
+				if (raytracedEnabled && ds->material && ds->material->SurfaceCastsShadow() /* Only allow shadow casting surfaces */)
 				{
-					if (rtGeometry.size() > 0)
-					{
-						// Add the BLAS and TLAS
-						dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
+					const dxHandle_t handle = index;
+					const UINT entityIndex = index << 16;
 
-						UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
-						{
-							// Calculate the instance mask
-							if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: find a better way to mark these as shadow casting.
-							{
-								instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
-							}
-						}
+					DX12Rendering::RaytracingGeometryArgument dxArguments = {};
+					dxArguments.vertexHandle = ds->ambientCache;
+					dxArguments.vertCounts = vertIndexCount;
+					dxArguments.vertexOffset = outVertexBufferOffset;
 
-						dxRenderer.DXR_AddBLASToTLAS(
-							lastEntity->entityIndex,
-							blasHandle,
-							lastEntity->modelRenderMatrix[0], // TODO: Find thre right one
-							DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
-							static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
-						);
+					dxArguments.indexHandle = ds->indexCache;
+					dxArguments.indexCounts = ds->numIndexes;
 
-						++blasHandle;
-						rtGeometry.clear();
-					}
+					dxArguments.jointsHandle = ds->jointCache;
 
-					lastEntity = ds->space;
+					// Add to the list of entities
+					rtGeometry.push_back(dxArguments);
 				}
 
-				if (ds->jointCache)
-				{
-
-					// get vertex buffer
-					idVertexBuffer* const vertexBuffer = GetVertexBuffer(ds->ambientCache);
-					const int vertOffset = GetVertexBufferOffset(ds->ambientCache);
-					const UINT vertSize = GetVertexBufferSize(ds->ambientCache);
-					const UINT vertIndexCount = vertSize / sizeof(idDrawVert);
-
-					if (vertexBuffer == nullptr)
-					{
-						// An error occured when grabbing the vertex buffer data.
-						return DX12Rendering::Commands::FenceValue::Empty(DX12Rendering::Commands::COMPUTE);
-					}
-
-					DX12Rendering::Geometry::VertexBuffer* const apiVertexBuffer = static_cast<DX12Rendering::Geometry::VertexBuffer*>(vertexBuffer->GetAPIObject());
-
-					// get joint buffer
-					idJointBuffer jointBuffer;
-					if (!vertexCache.GetJointBuffer(ds->jointCache, &jointBuffer)) {
-						idLib::Warning("BackEnd ComputeSurfaceBones, jointBuffer == NULL");
-						return DX12Rendering::Commands::FenceValue::Empty(DX12Rendering::Commands::COMPUTE);
-					}
-
-					DX12Rendering::Geometry::JointBuffer* const apiJointBuffer = static_cast<DX12Rendering::Geometry::JointBuffer*>(jointBuffer.GetAPIObject());
-
-					// Update the vert structure.
-					const UINT bufferOffset = dxRenderer.ComputeSurfaceBones(apiVertexBuffer, vertOffset, outVertexBufferOffset, vertSize, apiJointBuffer, jointBuffer.GetOffset());
-					
-					if (raytracedEnabled && ds->material && ds->material->SurfaceCastsShadow() /* Only allow shadow casting surfaces */)
-					{
-						const dxHandle_t handle = index;
-						const UINT entityIndex = index << 16;
-
-						DX12Rendering::RaytracingGeometryArgument dxArguments = {};
-						dxArguments.vertexHandle = ds->ambientCache;
-						dxArguments.vertCounts = vertIndexCount;
-						dxArguments.vertexOffset = outVertexBufferOffset;
-
-						dxArguments.indexHandle = ds->indexCache;
-						dxArguments.indexCounts = ds->numIndexes;
-
-						dxArguments.jointsHandle = ds->jointCache;
-
-						// Add to the list of entities
-						rtGeometry.push_back(dxArguments);
-					}
-
-					outVertexBufferOffset += bufferOffset;
-				}
+				outVertexBufferOffset += bufferOffset;
 			}
 
-			// If there are any dynamic BLAS objects being created. Finish them here.
+			dxHandle_t entityHandle = viewEntity->blasIndex;
+			DX12Rendering::ACCELERATION_INSTANCE_TYPE instanceType = DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC;
+
 			if (rtGeometry.size() > 0)
 			{
-				// Add the BLAS and TLAS
-				dxRenderer.DXR_UpdateBLAS(blasHandle, std::string("DynamicBLAS: %d", blasHandle).c_str(), false, rtGeometry.size(), rtGeometry.data());
+				entityHandle = blasHandle++;
+				instanceType = DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC;
 
+				// Createthe BLAS
+				dxRenderer.DXR_UpdateBLAS(entityHandle, std::wstring(L"DynamicBLAS: ").append(std::to_wstring(viewEntity->entityIndex)).c_str(), false, rtGeometry.size(), rtGeometry.data());
+
+				rtGeometry.clear();
+			}
+
+			if (raytracedEnabled && entityHandle > 0)
+			{
 				UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
 				{
 					// Calculate the instance mask
-					if (true || lastEntity->staticShadowVolumes != nullptr || lastEntity->dynamicShadowVolumes != nullptr) // TODO: fix this
+					if (true || viewEntity->staticShadowVolumes != nullptr || viewEntity->dynamicShadowVolumes != nullptr) // TODO: Fix this
 					{
 						instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
 					}
 				}
 
 				dxRenderer.DXR_AddBLASToTLAS(
-					lastEntity->entityIndex,
-					blasHandle,
-					lastEntity->modelRenderMatrix[0],
-					DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_DYNAMIC,
-					static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask)
-				);
-			}
-
-			commandManager->Execute();
-			dxRenderer.EndComputeSurfaceBones();
-		}
-
-		// Update/Create the BLASa and create a list for the TLAS structure 
-		if (raytracedEnabled) {
-			viewEntity_t* viewEntity = viewDef->viewEntitys;
-			for (; viewEntity != NULL; viewEntity = viewEntity->next)
-			{
-				if (viewEntity->blasIndex > 0) // Dynamic objects will not set this value, so we know it's static.
-				{
-					UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
-					{
-						// Calculate the instance mask
-						if (true || viewEntity->staticShadowVolumes != nullptr || viewEntity->dynamicShadowVolumes != nullptr) // TODO: Fix this
-						{
-							instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
-						}
-					}
-
-					dxRenderer.DXR_AddBLASToTLAS(
-						viewEntity->entityIndex,
-						viewEntity->blasIndex,
-						viewEntity->modelRenderMatrix[0],
-						DX12Rendering::ACCELERATION_INSTANCE_TYPE::INSTANCE_TYPE_STATIC,
-						static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
-				}
+					viewEntity->entityIndex,
+					entityHandle,
+					viewEntity->modelRenderMatrix[0],
+					instanceType,
+					static_cast<DX12Rendering::ACCELLERATION_INSTANCE_MASK>(instanceMask));
 			}
 		}
+
+		commandManager->Execute();
+		dxRenderer.EndComputeSurfaceBones();
+
+		return commandManager->InsertFenceSignal();
 	}
 
 private:
-	std::vector<const drawSurf_t*> m_surfaces;
 };
 
 class FillDepthBufferFastPass : public RenderPass
@@ -3851,6 +3786,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	// Clear surfaces from the previous frame
 	if(useGBuffer)
 	{
+		dynamicSurfacesPass.Execute(viewDef, raytracedEnabled);
+
 		const float zeroClear[4] = { 0, 0, 0, 0 };
 		const DX12Rendering::eRenderSurface clearSurfaces[] = {
 			DX12Rendering::eRenderSurface::Position,
@@ -3986,8 +3923,6 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			dxRenderer.DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t::RENDERPARM_INVERSE_VIEWMATRIX_X, transposeViewRenderMatrix[0], 4);
 		}
 	}
-
-	dynamicSurfacesPass.Execute(viewDef, raytracedEnabled);
 
 	// if we are just doing 2D rendering, no need to fill the depth buffer
 	bool raytraceUpdated = false;
