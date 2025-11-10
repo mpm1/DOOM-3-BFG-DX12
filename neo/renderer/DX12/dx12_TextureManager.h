@@ -7,14 +7,18 @@
 
 namespace DX12Rendering
 {
+	typedef GUID SamplerKey;
+
 	enum eGlobalTexture
 	{
 		DEPTH_TEXTURE,
 		POSITION,
 		ALBEDO,
 		SPECULAR_COLOR,
+		MATERIAL_PROPERTIES, // r = Roughness, g = Metallic, b = occlusion? (not implemented)
 		WORLD_NORMALS,
 		WORLD_FLAT_NORMALS,
+		WORLD_FLAT_TANGENT,
 		RAYTRACED_SHADOWMAP,
 
 		RAYTRACED_DIFFUSE,
@@ -130,6 +134,7 @@ namespace DX12Rendering
 		const D3D12_DESCRIPTOR_RANGE1* GetDescriptorRanges() { return m_descriptorRanges; }
 
 		const bool IsInitialized() { return m_isInitialized; }
+
 	private:
 		ScratchBuffer m_textureUploadHeap;
 
@@ -139,6 +144,7 @@ namespace DX12Rendering
 
 		std::vector<DX12Rendering::TextureBuffer*> m_textures; // Stores the active texture information in the scene.
 		DX12Rendering::BindlessSamplerIndex m_samplers[BINDLESS_TEXTURE_COUNT]; // Stores the active sampler index for each texture. The texture vertex must match the index of each entry.
+		SamplerKey m_samplerHash[BINDLESS_TEXTURE_COUNT];
 
 		UINT m_nextSamplerLocation;
 
@@ -147,6 +153,15 @@ namespace DX12Rendering
 		void SetTextureToDefault(UINT textureIndex);
 
 		TextureBuffer* GetTextureBuffer(const UINT index) { return m_textures[index]; }
+
+		const SamplerKey GetSamplerKey(D3D12_SAMPLER_DESC& samplerDesc) noexcept
+		{
+			SamplerKey result{};
+
+			MurmurHash3_x64_128(&samplerDesc, sizeof(D3D12_SAMPLER_DESC), 111, &result);
+
+			return result;
+		}
 	};
 
 	TextureManager* GetTextureManager();

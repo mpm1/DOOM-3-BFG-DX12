@@ -225,8 +225,12 @@ void idRenderWorldLocal::AddAreaViewEntities( int areaNum, const portalStack_t *
 			}
 		}
 
+		const renderEntity_t* renderEntity = &entity->parms;
+		bool isRaytracingEnabled = dxRenderer.IsRaytracingEnabled() && renderEntity->hModel != NULL &&
+			(renderEntity->hModel->ModelHasInteractingSurfaces() || renderEntity->hModel->ModelHasShadowCastingSurfaces());
+
 		// cull reference bounds
-		if ( CullEntityByPortals( entity, ps ) ) {
+		if (!isRaytracingEnabled && CullEntityByPortals( entity, ps ) ) {
 			// we are culled out through this portal chain, but it might
 			// still be visible through others
 			continue;
@@ -237,7 +241,7 @@ void idRenderWorldLocal::AddAreaViewEntities( int areaNum, const portalStack_t *
 		vEnt->modelRenderMatrix = entity->modelRenderMatrix;
 
 		// Check if we've created the needed BLAS
-		if (dxRenderer.IsRaytracingEnabled())
+		if (isRaytracingEnabled)
 		{
 			const renderEntity_t* renderEntity = &entity->parms;
 

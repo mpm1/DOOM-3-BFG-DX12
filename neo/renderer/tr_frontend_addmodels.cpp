@@ -320,6 +320,7 @@ two or more lights.
 void R_AddSingleModel( viewEntity_t * vEntity ) {
 	// we will add all interaction surfs here, to be chained to the lights in later serial code
 	vEntity->drawSurfs = NULL;
+	vEntity->dynamicSurfaces = NULL;
 	vEntity->staticShadowVolumes = NULL;
 	vEntity->dynamicShadowVolumes = NULL;
 
@@ -427,27 +428,12 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 		}
 	}
 
-	// Add the model to the raytracing system
-	if (renderEntity->hModel != NULL &&
-		(renderEntity->hModel->ModelHasInteractingSurfaces() ||
-			renderEntity->hModel->ModelHasShadowCastingSurfaces())) 
-	{
-		UINT instanceMask = DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_NONE;
-		{
-			// Calculate the instance mask
-			if (renderEntity->hModel->ModelHasShadowCastingSurfaces())
-			{
-				instanceMask |= DX12Rendering::ACCELLERATION_INSTANCE_MASK::INSTANCE_MASK_CAST_SHADOW;
-			}
-		}
-	}
-
 	// if we aren't visible and none of the shadows stretch into the view,
 	// we don't need to do anything else
 	if ( !modelIsVisible && numContactedLights == 0 ) {
 		return;
 	}
-
+	
 	//---------------------------
 	// create a dynamic model if the geometry isn't static
 	//---------------------------
@@ -599,7 +585,7 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 		// base drawing surface
 		//--------------------------
 		drawSurf_t * baseDrawSurf = NULL;
-		if ( surfaceDirectlyVisible ) {
+		if (surfaceDirectlyVisible ) {
 			// make sure we have an ambient cache and all necessary normals / tangents
 			if ( !vertexCache.CacheIsCurrent( tri->indexCache ) ) {
 				tri->indexCache = vertexCache.AllocIndex( tri->indexes, ALIGN( tri->numIndexes * sizeof( triIndex_t ), INDEX_CACHE_ALIGN ) );
@@ -663,6 +649,53 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 				baseDrawSurf->nextOnLight = vEntity->drawSurfs;
 				vEntity->drawSurfs = baseDrawSurf;
 			}
+		}
+		else if(vEntity->blasIndex <= 0)
+		{
+			//Dynanic offscreen object
+
+			if (!vertexCache.CacheIsCurrent(tri->indexCache)) {
+				tri->indexCache = vertexCache.AllocIndex(tri->indexes, ALIGN(tri->numIndexes * sizeof(triIndex_t), INDEX_CACHE_ALIGN));
+			}
+			if (!vertexCache.CacheIsCurrent(tri->ambientCache)) {
+				// we are going to use it for drawing, so make sure we have the tangents and normals
+				if (shader->ReceivesLighting() && !tri->tangentsCalculated) {
+					assert(tri->staticModelWithJoints == NULL);
+					R_DeriveTangents(tri);
+					//assert( false );	// this should no longer be hit
+				}
+				tri->ambientCache = vertexCache.AllocVertex(tri->verts, ALIGN(tri->numVerts * sizeof(idDrawVert), VERTEX_CACHE_ALIGN));
+			}
+
+			// add the surface for bone calculation
+			// we can re-use some of the values for light interaction surfaces			
+			baseDrawSurf = (drawSurf_t*)R_FrameAlloc(sizeof(*baseDrawSurf), FRAME_ALLOC_DRAW_SURFACE);
+			baseDrawSurf->frontEndGeo = tri;
+			baseDrawSurf->space = vEntity;
+			baseDrawSurf->scissorRect = vEntity->scissorRect;
+			baseDrawSurf->extraGLState = 0;
+			baseDrawSurf->renderZFail = 0;
+
+			R_SetupDrawSurfShader(baseDrawSurf, shader, renderEntity);
+
+			// copy verts and indexes to this frame's hardware memory if they aren't already there
+			if (!vertexCache.CacheIsCurrent(tri->ambientCache)) {
+				tri->ambientCache = vertexCache.AllocVertex(tri->verts, ALIGN(tri->numVerts * sizeof(tri->verts[0]), VERTEX_CACHE_ALIGN));
+			}
+			if (!vertexCache.CacheIsCurrent(tri->indexCache)) {
+				tri->indexCache = vertexCache.AllocIndex(tri->indexes, ALIGN(tri->numIndexes * sizeof(tri->indexes[0]), INDEX_CACHE_ALIGN));
+			}
+
+			R_SetupDrawSurfJoints(baseDrawSurf, tri, shader);
+
+			baseDrawSurf->numIndexes = tri->numIndexes;
+			baseDrawSurf->ambientCache = tri->ambientCache;
+			baseDrawSurf->indexCache = tri->indexCache;
+			baseDrawSurf->shadowCache = 0;
+
+			baseDrawSurf->linkChain = &vEntity->dynamicSurfaces; // Only used for shadow calculation.
+			baseDrawSurf->nextOnLight = vEntity->drawSurfs;
+			vEntity->drawSurfs = baseDrawSurf;
 		}
 
 		//----------------------------------------
@@ -1035,7 +1068,7 @@ void R_AddModels() {
 		tr.frontEndJobList->Wait();
 	} else {
 		for ( viewEntity_t * vEntity = tr.viewDef->viewEntitys; vEntity != NULL; vEntity = vEntity->next ) {
-			R_AddSingleModel( vEntity );
+			R_AddSingleModel( vEntity ); 
 		}
 	}
 
@@ -1087,6 +1120,13 @@ void R_AddModels() {
 			drawSurf_t * next = ds->nextOnLight;
 
 			if ( ds->linkChain == NULL ) {
+				if (ds->jointCache)
+				{
+					// Add it for later bone calculations.
+					ds->nextOnLight = vEntity->dynamicSurfaces;
+					vEntity->dynamicSurfaces = ds;
+				}
+
 				R_LinkDrawSurfToView( ds, tr.viewDef );
 	 		} else {
 				ds->nextOnLight = *ds->linkChain;

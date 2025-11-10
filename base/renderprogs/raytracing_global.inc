@@ -57,10 +57,10 @@ struct Attributes
   float2	location; // Location of the hit.
 };
 
-#define LIGHT_FLAG_CASTS_SHADOWS (0x01 << 0)
-#define LIGHT_FLAG_POINT_LIGHT   (0x01 << 1)
-#define LIGHT_FLAG_AMBIENT_LIGHT (0x01 << 2)
-#define LIGHT_FLAG_FOG_LIGHT     (0x01 << 3)
+#define LIGHT_FLAG_CASTS_SHADOWS (0x0001 << 0)
+#define LIGHT_FLAG_POINT_LIGHT   (0x0001 << 1)
+#define LIGHT_FLAG_AMBIENT_LIGHT (0x0001 << 2)
+#define LIGHT_FLAG_FOG_LIGHT     (0x0001 << 3)
 
 #define MAX_SCENE_LIGHTS 128
 
@@ -74,11 +74,12 @@ struct SceneLight {
     uint    projectionIndex;
 
     uint    flags;
-    uint    pad1;
+    float   shadowStartDistance; // Distance from the light to start the shadow casting. 
     uint    pad2;
     float   emissiveRadius;
 
-    float4   color;
+    float4   diffuseColor;
+    float4   specularColor;
 
     float4  center;
     
@@ -113,14 +114,19 @@ struct RaytracedSceneConstants {
     RenderParameters rp;
 
     uint lightCount;
-    float noiseOffset;
     uint diffuseTextureIndex;
     uint specularTexureIndex;
+    uint materialTextureIndex;
 
     uint positionTextureIndex;
 	uint flatNormalIndex;
     uint normalIndex;
     uint raysPerLight;
+
+    float noiseOffset;
+	uint flatTangentIndex;
+	uint pad1;
+	uint pad2;
 };
 
 // Raytracing acceleration structure, accessed as a SRV
@@ -205,24 +211,33 @@ inline float4 GetWorldPointFromDepth(float depth, float2 screenPosition, in Rayt
 
 float3 CalculateFalloff(in SceneLight light, float4 worldPosition)
 {
-	float2 uv = float2(dot4( worldPosition, light.falloffS ), 0);
-	float4 falloff =  SampleBindlessTexture4fLevel(light.falloffIndex, uv, 0);
-	
+	float4 uv = dot4( worldPosition, light.falloffS );
+	float4 falloff =  SampleBindlessTexture4fLevel(light.falloffIndex, uv.xy, 0);
+
 	return falloff.rgb;
 }
 
-float3 CalculateProjection(in SceneLight light, float4 worldPosition)
+float3 GetLightSpacePosition(in SceneLight light,  in float3 worldPosition)
+{
+    // Given a light, calculate the position of the point with respect to the light in the world.
+    //float3 location = worldPosition.xyz - light.center; //TODO: Realign the light to match the perspective angle of the point
+   
+    //return location;
+    return worldPosition;
+}
+
+float3 CalculateProjection(in SceneLight light, in float4 location)
 {
 	float4 projection = float4(
-		dot4(worldPosition, light.projectionS),
-		dot4(worldPosition, light.projectionT),
+		dot4(location, light.projectionS),
+		dot4(location, light.projectionT),
 		0.0f,
-		dot4(worldPosition, light.projectionQ)
+		dot4(location, light.projectionQ)
 	);
 
-	projection.xy /= projection.w;
-
-	return pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 3.2); // Added some correction to match the original art
+    projection.xy /= projection.w; //This is done to match idtex2Dproj
+    
+	return SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 1).rgb;//pow(SampleBindlessTexture4fLevel(light.projectionIndex, projection.xy, 0).rgb, 1 / 2.2); // Added some correction to match the original art
 }
 
 uint4 ConvertShadowmapMaskToVector(uint shadowMask)
@@ -250,36 +265,45 @@ float StartDistanceFromSurface(in float3 worldPosition, in float3 eyePosition)
 // Light functions
 // General BRDF functions
 void GeneralBRDF(
-    float3 lightColor,
-    float NdotL,
-    float3 surfaceNormal,
-    float baseReflectivity, //TODO: Add this as a material property to the surface.
-    float roughness, //TODO: Add this as a material property to the surface.
-    float3 viewVector,
-    float3 halfVector,
+    in float3 lightColor,
+    in float3 diffuseColor,
+    in float3 specularColor,
+    in float NdotL,
+    in float3 surfaceNormal,
+    in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
+    in float3 baseReflectivity, //TODO: Add this as a material property to the surface.
+    in float roughness, //TODO: Add this as a material property to the surface.
+    in float3 viewVector,
+    in float3 halfVector,
     out float3 diffuseContribution,
     out float3 specularContribution)
 {
-    float fresnelFactor = baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - dot3(viewVector, halfVector), 5.0);
+    float3 fresnelFactor = CalculateFresnel(baseReflectivity, viewVector, halfVector);
 
     // Diffuse using the Lambertian Model (we already used L dot N for the light Color)
-    diffuseContribution = lightColor * (1.0 - fresnelFactor) / PI;
+    diffuseContribution = lightColor * (diffuseColor * NdotL * (1.0 - fresnelFactor)) / distribution;
 
     // Useing Cook-Torrance BRDF for specular reflection
-    float NdotH = dot3(surfaceNormal, halfVector);
+    float NdotH = max(dot3(surfaceNormal, halfVector), 0.0);
 
     float alpha = roughness * roughness;
     float k = alpha / 2.0;
 
     float a2 = alpha * alpha;
-    float D = a2 / (PI * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
+    float D = a2 / (distribution * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
 
-    float NdotV = dot(surfaceNormal, viewVector);
-    float G1 = NdotV / (NdotV * (1 - k) + k);
-    float G2 = lightColor / (NdotL * (1 - k) + k);
+    float NdotV = max(dot(surfaceNormal, viewVector), 0.0);
+    float G1 = NdotV / max(NdotV * (1 - k) + k, 0.0000001);
+    float G2 = NdotL / max(NdotL * (1 - k) + k, 0.0000001);
     float G = G1 * G2; // Smith's shadowing-masking function
 
-    specularContribution = (D * G * fresnelFactor) / (4.0 * NdotL * NdotV);
+    if(G <= 0.0)
+    {
+        specularContribution = float3(0.0f, 0.0f, 0.0f);
+        return;  
+    }
+
+    specularContribution = lightColor * specularColor * ((D * G * fresnelFactor) / (4.0 * NdotL * NdotV));
 }
 
 // Calculates the amount of specular and diffuse light hitting a surface.
@@ -290,15 +314,19 @@ float CalcluateLightImpact(
     in float3 viewVector, // Hit point to eye vector.
     in float3 surfaceNormal,
     in float3 lightVector,
+    in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
+    in float3 baseReflectivity, //TODO: Add this as a material property to the surface.
+    in float roughness, //TODO: Add this as a material property to the surface.
     out float3 diffuseContribution,
     out float3 specularContribution
     )
 {
     float NdotL = dot3(surfaceNormal, lightVector);
+    float3 lightWorldPosition = GetLightSpacePosition(light, worldPosition);
 
     // TODO: Do we need a modifier here for subsurface scattering?
 
-    if (NdotL <= EPSILON)
+    if (NdotL <= 0.0)
 	{
 		// No light is being cast.
         diffuseContribution = float3(0.0f, 0.0f, 0.0f);
@@ -306,11 +334,11 @@ float CalcluateLightImpact(
 		return NdotL;
 	}
 
-    float3 lightColor = NdotL * 
-				CalculateFalloff(light, float4(worldPosition, 1.0)) * 
-				CalculateProjection(light, float4(worldPosition, 1.0));
+    float3 lightColor = 
+                CalculateFalloff(light, float4(lightWorldPosition, 1.0)) *
+				CalculateProjection(light, float4(lightWorldPosition, 1.0));
 
-    if (length(lightColor) <= EPSILON)
+    if (length(lightColor) <= 0.0)
     {
         // No light is reflected.
         diffuseContribution = float3(0.0f, 0.0f, 0.0f);
@@ -320,10 +348,13 @@ float CalcluateLightImpact(
 
     GeneralBRDF(
         lightColor,
+        light.diffuseColor.rgb,
+        light.specularColor.rgb,
         NdotL,
         surfaceNormal,
-        0.5f, // Base reflectivity, we need to eventually adjust this per material.
-        0.5f, // Roughness, we need to eventually adjust this per material.
+        distribution,
+        baseReflectivity, // Base reflectivity, we need to eventually adjust this per material.
+        roughness, // Roughness, we need to eventually adjust this per material.
         viewVector, // View vector
         normalize(lightVector + viewVector), // Half vector
         diffuseContribution,

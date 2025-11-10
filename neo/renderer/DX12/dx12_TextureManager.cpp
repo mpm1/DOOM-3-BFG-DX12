@@ -103,6 +103,11 @@ namespace DX12Rendering
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 			break;
 
+		case eGlobalTexture::MATERIAL_PROPERTIES:
+			name = "material_properties";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
 		case eGlobalTexture::RAYTRACED_DIFFUSE:
 			name = "raytraced_diffuse";
 			textureDesc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;
@@ -120,6 +125,11 @@ namespace DX12Rendering
 
 		case eGlobalTexture::WORLD_FLAT_NORMALS:
 			name = "world_flat_normals";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
+		case eGlobalTexture::WORLD_FLAT_TANGENT:
+			name = "world_flat_tangent";
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 			break;
 
@@ -240,12 +250,30 @@ namespace DX12Rendering
 			index.samplerMapIndex = m_nextSamplerLocation;
 			index.frame = frameIndex;
 
-			// Place the sampler on the GPU
-			HeapDescriptorManager* heapManager = GetDescriptorManager();
-			D3D12_CPU_DESCRIPTOR_HANDLE samplerHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorSamplerEntries, m_nextSamplerLocation);
-			Device::GetDevice()->CreateSampler(&GetTextureBuffer(textureIndex)->m_samplerDesc, samplerHandle);
+			D3D12_SAMPLER_DESC& samplerDesc = GetTextureBuffer(textureIndex)->m_samplerDesc;
+			const SamplerKey samplerKey = GetSamplerKey(samplerDesc);
 
-			++m_nextSamplerLocation;
+			// Check if a matching sampler already exists for the frame.
+			int samplerIndex = std::find_if(&m_samplerHash[0], &m_samplerHash[m_nextSamplerLocation], [&samplerKey](const SamplerKey& checkKey)
+			{
+				return IsEqualGUID(samplerKey, checkKey);
+			}) - &m_samplerHash[0];
+
+			if(samplerIndex < m_nextSamplerLocation)
+			{
+				index.samplerMapIndex = samplerIndex;
+			}
+			else
+			{
+				m_samplerHash[m_nextSamplerLocation] = samplerKey;
+
+				// Place the sampler on the GPU
+				HeapDescriptorManager* heapManager = GetDescriptorManager();
+				D3D12_CPU_DESCRIPTOR_HANDLE samplerHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorSamplerEntries, m_nextSamplerLocation);
+				Device::GetDevice()->CreateSampler(&samplerDesc, samplerHandle);
+
+				++m_nextSamplerLocation;
+			}
 		}
 	}
 

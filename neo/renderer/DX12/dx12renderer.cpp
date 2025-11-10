@@ -23,6 +23,14 @@ extern idCommon* common;
 
 namespace
 {
+	static void DX12_GlobalPlaneToLocal(const float modelMatrix[16], const idPlane& in, XMFLOAT4& out)
+	{
+		out.x = in[0] * modelMatrix[0 * 4 + 0] + in[1] * modelMatrix[0 * 4 + 1] + in[2] * modelMatrix[0 * 4 + 2];
+		out.y = in[0] * modelMatrix[1 * 4 + 0] + in[1] * modelMatrix[1 * 4 + 1] + in[2] * modelMatrix[1 * 4 + 2];
+		out.z = in[0] * modelMatrix[2 * 4 + 0] + in[1] * modelMatrix[2 * 4 + 1] + in[2] * modelMatrix[2 * 4 + 2];
+		out.w = in[0] * modelMatrix[3 * 4 + 0] + in[1] * modelMatrix[3 * 4 + 1] + in[2] * modelMatrix[3 * 4 + 2] + in[3];
+	}
+
 	static void DX12_GetShaderTextureMatrix(const float* shaderRegisters, const textureStage_t* texture, float matrix[16]) {
 		// Copied from RB_GetShaderTextureMatrix
 		matrix[0 * 4 + 0] = shaderRegisters[texture->matrix[0][0]];
@@ -55,7 +63,7 @@ namespace
 		matrix[3 * 4 + 3] = 1.0f;
 	}
 
-	static void DX12_BakeTectureMatrixIntoTexgen(XMFLOAT4 lightProject[3], const float* textureMatrix)
+	static void DX12_BakeTextureMatrixIntoTexgen(XMFLOAT4* lightProject, const float* textureMatrix)
 	{
 		float genMatrix[16];
 		float final[16];
@@ -229,7 +237,7 @@ void DX12Renderer::CreateDynamicPerFrameData()
 {
 	for (UINT frameIndex = 0; frameIndex < DX12_FRAME_COUNT; ++frameIndex)
 	{
-		m_dynamicVertexBuffer[frameIndex] = AllocVertexBuffer(DX12_ALIGN(DYNAMIC_VERTEX_MEMORY_PER_FRAME, DYNAMIC_VERTEX_ALIGNMENT), std::wstring(L"Dynamic Vertex Data %d", frameIndex).c_str(), true);
+		m_dynamicVertexBuffer[frameIndex] = AllocVertexBuffer(DX12_ALIGN(DYNAMIC_VERTEX_MEMORY_PER_FRAME, DYNAMIC_VERTEX_ALIGNMENT), std::wstring(L"Dynamic Vertex Data ").append(std::to_wstring(frameIndex)).c_str(), true);
 	}
 }
 
@@ -971,9 +979,12 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatNormal)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::FlatTangent)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SpecularColor)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Reflectivity)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::MaterialProperties)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination)->Resize(width, height);
 
@@ -1163,17 +1174,20 @@ UINT DX12Renderer::DXR_UpdatePendingBLAS()
 	return result;
 }
 
-DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(const dxHandle_t id, const char* name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments)
+DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateBLAS(const dxHandle_t id, const LPCWSTR name, const bool isStatic, const size_t surfaceCount, DX12Rendering::RaytracingGeometryArgument* arguments)
 {
 	if (!IsRaytracingEnabled()) {
+		return nullptr;
+	}
+
+	if (surfaceCount == 0)
+	{
 		return nullptr;
 	}
 	
 	DX12Rendering::WriteLock raytraceLock(m_raytracingLock);
 
-	std::string blasName = std::string(name);
-
-	DX12Rendering::BottomLevelAccelerationStructure* blas = m_raytracing->GetBLASManager()->CreateBLAS(id, isStatic, true, std::wstring(blasName.begin(), blasName.end()).c_str());
+	DX12Rendering::BottomLevelAccelerationStructure* blas = m_raytracing->GetBLASManager()->CreateBLAS(id, isStatic, true, name);
 
 	if (blas == nullptr)
 	{
@@ -1304,7 +1318,13 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 			continue;
 		}
 
-		if (!surf.shader->ReceivesLighting() && !surf.shader->LightCastsShadows()) // We're assuming all light receiving objects cast shadows in this model.
+		if (surf.shader->GetSort() == SS_DECAL)
+		{
+			// We are not adding translucent surfaces to the trace.
+			continue;
+		}
+
+		if (!surf.shader->LightCastsShadows())
 		{
 			// If we dont cast shadows, drop it.
 			continue;
@@ -1344,7 +1364,14 @@ DX12Rendering::BottomLevelAccelerationStructure* DX12Renderer::DXR_UpdateModelIn
 		geometry.emplace_back(geo);
 	}
 
-	return DXR_UpdateBLAS(index, model->Name(), isStatic, geometry.size(), geometry.data());
+	LPCWSTR name = nullptr;
+
+#if defined(_DEBUG)
+	std::string stringName(model->Name());
+	name = std::wstring(stringName.begin(), stringName.end()).c_str();
+#endif
+
+	return DXR_UpdateBLAS(index, name, isStatic, geometry.size(), geometry.data());
 }
 
 void DX12Renderer::DXR_AddModelBLASToTLAS(const uint entityIndex, const idRenderModel& model, const float transform[16], const DX12Rendering::ACCELERATION_INSTANCE_TYPE typesMask, const DX12Rendering::ACCELLERATION_INSTANCE_MASK instanceMask)
@@ -1390,7 +1417,7 @@ void DX12Renderer::DXR_SetRenderParams(DX12Rendering::dxr_renderParm_t param, co
 
 bool DX12Renderer::DXR_CastRays()
 {
-	if (r_useGli.GetBool())
+	if (false && r_useGli.GetBool()) //TODO: Re-enable when continuing global illumination.
 	{
 		m_raytracing->CastGlobalIlluminationRays(DX12Rendering::GetCurrentFrameIndex(), m_viewport, m_scissorRect);
 	}
@@ -1421,9 +1448,9 @@ bool DX12Renderer::DXR_CastRays()
 		specularMap->CopySurfaceToTexture(specularTexture, textureManager);
 
 		// Copy the global illumination data
-		auto globalIllumination = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination);
+		/*auto globalIllumination = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination);
 		DX12Rendering::TextureBuffer* gliTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_GLI);
-		globalIllumination->CopySurfaceToTexture(gliTexture, textureManager);
+		globalIllumination->CopySurfaceToTexture(gliTexture, textureManager);*/
 
 		// Wait for all copies to complete.
 		DX12Rendering::Commands::FenceValue fenceValue = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
@@ -1479,6 +1506,9 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 
 		const float lightScale = r_lightScale.GetFloat();
 
+		const bool castsShadows = r_allLightsCastShadows.GetBool() || vLight->castsShadows;
+		const float shadowStartDistance = castsShadows ? 0.1f : 0.0f;
+
 		for (int lightStageNum = 0; lightStageNum < lightShader->GetNumStages(); lightStageNum++) 
 		{
 			const shaderStage_t* lightStage = lightShader->GetStage(lightStageNum);
@@ -1493,7 +1523,7 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 				lightScale * lightRegs[lightStage->color.registers[1]],
 				lightScale * lightRegs[lightStage->color.registers[2]],
 				lightRegs[lightStage->color.registers[3]]);
-			
+
 			// apply the world-global overbright and the 2x factor for specular
 			const XMFLOAT4 diffuseColor = lightColor;
 			//const XMFLOAT4 specularColor = lightColor * 2.0f;
@@ -1501,22 +1531,21 @@ void DX12Renderer::DXR_SetupLights(const viewLight_t* viewLights, const float* w
 			// transform the light project into model local space
 			XMFLOAT4 lightProjection[4];
 			for (int i = 0; i < 4; i++) {
-				memcpy(&lightProjection[i], vLight->lightProject[i].ToFloatPtr(), sizeof(float) * 4);
+				DX12_GlobalPlaneToLocal(worldMatrix, vLight->lightProject[i], lightProjection[i]);
+				//memcpy(&lightProjection[i], vLight->lightProject[i].ToFloatPtr(), sizeof(float) * 4);
 			}
 
 			// optionally multiply the local light projection by the light texture matrix
 			if (lightStage->texture.hasMatrix) {
 				float lightTextureMatrix[16];
 				DX12_GetShaderTextureMatrix(lightRegs, &lightStage->texture, lightTextureMatrix);
-				DX12_BakeTectureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
+				DX12_BakeTextureMatrixIntoTexgen(lightProjection, lightTextureMatrix);
 			}
-
-			const bool castsShadows = r_allLightsCastShadows.GetBool() || vLight->castsShadows;
 
 			if (!m_raytracing->AddLight(vLight->sceneIndex, lightType,
 				static_cast<const DX12Rendering::TextureBuffer*>(vLight->falloffImage->Bindless()), 
 				static_cast<const DX12Rendering::TextureBuffer*>(lightStage->texture.image->Bindless()), 
-				vLight->shadowMask, location, lightColor, lightProjection, scissor, castsShadows))
+				vLight->shadowMask, location, lightColor, lightProjection, scissor, castsShadows, shadowStartDistance))
 			{
 				// Could not add the raytraced light
 				shadowMask = 0;

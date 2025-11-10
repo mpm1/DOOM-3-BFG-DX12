@@ -4,7 +4,7 @@
 #include "./dx12_global.h"
 #include "./dx12_RenderTarget.h"
 
-#define MAX_RENDER_TARGETS 5
+#define MAX_RENDER_TARGETS 7
 
 namespace DX12Rendering
 {

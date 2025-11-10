@@ -52,16 +52,16 @@ float3 ColorCorrection(float3 color, float gamma)
 void main( PS_IN fragment, out PS_OUT result ) {
 	float2 tCoords = fragment.texcoord0;
 
-	float4 albedo = samp2.Sample(baseSampler, tCoords);
+	float3 albedo = samp2.Sample(baseSampler, tCoords).rgb;
 
-	float4 globalIllumination = samp4.Sample(baseSampler, tCoords) * albedo;
+	float3 globalIllumination = samp4.Sample(baseSampler, tCoords).rgb;
 
-	float4 diffuse = samp0.Sample(baseSampler, tCoords) * albedo;
-	float4 specular = samp1.Sample(baseSampler, tCoords) * samp3.Sample(baseSampler, tCoords);
+	float3 diffuse = (globalIllumination + samp0.Sample(baseSampler, tCoords).rgb) * albedo;
+	float3 specular = samp1.Sample(baseSampler, tCoords).rgb; // TODO: RValidate remving this is correct, now that we calculate it in the lighting. // * samp3.Sample(baseSampler, tCoords);
 
 	//specular.rgb = ColorCorrection(specular.rgb, 1.3); // Modifying our specular to better match the games style.
 	
-	result.color = saturate(globalIllumination + diffuse + specular); //TODO: move this to and HDR texture then have a separate shader to filter it down.
+	result.color.rgb = saturate(diffuse + specular); //TODO: move this to and HDR texture then have a separate shader to filter it down.
 	
 	result.color.w = 1.0;
 }

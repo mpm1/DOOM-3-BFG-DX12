@@ -21,6 +21,26 @@ static const float4 matrixCoCg1YtoRGB1X = float4(  1.0, -1.0,  0.0,        1.0 )
 static const float4 matrixCoCg1YtoRGB1Y = float4(  0.0,  1.0, -0.50196078, 1.0 ); // -0.5 * 256.0 / 255.0
 static const float4 matrixCoCg1YtoRGB1Z = float4( -1.0, -1.0,  1.00392156, 1.0 ); // +1.0 * 256.0 / 255.0
 
+static half3 ConvertDiffuseToAlbedo(in half3 rgbDiffuse)
+{
+	half3 albedoColor;
+	float invertLumminance = 1.0 - saturate(0.299 * rgbDiffuse.r + 0.587 * rgbDiffuse.g + 0.114 * rgbDiffuse.b); //TODO: this works ok, but we need to keep finer details in the darks. maybe a cavity texture.
+	float L2 = 2.0 * invertLumminance;
+
+	if(invertLumminance < 0.5)
+	{
+		albedoColor = (rgbDiffuse * L2) + pow(rgbDiffuse, 2.0) * (1.0 - L2);
+	}
+	else
+	{
+		albedoColor = (2.0 * rgbDiffuse * (1.0 - invertLumminance)) + (sqrt(rgbDiffuse) * (2.0 * invertLumminance - 1.0));
+	}
+
+	//albedoColor = ((1.0 - L2) * pow(rgbDiffuse, 2.0)) + (L2 * rgbDiffuse);
+
+	return albedoColor;
+}
+
 static half3 ConvertYCoCgToRGB( half4 YCoCg ) {
 	half3 rgbColor;
 
@@ -113,4 +133,26 @@ uint PackR8G8B8A8(float4 inputValue)
 	uint4 values = uint4(inputValue * 255.0);
 
 	return ((values.x & 0xFF) << 24) | ((values.y & 0xFF) << 16) | ((values.z & 0xFF) << 8) | (values.w & 0xFF);
+}
+
+// Material functions
+void ExtractMaterialProperties(
+	in float3 specularColor,
+	in float3 materialProperties,
+	out float roughness,
+	out float3 baseReflection,
+	out float metalness
+)
+{
+	roughness = materialProperties.x;
+	metalness = materialProperties.y;
+
+	// Approximate the base reflectivity from the specular color.
+	baseReflection = specularColor * materialProperties.z;
+}
+
+// Lighting Helpers
+inline float3 CalculateFresnel(in float3 baseReflectivity, in float3 viewVector, in float3 halfVector)
+{
+	return baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - dot3(viewVector, halfVector), 5.0);
 }

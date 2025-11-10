@@ -11,7 +11,7 @@
 
 idCVar s_raysCastPerLight("s_raysCastPerLight", "20", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "number of shadow rays per light per pixel.", 0, 1000);
 idCVar s_lightEmissiveRadius("s_lightEmissiveRadius", "20.0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_FLOAT, "the radius of a light. The larger the value, the softer shadows will be.", 0.0f, 100.0f);
-idCVar r_useGli("r_useGli", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "use raytraced global illumination.");
+idCVar r_useGli("r_useGli", "0", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_BOOL, "use raytraced global illumination.");
 idCVar r_gliResolution("r_gliResolution", "0.33" /*"0.125"*/, CVAR_RENDERER | CVAR_FLOAT, "the percentage of global illumination points to cast per screen axis.", 0.0f, 1.0f);
 idCVar r_gliBounces("r_gliBounces", "1", CVAR_RENDERER | CVAR_ARCHIVE | CVAR_INTEGER, "the max number of global illumination bounces allowed.", 0, 10);
 
@@ -83,9 +83,11 @@ namespace DX12Rendering {
 			//Update the resources
 			m_constantBuffer.positionTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::POSITION)->GetTextureIndex();
 			m_constantBuffer.flatNormalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS)->GetTextureIndex();
+			m_constantBuffer.flatTangentIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_TANGENT)->GetTextureIndex();
 			m_constantBuffer.normalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)->GetTextureIndex();
 			m_constantBuffer.diffuseTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO)->GetTextureIndex();
 			m_constantBuffer.specularTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR)->GetTextureIndex();
+			m_constantBuffer.materialTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::MATERIAL_PROPERTIES)->GetTextureIndex();
 
 			m_constantBuffer.raysPerLight = s_raysCastPerLight.GetInteger();
 
@@ -270,6 +272,7 @@ namespace DX12Rendering {
 	void Raytracing::ResetLightList()
 	{
 		m_constantBuffer.lightCount = 0;
+		memset(m_lights, 0, sizeof(m_lights));
 	}
 
 	UINT Raytracing::GetLightMask(const UINT lightIndex)
@@ -285,7 +288,7 @@ namespace DX12Rendering {
 		return 0x00000000;
 	}
 
-	bool Raytracing::AddLight(const UINT lightIndex, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4& location, const XMFLOAT4& color, const XMFLOAT4* lightProjection, const XMFLOAT4& scissorWindow, bool castsShadows)
+	bool Raytracing::AddLight(const UINT lightIndex, const DXR_LIGHT_TYPE type, const DX12Rendering::TextureBuffer* falloffTexture, const DX12Rendering::TextureBuffer* projectionTexture, const UINT shadowMask, const XMFLOAT4& location, const XMFLOAT4& color, const XMFLOAT4* lightProjection, const XMFLOAT4& scissorWindow, bool castsShadows, float shadowStartDistance)
 	{
 		static UINT padValue = 0;
 		padValue = (padValue + 1) % 3459871;
@@ -293,6 +296,7 @@ namespace DX12Rendering {
 		UINT index = m_constantBuffer.lightCount;
 		if(index >= MAX_SCENE_LIGHTS)
 		{ 
+			m_constantBuffer.lightCount = MAX_SCENE_LIGHTS;
 			//assert(false, "Raytracing::AddLight: Too many lights.");
 			return false;
 		}
@@ -303,6 +307,7 @@ namespace DX12Rendering {
 		m_lights[index].flags = 0;
 
 		m_lights[index].flagValue.castsShadows = castsShadows;
+		m_lights[index].shadowStartDistance = shadowStartDistance;
 
 		{
 			// Calculate type properties
@@ -331,12 +336,29 @@ namespace DX12Rendering {
 
 		m_lights[index].scissor = scissorWindow;
 
-		m_lights[index].color = color;
+		m_lights[index].diffuseColor = color;
 
-		m_lights[index].projectionS = lightProjection[0];
-		m_lights[index].projectionT = lightProjection[1];
-		m_lights[index].projectionQ = lightProjection[2];
-		m_lights[index].falloffS = lightProjection[3];
+		if (castsShadows)
+		{
+			// We will allow caluculation of the specular light.
+			m_lights[index].specularColor.x = color.x * 2.0f;
+			m_lights[index].specularColor.y = color.y * 2.0f;
+			m_lights[index].specularColor.z = color.z * 2.0f;
+			m_lights[index].specularColor.w = color.w * 2.0f;
+		}
+		else
+		{
+			// No calculated specualr light.
+			m_lights[index].specularColor.x = 0.0f;
+			m_lights[index].specularColor.y = 0.0f;
+			m_lights[index].specularColor.z = 0.0f;
+			m_lights[index].specularColor.w = 0.0f;
+		}
+
+		memcpy(&m_lights[index].projectionS, &lightProjection[0], sizeof(float) * 4);
+		memcpy(&m_lights[index].projectionT, &lightProjection[1], sizeof(float) * 4);
+		memcpy(&m_lights[index].projectionQ, &lightProjection[2], sizeof(float) * 4);
+		memcpy(&m_lights[index].falloffS, &lightProjection[3],sizeof(float) * 4);
 
 		m_lights[index].falloffIndex = falloffTexture->GetTextureIndex();
 		m_lights[index].projectionIndex = projectionTexture->GetTextureIndex();
@@ -438,10 +460,9 @@ namespace DX12Rendering {
 		commandManager->InsertFenceWait(DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->GetLastFenceValue());
 		commandManager->InsertFenceWait(m_tlasManager.GetCurrent().GetLastFenceValue());
 
-		//for (UINT index = 0; index < m_constantBuffer.lightCount; ++index)
-		std::for_each(std::begin(m_lights), std::begin(m_lights) + m_constantBuffer.lightCount,
-				[&](dxr_lightData_t& light)
+		for (UINT lightIndex = 0; lightIndex < m_constantBuffer.lightCount; ++lightIndex)
 		{
+			const dxr_lightData_t& light = m_lights[lightIndex];
 			const UINT objectIndex = RequestNewObjectIndex();
 
 			SetCBVDescriptorTable(sizeof(light), &light, frameIndex, objectIndex, DX12Rendering::e_RaytracingHeapIndex::CBV_LightProperties);
@@ -457,7 +478,7 @@ namespace DX12Rendering {
 			SetOutputTexture(eRenderSurface::Specular, frameIndex, objectIndex, e_RaytracingHeapIndex::UAV_SpecularMap);
 
 			CastRays(frameIndex, objectIndex, viewport, lightViewport, renderPass, m_shadowStateObject.Get(), m_shadowStateObjectProps.Get());
-		});
+		};
 
 		const DX12Rendering::Commands::FenceValue result = commandManager->InsertFenceSignal();
 

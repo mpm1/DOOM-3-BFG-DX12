@@ -191,13 +191,15 @@ struct PS_IN {
 struct PS_OUT {
 #ifdef WRITE_LOCATION_DATA
 	half3 flatNormal	: SV_TARGET0;
-	float3 viewDepth	: SV_TARGET1;
-	half3 normal		: SV_TARGET2;
+	half3 flatTangent	: SV_TARGET1;
+	float3 viewDepth	: SV_TARGET2;
+	half3 normal		: SV_TARGET3;
 #endif
-	half4 albedo		: SV_TARGET3;
-	half4 specularColor	: SV_TARGET4;
+	half4 albedo		: SV_TARGET4;
+	half4 specularColor	: SV_TARGET5;
+	half4 materialProps	: SV_TARGET6;
 #ifdef WRITE_VELOCITY
-	float4 velocity		: SV_TARGET5;
+	float4 velocity		: SV_TARGET7;
 #endif
 };
 
@@ -222,7 +224,13 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	
 	result.specularColor = SampleBindlessTexture4f(gbufferConstants.specularIndex, fragment.texcoord2.xy );
 	
-	result.albedo.rgb = ConvertYCoCgToRGB( YCoCG ); //we need the diffuse modifier constant?
+	result.albedo.rgb = ConvertDiffuseToAlbedo(ConvertYCoCgToRGB( YCoCG )); //we need the diffuse modifier constant?
+
+	float3 reflectivity;
+	float roughness;
+
+	//ExtractMaterialProperties(result.specularColor, result.albedo, roughness, reflectivity);
+	result.materialProps = sceneConstants.rpMaterialProperties;
 
 #ifdef WRITE_VELOCITY
 	result.velocity = CalculateVelocity(fragment.lastPosition, fragment.position);
@@ -232,6 +240,7 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	result.viewDepth = fragment.viewPosition.xyz;//length(fragment.viewPosition.xyz);// / fragment.viewPosition.w); // The depth going into the view space. Note, z will be negitive
 
 	result.flatNormal = (normalize(fragment.normal) + 1.0) / 2.0f;
+	result.flatTangent = (normalize(fragment.tangent) + 1.0) / 2.0f;
 
 	half3 localNormal;
 	localNormal.xy = bumpMap.wy - 0.5;
