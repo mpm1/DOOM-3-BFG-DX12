@@ -22,7 +22,7 @@ struct PSOKeyComparator
 {
 	bool operator()(const PSOKey& a, const PSOKey& b) const
 	{
-		return memcmp(&a, &b, sizeof(PSOKey)) < 0;
+		return memcmp(&a, &b, sizeof(PSOKey)) < 0; // This is specifically a less than comparator for the std::map
 	}
 };
 
