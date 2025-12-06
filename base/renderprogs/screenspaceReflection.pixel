@@ -1,0 +1,173 @@
+
+#include "global.inc"
+
+uniform Texture2D<float4> samp0 : register(t0); // Rendered Image (previous frame)
+uniform Texture2D<float4> samp1 : register(t1); // Normal Map
+uniform Texture2D<float4> samp2 : register(t2); // Material
+uniform Texture2D<float4> samp3 : register(t3); // World Coordinates
+uniform Texture2D<float4> samp4 : register(t4); // Specular properties
+
+struct PS_IN {
+	float4 position : SV_POSITION;
+	float2 texcoord0 : TEXCOORD0_centroid;
+};
+
+struct PS_OUT {
+	float4 vector : SV_TARGET0;
+	float4 color : SV_TARGET1;
+};
+
+float3 GetFragCoordinates(in float4 worldCoord)
+{
+	float4 fragCoord;
+
+	fragCoord.x = dot4( worldCoord, sceneConstants.rpMVPmatrixX );
+	fragCoord.y = dot4( worldCoord, sceneConstants.rpMVPmatrixY );
+	fragCoord.z = dot4( worldCoord, sceneConstants.rpMVPmatrixZ );
+	fragCoord.w = dot4( worldCoord, sceneConstants.rpMVPmatrixW );
+
+	fragCoord.xyz /= fragCoord.w;
+	fragCoord.xy = fragCoord.xy * 0.5 + 0.5;
+
+	fragCoord.xy /= sceneConstants.rpWindowCoord.xy;
+
+	return fragCoord.xyz; // TODO: Pass in the depth buffer values and make this float2
+}
+
+// Using screenspace we find the first intersection between the line starting at startFrag to endFrag
+// Return the UV coordinates of the intersection, the 0.0 to 1.0 distance the instersetoin occurred, an alpha value of the contribution
+float4 ScreenSpaceTraceRay(in float3 startFrag, in float3 endFrag, in float resolution, in int steps, in float thickness)
+{ 
+	//TODO: Optimize
+
+	const float fragMult = startFrag.z * endFrag.z; // Used to calculate the linear position of the ray.
+
+	float3 deltaFrag = max(endFrag - startFrag, EPSILON);
+	float useX = abs(deltaFrag.x) > abs(deltaFrag.y) ? 1.0 : 0.0;
+	float delta = lerp(abs(deltaFrag.y), abs(deltaFrag.x), useX) * saturate(resolution);
+
+	float2 increment = deltaFrag.xy / max(delta, EPSILON);
+
+	float search0 = 0.0;
+	float search1 = 0.0;
+
+	float viewDistance = startFrag.z;
+	float depth = thickness;
+
+	float2 frag = startFrag.xy + float2(0.5, 0.5); // Start in the middle of the fragment.
+	float2 uv = frag * sceneConstants.rpWindowCoord.xy;
+	uv.y = 1.0 - uv.y;
+
+	int hit = 0;
+
+	for (int i = 0; i < int(delta); ++i)
+	{
+		frag += increment;
+		uv = frag * sceneConstants.rpWindowCoord.xy;
+
+		bool inRange = all(uv >= 0.0f) && all(uv <= 1.0f);
+		if (!inRange)
+		{
+			break;
+		}
+
+		uv.y = 1.0 - uv.y;
+
+		float3 positionFrag = GetFragCoordinates(float4(samp3.Sample(pointSampler, uv).xyz, 1.0)); // It would be more efficient to use the depth buffer
+
+		float2 deltaFragTraverse = (frag - startFrag.xy) / max(deltaFrag.xy, 0.0001);
+		search1 = lerp(deltaFragTraverse.y, deltaFragTraverse.x, useX);
+
+		viewDistance = fragMult / lerp(endFrag.z, startFrag.z, search1);
+		depth = viewDistance - positionFrag.z;
+
+		if(depth > 0 && depth < thickness)
+		{
+			++hit;
+			break;
+		}
+		else
+		{
+			search0 = search1;
+		}
+	}
+
+	// Pinpoint the hit
+	steps *= hit; // If 0 we don't need to work any further.
+	search1 = search0 + ((search1 - search0) / 2.0);
+
+	for(int i = 0; i < steps; ++i)
+	{
+		frag = lerp(startFrag.xy, endFrag.xy, search1);
+		uv = frag * sceneConstants.rpWindowCoord.xy;
+		uv.y = 1.0 - uv.y;
+
+		float3 positionFrag = GetFragCoordinates(float4(samp3.Sample(pointSampler, uv).xyz, 1.0)); // It would be more efficient to use the depth buffer
+		viewDistance = fragMult / lerp(endFrag.z, startFrag.z, search1);
+		depth = viewDistance - positionFrag.z;
+
+		if (depth > 0 && depth < thickness) {
+			hit = 2;
+			search1 = search0 + ((search1 - search0) / 2);
+		} else {
+			float temp = search1;
+			search1 = search1 + ((search1 - search0) / 2);
+			search0 = temp;
+		}
+	}
+
+	if(hit != 2 || search1 < 0.02)
+	{
+		return float4(0, 0, 0, 0);
+	}
+
+	return float4(uv, 0.0, 1.0 - search1);
+}
+
+void main( PS_IN fragment, out PS_OUT result ) {
+	// TODO: move these properties into a constant buffer
+	float maxDistance = 60.0;
+	float resolution = 0.2;
+	int steps = 5;
+	float thickness = 0.001;
+	float roughnessCutoff = 0.8; // Anything higher will not do screen space reflections
+
+	float2 tCoords = fragment.texcoord0;
+
+	float3 worldPosition = samp3.Sample(pointSampler, tCoords).xyz;
+	float3 normal = normalize((samp1.Sample(pointSampler, tCoords).xyz * 2.0) - 1.0);
+	
+	float3 pointToEye = normalize(sceneConstants.rpGlobalEyePos.xyz - worldPosition);
+	float3 reflectionVector = normalize(reflect(-pointToEye, normal));
+
+	float viewAmount = dot3(-pointToEye, reflectionVector);
+	result.vector = float4(reflectionVector * 0.5 + 0.5, 1.0);
+	result.color = float4(0.0, 0.0, 0.0, 0.0);
+
+	if(viewAmount > 0.0)
+	{
+		float roughness, baseReflection, metalness;
+
+		{
+			float3 specular = samp4.Sample(pointSampler, tCoords).rgb;
+			float3 materialProperties = samp2.Sample(pointSampler, tCoords).rgb;
+
+			ExtractMaterialProperties(
+				specular, materialProperties,
+				roughness, baseReflection, metalness);
+		}
+
+		if(roughness < roughnessCutoff)
+		{
+			float4 endPosition = float4(worldPosition + (reflectionVector * maxDistance), 1.0);
+
+			float3 startFrag = GetFragCoordinates(float4(worldPosition, 1.0));
+			float3 endFrag = GetFragCoordinates(endPosition);
+
+			float4 screenSpaceIntersection = ScreenSpaceTraceRay(startFrag, endFrag, resolution, steps, thickness);
+
+			result.color.rgb = samp0.Sample(baseSampler, screenSpaceIntersection.xy).rgb;
+			result.color.w = viewAmount * screenSpaceIntersection.w; 
+		}
+	}
+}

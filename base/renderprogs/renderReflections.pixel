@@ -1,0 +1,86 @@
+
+#include "global.inc"
+
+uniform Texture2D<float4> samp0 : register(t0); // Sharp reflectons
+uniform Texture2D<float4> samp1 : register(t1); // Normal Map
+uniform Texture2D<float4> samp2 : register(t2); // Material
+uniform Texture2D<float4> samp3 : register(t3); // World Coordinates
+uniform Texture2D<float4> samp4 : register(t4); // Specular properties
+uniform Texture2D<float4> samp5 : register(t5); // Vector for the reflection
+
+struct PS_IN {
+	float4 position : SV_POSITION;
+	float2 texcoord0 : TEXCOORD0_centroid;
+};
+
+struct PS_OUT {
+	float4 color : SV_TARGET;
+};
+
+float3 calculateContribution(
+	in float3 worldToEye, 
+	in float3 normal, 
+	in float3 baseReflection, 
+	in float3 halfVector,
+	in float NdotL,
+	in float roughness, 
+	in float metalness)
+{
+	if(NdotL <= 0.0)
+	{
+		return float3(0, 0, 0);
+	}
+	float3 fresnelFactor = CalculateFresnel(baseReflection, worldToEye, halfVector);
+	float3 specularContribution = calculateCookTorranceSpecularRefectivity(
+            fresnelFactor, worldToEye,
+            normal, halfVector,
+            PI, NdotL, roughness);
+
+	return specularContribution; 
+}
+
+void main( PS_IN fragment, out PS_OUT result ) {
+	float2 tCoords = fragment.texcoord0;
+
+	float roughness;
+	float metalness;
+	float3 baseReflection;
+
+	float3 specular = samp4.Sample(pointSampler, tCoords).rgb;
+	float3 materialProperties = samp2.Sample(pointSampler, tCoords).rgb;
+
+	ExtractMaterialProperties(
+		specular, materialProperties,
+		roughness, baseReflection, metalness);
+
+	float3 worldPosition = samp3.Sample(pointSampler, tCoords).xyz;
+	float3 normal = normalize((samp1.Sample(pointSampler, tCoords).xyz * 2.0) - 1.0);
+
+	float3 worldToEye = normalize(sceneConstants.rpGlobalEyePos.xyz - worldPosition);
+
+	float4 outputColor = float4(0.0, 0.0, 0.0, 1.0);
+
+	// Eventually sample multiple points based on the roughness
+	{
+		float4 color = samp0.Sample(baseSampler, tCoords);
+
+		if(color.w > 0.0)
+		{
+			float3 reflectionVector = normalize((samp5.Sample(pointSampler, tCoords).xyz - 0.5) * 2.0);
+			float NdotL = dot3(normal, reflectionVector);
+
+			// TODO: Calculate contribution
+			float3 contribution = calculateContribution(
+				worldToEye, normal, baseReflection, 
+				normalize(reflectionVector + worldToEye),
+				NdotL, roughness, metalness) * color.w;
+
+			if (length(contribution) > 0.0)
+			{
+				outputColor.rgb += color.rgb * saturate(contribution); //TODO: Find out why this is so much larger at points than it's needed.
+			}
+		}
+	}
+
+	result.color = outputColor;
+}

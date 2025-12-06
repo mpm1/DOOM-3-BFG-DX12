@@ -988,6 +988,9 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination)->Resize(width, height);
 
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ReflectionVector)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Reflections)->Resize(width, height);
+
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget2)->Resize(width, height);
 		}

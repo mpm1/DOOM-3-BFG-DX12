@@ -1692,6 +1692,18 @@
     <FxCompile Include="..\base\renderprogs\globalillumination_generator.ray">
       <Filter>Shaders</Filter>
     </FxCompile>
+    <FxCompile Include="..\base\renderprogs\screenspaceReflection.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\screenspaceReflection.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\renderReflections.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\renderReflections.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
   <ItemGroup>
     <Natvis Include="renderer\DX12\debug\ImageViewer.natvis">

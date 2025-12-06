@@ -1824,6 +1824,30 @@
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">true</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|x64'">true</ExcludedFromBuild>
     </FxCompile>
+    <FxCompile Include="..\base\renderprogs\screenspaceReflection.pixel">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\screenspaceReflection.vertex">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\renderReflections.pixel">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\renderReflections.vertex">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
+    </FxCompile>
     <None Include="..\base\renderprogs\shadowDebug.pixel" />
     <None Include="..\base\renderprogs\shadowDebug.vertex" />
     <None Include="..\base\renderprogs\shadowDebug_skinned.pixel" />

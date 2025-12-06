@@ -108,6 +108,21 @@ namespace DX12Rendering
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 			break;
 
+		case eGlobalTexture::REFLECTION_VECTOR:
+			name = "reflection_vector";
+			textureDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM;
+			break;
+
+		case eGlobalTexture::REFLECTIONS:
+			name = "reflections";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
+		case eGlobalTexture::LAST_FRAME_UNTOUCHED:
+			name = "lastRenderedFrameNoFX";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
 		case eGlobalTexture::RAYTRACED_DIFFUSE:
 			name = "raytraced_diffuse";
 			textureDesc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;

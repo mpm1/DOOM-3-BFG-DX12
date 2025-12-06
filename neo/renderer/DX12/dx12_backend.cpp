@@ -2858,9 +2858,205 @@ static void RB_FogAllLights() {
 	renderLog.CloseMainBlock();
 }
 
+const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rendering::Commands::FenceValue waitFence)
+{
+	constexpr UINT surfaceCount = 2;
+	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
+		DX12Rendering::eRenderSurface::ReflectionVector,
+		DX12Rendering::eRenderSurface::Reflections,
+	};
+
+	DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawScreenSpaceReflections", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
+
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+
+	GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
+	GL_Cull(CT_TWO_SIDED);
+
+	int screenWidth = renderSystem->GetWidth();
+	int screenHeight = renderSystem->GetHeight();
+
+	// set the window clipping
+	GL_Viewport(0, 0, screenWidth, screenHeight);
+	GL_Scissor(0, 0, screenWidth, screenHeight);
+	renderProgManager.BindShader_ScreenSpaceReflection();
+
+	// Prepare the textures
+	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+		commandList->AddPreFenceWait(waitFence);
+
+		// Wait for any copy operations to finish
+		auto renderedFrame = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::LAST_FRAME_UNTOUCHED); //TODO: We'll want to set this to the previous frame.
+		auto normal = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
+		auto material = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES);
+		auto position = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::POSITION);
+		auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
+
+		// Prepare the surfaces for rendering
+		GL_SelectTexture(0);
+		dxRenderer.SetTexture(renderedFrame);
+
+		GL_SelectTexture(1);
+		dxRenderer.SetTexture(normal);
+
+		GL_SelectTexture(2);
+		dxRenderer.SetTexture(material);
+
+		GL_SelectTexture(3);
+		dxRenderer.SetTexture(position);
+
+		GL_SelectTexture(4);
+		dxRenderer.SetTexture(specular);
+
+		commandList->Close();
+	}
+
+	// Draw
+	RB_DrawElementsWithCounters(&backEnd.unitSquareSurface);
+
+	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+
+		// Once completed reset the states on the diffuse and specular textures
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::LAST_FRAME_UNTOUCHED), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::POSITION), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR), D3D12_RESOURCE_STATE_COMMON, commandList);
+
+		commandList->Close();
+	}
+
+	return renderPassBlock.GetCommandManager()->InsertFenceSignal();
+}
+
+const DX12Rendering::Commands::FenceValue RB_RenderReflections(DX12Rendering::Commands::FenceValue waitFence)
+{
+	constexpr UINT surfaceCount = 1;
+	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
+		DX12Rendering::eRenderSurface::Reflections,
+	};
+
+	DX12Rendering::RenderPassBlock renderPassBlock("RB_RenderReflections", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
+
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+
+	GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
+	GL_Cull(CT_TWO_SIDED);
+
+	int screenWidth = renderSystem->GetWidth();
+	int screenHeight = renderSystem->GetHeight();
+
+	// set the window clipping
+	GL_Viewport(0, 0, screenWidth, screenHeight);
+	GL_Scissor(0, 0, screenWidth, screenHeight);
+	renderProgManager.BindShader_Reflection();
+
+	// Prepare the textures
+	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+		commandList->AddPreFenceWait(waitFence);
+
+		// Wait for any copy operations to finish
+		auto renderedFrame = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::REFLECTIONS);
+		auto normal = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
+		auto material = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES);
+		auto position = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::POSITION);
+		auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
+		auto reflections = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::REFLECTION_VECTOR);
+
+		// Prepare the surfaces for rendering
+		GL_SelectTexture(0);
+		dxRenderer.SetTexture(renderedFrame);
+
+		GL_SelectTexture(1);
+		dxRenderer.SetTexture(normal);
+
+		GL_SelectTexture(2);
+		dxRenderer.SetTexture(material);
+
+		GL_SelectTexture(3);
+		dxRenderer.SetTexture(position);
+
+		GL_SelectTexture(4);
+		dxRenderer.SetTexture(specular);
+
+		GL_SelectTexture(5);
+		dxRenderer.SetTexture(reflections);
+
+		commandList->Close();
+	}
+
+	// Draw
+	RB_DrawElementsWithCounters(&backEnd.unitSquareSurface);
+
+	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+
+		// Once completed reset the states on the diffuse and specular textures
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::REFLECTIONS), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::POSITION), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::REFLECTION_VECTOR), D3D12_RESOURCE_STATE_COMMON, commandList);
+
+		commandList->Close();
+	}
+
+	return renderPassBlock.GetCommandManager()->InsertFenceSignal();
+}
+
+DX12Rendering::Commands::FenceValue RB_DrawReflections(const viewDef_t* viewDef, DX12Rendering::Commands::FenceValue waitFence)
+{
+	// model-view-projection
+	RB_SetMVP(viewDef->worldSpace.mvp);
+	DX12Rendering::Commands::FenceValue reflectionFence = RB_DrawScreenSpaceReflections(DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->GetLastFenceValue());
+
+	{
+		// Copy the screenspace reflections
+		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(reflectionFence);
+
+		// Copy reflection coordinites
+		auto specularMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ReflectionVector);
+		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::REFLECTION_VECTOR);
+		specularMap->CopySurfaceToTexture(specularTexture, textureManager);
+
+		// Copy direct reflections
+		auto reflectonMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Reflections);
+		DX12Rendering::TextureBuffer* reflectionTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::REFLECTIONS);
+		reflectonMap->CopySurfaceToTexture(reflectionTexture, textureManager);
+
+		// Wait for all copies to complete.
+		waitFence = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();
+	}
+
+	reflectionFence = RB_RenderReflections(waitFence);
+
+	{
+		// Copy the screenspace reflections
+		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(reflectionFence);
+
+		// Copy the specular data
+		auto specularMap = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Reflections);
+		DX12Rendering::TextureBuffer* specularTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::REFLECTIONS);
+		specularMap->CopySurfaceToTexture(specularTexture, textureManager);
+
+		// Wait for all copies to complete.
+		waitFence = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();
+	}
+
+	return waitFence;
+}
+
 void RB_DrawCombinedGBufferResults()
 {
-	DX12Rendering::RenderPassBlock renderPassBlock("DXR_GenerateResult", DX12Rendering::Commands::DIRECT);
+	DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawCombinedGBufferResults", DX12Rendering::Commands::DIRECT);
 	
 	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 
@@ -2886,6 +3082,7 @@ void RB_DrawCombinedGBufferResults()
 		auto albedo = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO);
 		auto specularColor = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
 		auto globalIllumination = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_GLI);
+		auto reflections = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::REFLECTIONS);
 
 		// Prepare the surfaces for rendering
 		commandList->AddPreFenceWait(diffuse->GetLastFenceValue());
@@ -2904,6 +3101,9 @@ void RB_DrawCombinedGBufferResults()
 		GL_SelectTexture(4);
 		dxRenderer.SetTexture(globalIllumination);
 
+		GL_SelectTexture(5);
+		dxRenderer.SetTexture(reflections);
+
 		commandList->Close();
 	}
 
@@ -2919,6 +3119,7 @@ void RB_DrawCombinedGBufferResults()
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::ALBEDO), D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR), D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::RAYTRACED_GLI), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::REFLECTIONS), D3D12_RESOURCE_STATE_COMMON, commandList);
 
 		commandList->Close();
 	}
@@ -3801,7 +4002,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			DX12Rendering::eRenderSurface::Albedo,
 			DX12Rendering::eRenderSurface::SpecularColor,
 			DX12Rendering::eRenderSurface::Reflectivity,
-			DX12Rendering::eRenderSurface::MaterialProperties
+			DX12Rendering::eRenderSurface::MaterialProperties,
+			DX12Rendering::eRenderSurface::ReflectionVector,
+			DX12Rendering::eRenderSurface::Reflections,
 		};
 
 		auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->RequestNewCommandList();
@@ -4011,6 +4214,35 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		// Copy the raytraced buffer to view
 		//-------------------------------------------------
 		dxRenderer.DXR_DenoiseResult();
+
+		{
+			// Setup viewport coordniates for screenspace reflections. 
+			// TODO: Eventually add the x and y as needed
+			//int x = backEnd.viewDef->viewport.x1;
+			//int y = backEnd.viewDef->viewport.y1;
+			int	w = backEnd.viewDef->viewport.x2 - backEnd.viewDef->viewport.x1 + 1;
+			int	h = backEnd.viewDef->viewport.y2 - backEnd.viewDef->viewport.y1 + 1;
+
+			// screen power of two correction factor (no longer relevant now)
+			float screenCorrectionParm[4];
+			screenCorrectionParm[0] = 1.0f;
+			screenCorrectionParm[1] = 1.0f;
+			screenCorrectionParm[2] = 0.0f;
+			screenCorrectionParm[3] = 1.0f;
+			SetFragmentParm(RENDERPARM_SCREENCORRECTIONFACTOR, screenCorrectionParm); // rpScreenCorrectionFactor
+
+			// window coord to 0.0 to 1.0 conversion
+			float windowCoordParm[4];
+			windowCoordParm[0] = 1.0f / w;
+			windowCoordParm[1] = 1.0f / h;
+			windowCoordParm[2] = 0.0f;
+			windowCoordParm[3] = 1.0f;
+			SetFragmentParm(RENDERPARM_WINDOWCOORD, windowCoordParm); // rpWindowCoord
+		}
+
+		const DX12Rendering::Commands::FenceValue reflectionFence = RB_DrawReflections(viewDef, DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->GetLastFenceValue());
+		DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->InsertFenceWait(reflectionFence);
+
 		RB_DrawCombinedGBufferResults();
 	}
 
@@ -4020,6 +4252,26 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 	RB_DrawInteractions(raytracedEnabled, gBufferDecals);
 	//dxRenderer.ExecuteCommandList();
 	//dxRenderer.ResetCommandList();
+
+	if (useGBuffer)
+	{
+		{
+			// Copy the screenspace reflections
+			DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->GetLastFenceValue());
+
+			// Copy the specular data
+			auto currentFrame = DX12Rendering::GetSurface(dxRenderer.GetOutputSurface());
+			DX12Rendering::TextureBuffer* lastFrame = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::LAST_FRAME_UNTOUCHED);
+			currentFrame->CopySurfaceToTexture(lastFrame, textureManager);
+
+			// Wait for all copies to complete.
+			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::DIRECT)->InsertFenceWait(
+				DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal()
+				);
+			DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();
+		}
+	}
 
 	//-------------------------------------------------
 	// now draw any non-light dependent shading passes

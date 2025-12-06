@@ -156,3 +156,34 @@ inline float3 CalculateFresnel(in float3 baseReflectivity, in float3 viewVector,
 {
 	return baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - dot3(viewVector, halfVector), 5.0);
 }
+
+// Used for calculating specular reflections
+float3 calculateCookTorranceSpecularRefectivity(
+	in float3 fresnelFactor, 
+	in float3 viewVector,
+	in float3 surfaceNormal,
+	in float3 halfVector,
+	in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
+	in float NdotL,
+	in float roughness)
+{
+	float NdotH = max(dot3(surfaceNormal, halfVector), 0.0);
+
+	float alpha = roughness * roughness;
+    float k = alpha / 2.0;
+
+	float a2 = alpha * alpha;
+    float D = a2 / (distribution * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
+
+	float NdotV = max(dot(surfaceNormal, viewVector), 0.0);
+    float G1 = NdotV / max(NdotV * (1 - k) + k, 0.0000001);
+    float G2 = NdotL / max(NdotL * (1 - k) + k, 0.0000001);
+    float G = G1 * G2; // Smith's shadowing-masking function
+
+	if(G <= 0.0)
+    {
+        return float3(0.0f, 0.0f, 0.0f);
+    }
+
+	return (D * G * fresnelFactor) / (4.0 * NdotL * NdotV);
+}
