@@ -42,6 +42,7 @@ namespace DX12Rendering {
 		VARIANT_STENCIL_SHADOW_STENCILSHADOWPRELOAD,
 		VARIANT_STENCIL_SHADOW_STENCILSHADOWPRELOAD_SKINNED,
 		VARIANT_STENCIL_TWOSIDED,
+		VARIANT_DEPTH_COPY,
 
 		VARIANT_COUNT
 	};
@@ -49,6 +50,14 @@ namespace DX12Rendering {
 	struct TextureConstants
 	{
 		UINT textureIndex[8];
+	};
+
+	struct HiZDepthConstants
+	{
+		UINT width;
+		UINT height;
+		UINT mips;
+		UINT textureIndex;
 	};
 
 	// TODO: Start setting frame data to it's own object to make it easier to manage.
@@ -66,7 +75,7 @@ namespace DX12Rendering {
 }
 
 //TODO: move everything into the correct namespace
-bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList);
+bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList, DX12Rendering::PipelineStateObjectEntry** outputPsoEntry);
 
 class DX12Renderer {
 public:
@@ -146,7 +155,7 @@ public:
 
 	// Render Targets
 	void SetRenderTargets(const DX12Rendering::eRenderSurface* surfaces, const UINT count);
-	void EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList);
+	void EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList, const bool attachDepthBuffer);
 	void ResetRenderTargets();
 	DX12Rendering::eRenderSurface GetOutputSurface() { return (DX12Rendering::eRenderSurface)(DX12Rendering::eRenderSurface::RenderTarget1 + DX12Rendering::GetCurrentFrameIndex()); }
 
@@ -160,6 +169,10 @@ public:
 	// Converters
 	template<typename T>
 	const dxHandle_t GetHandle(const T* qEntity);
+
+	DX12Rendering::Commands::FenceValue GenerateHiZBuffer(DX12Rendering::Commands::FenceValue waitFence);
+	void UpdateHiZConstants(UINT width, UINT height, UINT mips, UINT textureIndex);
+	DX12Rendering::HiZDepthConstants& GetHiZDepthConstants() { return m_hiZDepthConstants; }
 
 #ifdef _DEBUG
 	void DebugAddLight(const viewLight_t& light);
@@ -198,6 +211,7 @@ private:
 
 	// Compute Shaders
 	ComPtr<ID3D12PipelineState> m_skinnedModelShader = nullptr;
+	ComPtr< ID3D12PipelineState> m_hiZShader = nullptr;
 
 	// Dynamic Surface Data
 	UINT m_nextDynamicVertexIndex = 0;
@@ -219,6 +233,9 @@ private:
 	DX12Rendering::Raytracing* m_raytracing;
 	DX12Rendering::dx12_lock m_raytracingLock;
 
+	// Hi-Z depth
+	DX12Rendering::HiZDepthConstants m_hiZDepthConstants;
+
 	void LoadPipeline(HWND hWnd);
 	void LoadAssets();
 
@@ -232,7 +249,6 @@ private:
 	bool CreateBackBuffer();
 
 	bool IsScissorWindowValid();
-
 
 	const DX12Rendering::RenderSurface** GetCurrentRenderTargets(UINT& count);
 	DX12Rendering::RenderSurface* GetOutputRenderTarget() { return DX12Rendering::GetSurface(GetOutputSurface()); }

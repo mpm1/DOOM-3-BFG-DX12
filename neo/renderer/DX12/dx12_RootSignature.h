@@ -108,6 +108,8 @@ public:
 
 	void SetRootDescriptorTable(const UINT objectIndex, DX12Rendering::Commands::CommandList* commandList);
 
+	DX12Rendering::TextureBuffer* SetTextureRegisterIndex(UINT objectIndex, UINT textureIndex, DX12Rendering::TextureBuffer* texture, DX12Rendering::Commands::CommandList* commandList);
+
 	eHeapDescriptorPartition GetCBVHeapPartition() { return eHeapDescriptorComputeObjects; }
 private:
 	virtual void CreateRootSignature();

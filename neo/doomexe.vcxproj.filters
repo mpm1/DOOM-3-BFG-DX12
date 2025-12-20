@@ -1526,6 +1526,9 @@
     <None Include="..\base\renderprogs\geometry.inc">
       <Filter>Shaders</Filter>
     </None>
+    <None Include="..\base\renderprogs\hiz_depth.inc">
+      <Filter>Shaders</Filter>
+    </None>
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="sys\win32\rc\doom.rc">
@@ -1702,6 +1705,15 @@
       <Filter>Shaders</Filter>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\renderReflections.pixel">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\hiz_compute.hlsl">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\copyDepthBuffer.vertex">
+      <Filter>Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\copyDepthBuffer.pixel">
       <Filter>Shaders</Filter>
     </FxCompile>
   </ItemGroup>

@@ -64,7 +64,7 @@ void DX12RootSignature::SetUnorderedAccessView(const UINT objectIndex, const UIN
 
 	CD3DX12_CPU_DESCRIPTOR_HANDLE descriptorHandle = GetDescriptorManager()->GetCPUDescriptorHandle(GetCBVHeapPartition(), heapIndex);
 
-	m_device->CreateUnorderedAccessView(resource->resource.Get(), nullptr, resource->GetUavDescriptorView(), descriptorHandle);
+	m_device->CreateUnorderedAccessView(resource->resource.Get(), nullptr, &view, descriptorHandle);
 }
 
 void DX12RootSignature::SetUnorderedAccessView(const UINT objectIndex, const UINT constantIndex, DX12Rendering::Resource* resource)
@@ -161,6 +161,21 @@ DX12Rendering::TextureBuffer* RenderRootSignature::SetTextureRegisterIndex(UINT 
 	return texture;
 }
 
+DX12Rendering::TextureBuffer* ComputeRootSignature::SetTextureRegisterIndex(UINT objectIndex, UINT textureIndex, DX12Rendering::TextureBuffer* texture, DX12Rendering::Commands::CommandList* commandList) {
+	UINT heapIndex = GetHeapIndex(objectIndex, textureIndex + eTesxture0SRV);
+
+	HeapDescriptorManager* heapManager = GetDescriptorManager();
+
+	CD3DX12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(GetCBVHeapPartition(), heapIndex);
+	m_device->CreateShaderResourceView(texture->resource.Get(), &texture->textureView, textureHandle);
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE gpuHandle = heapManager->GetGPUDescriptorHandle(GetCBVHeapPartition(), heapIndex);
+	texture->SetGPUDescriptorHandle(gpuHandle);
+
+	//m_copyCommandList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(currentTexture->textureBuffer.Get(), D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE, D3D12_RESOURCE_STATE_COMMON));
+	return texture;
+}
+
 void ComputeRootSignature::CreateRootSignature()
 {
 	// Generate the root signature
@@ -177,7 +192,7 @@ void ComputeRootSignature::CreateRootSignature()
 	{
 		CD3DX12_DESCRIPTOR_RANGE1 descriptorTableRanges[3];
 		descriptorTableRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, CBV_REGISTER_COUNT, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, 0);
-		descriptorTableRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, eTesxture0SRV /* First Texture */);
+		descriptorTableRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, TEXTURE_REGISTER_COUNT, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, eTesxture0SRV /* First Texture */);
 		descriptorTableRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, TEXTURE_REGISTER_COUNT - 1, 0, 0, D3D12_DESCRIPTOR_RANGE_FLAG_DESCRIPTORS_VOLATILE, eTesxture0SRV + 1 /* Second Texture */);
 		rootParameters[0].InitAsDescriptorTable(3, &descriptorTableRanges[0]);
 	}

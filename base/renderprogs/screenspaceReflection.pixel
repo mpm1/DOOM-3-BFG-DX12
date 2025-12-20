@@ -1,5 +1,5 @@
-
 #include "global.inc"
+#include "hiz_depth.inc"
 
 uniform Texture2D<float4> samp0 : register(t0); // Rendered Image (previous frame)
 uniform Texture2D<float4> samp1 : register(t1); // Normal Map
@@ -16,6 +16,23 @@ struct PS_OUT {
 	float4 vector : SV_TARGET0;
 	float4 color : SV_TARGET1;
 };
+
+float3 GetUVCoordinates(in float4 worldCoord)
+{
+	float4 fragCoord;
+
+	fragCoord.x = dot4( worldCoord, sceneConstants.rpMVPmatrixX );
+	fragCoord.y = dot4( worldCoord, sceneConstants.rpMVPmatrixY );
+	fragCoord.z = dot4( worldCoord, sceneConstants.rpMVPmatrixZ );
+	fragCoord.w = dot4( worldCoord, sceneConstants.rpMVPmatrixW );
+
+	fragCoord.xyz /= fragCoord.w;
+	fragCoord.xy = fragCoord.xy * 0.5 + 0.5;
+
+	fragCoord.z = (fragCoord.z * 0.5) + 0.5;
+
+	return fragCoord.xyz;
+}
 
 float3 GetFragCoordinates(in float4 worldCoord)
 {
@@ -38,11 +55,11 @@ float3 GetFragCoordinates(in float4 worldCoord)
 // Return the UV coordinates of the intersection, the 0.0 to 1.0 distance the instersetoin occurred, an alpha value of the contribution
 float4 ScreenSpaceTraceRay(in float3 startFrag, in float3 endFrag, in float resolution, in int steps, in float thickness)
 { 
-	//TODO: Optimize
+	//TODO: Optimize by implementing a hiZ to search against. We also want to make our search go across the entire frame. Then implement roughness in the next pass
 
 	const float fragMult = startFrag.z * endFrag.z; // Used to calculate the linear position of the ray.
 
-	float3 deltaFrag = max(endFrag - startFrag, EPSILON);
+	float3 deltaFrag = endFrag - startFrag;
 	float useX = abs(deltaFrag.x) > abs(deltaFrag.y) ? 1.0 : 0.0;
 	float delta = lerp(abs(deltaFrag.y), abs(deltaFrag.x), useX) * saturate(resolution);
 
@@ -126,11 +143,12 @@ float4 ScreenSpaceTraceRay(in float3 startFrag, in float3 endFrag, in float reso
 
 void main( PS_IN fragment, out PS_OUT result ) {
 	// TODO: move these properties into a constant buffer
-	float maxDistance = 60.0;
-	float resolution = 0.2;
+	float maxDistance = 10.0;
+	float resolution = 0.3;
 	int steps = 5;
 	float thickness = 0.001;
 	float roughnessCutoff = 0.8; // Anything higher will not do screen space reflections
+	float angularCutoff = 0.001; // Cutoff in which the angle is too pointed at the camera.
 
 	float2 tCoords = fragment.texcoord0;
 
@@ -144,7 +162,7 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	result.vector = float4(reflectionVector * 0.5 + 0.5, 1.0);
 	result.color = float4(0.0, 0.0, 0.0, 0.0);
 
-	if(viewAmount > 0.0)
+	if(viewAmount > angularCutoff)
 	{
 		float roughness, baseReflection, metalness;
 
@@ -159,15 +177,21 @@ void main( PS_IN fragment, out PS_OUT result ) {
 
 		if(roughness < roughnessCutoff)
 		{
+			Texture2D<float4> depthTexture = GetBindlessTexture4f(depthConstants.textureIndex);
+
+			float3 startUV = float3(tCoords, depthTexture.Sample(pointSampler, tCoords).r);
+			startUV.y = 1.0 - startUV.y;
+
 			float4 endPosition = float4(worldPosition + (reflectionVector * maxDistance), 1.0);
+			float3 uvVector = normalize(GetUVCoordinates(endPosition) - startUV);
 
-			float3 startFrag = GetFragCoordinates(float4(worldPosition, 1.0));
-			float3 endFrag = GetFragCoordinates(endPosition);
+			//float3 startFrag = GetFragCoordinates(float4(worldPosition, 1.0));
+			//float3 endFrag = GetFragCoordinates(endPosition);
 
-			float4 screenSpaceIntersection = ScreenSpaceTraceRay(startFrag, endFrag, resolution, steps, thickness);
+			float4 screenSpaceIntersection = FindIntersectingDepthPoint(startUV, uvVector, resolution, steps, thickness); //ScreenSpaceTraceRay(startFrag, endFrag, resolution, steps, thickness);
 
 			result.color.rgb = samp0.Sample(baseSampler, screenSpaceIntersection.xy).rgb;
-			result.color.w = viewAmount * screenSpaceIntersection.w; 
+			result.color.w = screenSpaceIntersection.w; 
 		}
 	}
 }

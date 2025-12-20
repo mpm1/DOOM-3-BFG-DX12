@@ -103,6 +103,7 @@ void idRenderProgManager::Init() {
 		{ BUILTIN_GBUFFER_COMBINE, "combineGbuffer" },
 		{ BUILTIN_SCREEN_SPACE_REFLECTIONS, "screenspaceReflection"},
 		{ BUILTIN_REFLECTIONS, "renderReflections"},
+		{ BUILTIN_HIZCOPY, "copyDepthBuffer"},
 
 		{ BUILTIN_BLENDLIGHT, "blendlight" },
 		{ BUILTIN_FOG, "fog" },

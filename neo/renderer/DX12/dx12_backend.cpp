@@ -708,6 +708,11 @@ void RB_DrawElementsWithCounters(const drawSurf_t* surf, const vertCacheHandle_t
 		vertOffset / sizeof(idDrawVert));*/
 }
 
+void RB_DrawElementsWithCounters(const drawSurf_t* surf, const DX12Rendering::eSurfaceVariant variant)
+{
+	RB_DrawElementsWithCounters(surf, surf->ambientCache, 0 /* Keep the value in the view */, variant, nullptr, 0);
+}
+
 void RB_DrawElementsWithCounters(const drawSurf_t* surf, void* surfaceConstants, size_t bufferSize) {
 	RB_DrawElementsWithCounters(surf, surf->ambientCache, 0 /* Keep the value in the view */, DX12Rendering::VARIANT_DEFAULT, surfaceConstants, bufferSize);
 }
@@ -2858,6 +2863,70 @@ static void RB_FogAllLights() {
 	renderLog.CloseMainBlock();
 }
 
+const DX12Rendering::Commands::FenceValue RB_CopyHiZBuffer(DX12Rendering::Commands::FenceValue waitFence)
+{
+	constexpr UINT surfaceCount = 1;
+	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
+		DX12Rendering::eRenderSurface::HiZDepth
+	};
+
+	DX12Rendering::RenderPassBlock renderPassBlock("RB_CopyHiZBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
+
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+
+	GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
+	GL_Cull(CT_TWO_SIDED);
+
+	int screenWidth = renderSystem->GetWidth();
+	int screenHeight = renderSystem->GetHeight();
+
+	// set the window clipping
+	GL_Viewport(0, 0, screenWidth, screenHeight);
+	GL_Scissor(0, 0, screenWidth, screenHeight);
+	renderProgManager.BindShader_HiZCopy();
+
+	auto depthTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->GetAsTexture();
+
+	// Prepare the textures
+	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+		commandList->AddPreFenceWait(waitFence);
+
+		GL_SelectTexture(0);
+		dxRenderer.SetTexture(depthTexture);
+
+		commandList->Close();
+	}
+
+	// Draw
+	RB_DrawElementsWithCounters(&backEnd.unitSquareSurface, DX12Rendering::VARIANT_DEPTH_COPY);
+
+	{
+		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
+
+		// Once completed reset the states on the diffuse and specular textures
+		textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_COMMON, commandList);
+
+		commandList->Close();
+	}
+
+	return renderPassBlock.GetCommandManager()->InsertFenceSignal();
+}
+
+const DX12Rendering::Commands::FenceValue RB_GenerateHiZBuffer(DX12Rendering::Commands::FenceValue waitFence)
+{
+	waitFence = RB_CopyHiZBuffer(waitFence);
+
+	DX12Rendering::RenderSurface* depthStencilBuffer = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+	DX12Rendering::TextureBuffer* highZTexture = depthStencilBuffer->GetAsTexture();
+
+	dxRenderer.UpdateHiZConstants(depthStencilBuffer->GetWidth(), depthStencilBuffer->GetHeight(), highZTexture->textureView.Texture2D.MipLevels, highZTexture->GetTextureIndex());
+
+	//waitFence = dxRenderer.GenerateHiZBuffer(waitFence);
+
+	return waitFence;
+}
+
 const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rendering::Commands::FenceValue waitFence)
 {
 	constexpr UINT surfaceCount = 2;
@@ -2887,7 +2956,7 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 		commandList->AddPreFenceWait(waitFence);
 
 		// Wait for any copy operations to finish
-		auto renderedFrame = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::LAST_FRAME_UNTOUCHED); //TODO: We'll want to set this to the previous frame.
+		auto renderedFrame = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::LAST_FRAME_UNTOUCHED);
 		auto normal = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::WORLD_NORMALS);
 		auto material = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES);
 		auto position = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::POSITION);
@@ -2913,7 +2982,7 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 	}
 
 	// Draw
-	RB_DrawElementsWithCounters(&backEnd.unitSquareSurface);
+	RB_DrawElementsWithCounters(&backEnd.unitSquareSurface, &dxRenderer.GetHiZDepthConstants(), sizeof(DX12Rendering::HiZDepthConstants));
 
 	{
 		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
@@ -4138,7 +4207,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		//-------------------------------------------------
 		// fill the depth buffer and clear color buffer to black except on subviews
 		//-------------------------------------------------
-		fillDepthBufferPass.Execute(viewDef, raytracedEnabled);
+		DX12Rendering::Commands::FenceValue depthFence = fillDepthBufferPass.Execute(viewDef, raytracedEnabled);
 
 		if (raytracedEnabled)
 		{
@@ -4151,6 +4220,8 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 		if (useGBuffer)
 		{
+			depthFence = RB_GenerateHiZBuffer(depthFence);
+
 			// Fill the GBuffer
 			const DX12Rendering::Commands::FenceValue fenceGBuffer = gBufferPass.Execute(viewDef, raytracedEnabled);
 			const DX12Rendering::Commands::FenceValue fence = gBufferDecals ? gBufferDecalPass.Execute(viewDef, raytracedEnabled) : fenceGBuffer;

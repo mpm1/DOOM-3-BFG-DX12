@@ -1188,6 +1188,16 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
     </FxCompile>
+    <FxCompile Include="..\base\renderprogs\copyDepthBuffer.pixel">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+    </FxCompile>
+    <FxCompile Include="..\base\renderprogs\copyDepthBuffer.vertex">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Vertex</ShaderType>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
+    </FxCompile>
     <None Include="..\base\renderprogs\environment.pixel" />
     <None Include="..\base\renderprogs\environment.vertex" />
     <None Include="..\base\renderprogs\environment_skinned.pixel" />
@@ -1289,6 +1299,11 @@
     <None Include="..\base\renderprogs\functions.inc" />
     <None Include="..\base\renderprogs\fxaa.pixel" />
     <None Include="..\base\renderprogs\fxaa.vertex" />
+    <FxCompile Include="..\base\renderprogs\hiz_compute.hlsl">
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Compute</ShaderType>
+      <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).ccso</ObjectFileOutput>
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </FxCompile>
     <FxCompile Include="..\base\renderprogs\shadow_generator.ray">
       <FileType>Document</FileType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
@@ -1709,6 +1724,7 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
     </FxCompile>
+    <None Include="..\base\renderprogs\hiz_depth.inc" />
     <None Include="..\base\renderprogs\interaction.inc" />
     <None Include="..\base\renderprogs\interactionAmbient_skinned.pixel" />
     <None Include="..\base\renderprogs\interactionAmbient_skinned.vertex" />

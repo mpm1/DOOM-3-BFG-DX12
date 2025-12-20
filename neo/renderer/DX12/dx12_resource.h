@@ -7,6 +7,8 @@
 namespace DX12Rendering {
 	struct Resource
 	{
+		friend Resource;
+
 		enum eResourceState
 		{
 			Unallocated = 0,
@@ -43,6 +45,9 @@ namespace DX12Rendering {
 
 		virtual D3D12_UNORDERED_ACCESS_VIEW_DESC* GetUavDescriptorView() { return nullptr; }
 		virtual D3D12_SHADER_RESOURCE_VIEW_DESC* GetSrvDescriptorView() { return nullptr; }
+
+		virtual const D3D12_RESOURCE_STATES GetResourceState() { return m_resourceState; }
+		virtual void SetResourceState(D3D12_RESOURCE_STATES state) { m_resourceState = state; }
 
 	protected:
 		ID3D12Resource* Allocate(D3D12_RESOURCE_DESC& description, D3D12_RESOURCE_STATES initState, const D3D12_HEAP_PROPERTIES& heapProps, const D3D12_CLEAR_VALUE* clearValue = nullptr);

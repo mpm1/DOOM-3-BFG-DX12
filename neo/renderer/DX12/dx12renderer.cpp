@@ -476,6 +476,11 @@ void DX12Renderer::LoadAssets() {
 		DX12Rendering::computeShader_t* computeShader = DX12Rendering::GetComputeShader(DX12Rendering::eComputeShaders::COMPUTE_SKINNED_OFFSET);
 		LoadComputePipelineState(computeShader, m_computeRootSignature, &m_skinnedModelShader);
 	}
+
+	{
+		DX12Rendering::computeShader_t* computeShader = DX12Rendering::GetComputeShader(DX12Rendering::eComputeShaders::COMPUTE_HIZ_BUFFER);
+		LoadComputePipelineState(computeShader, m_computeRootSignature, &m_hiZShader);
+	}
 }
 
 DX12Rendering::Geometry::VertexBuffer* DX12Renderer::AllocVertexBuffer(UINT numBytes, LPCWSTR name, const bool isGPUWritable) {
@@ -559,7 +564,7 @@ void DX12Renderer::SetPassDefaults(DX12Rendering::Commands::CommandList* command
 			commandList->OMSetStencilRef(m_stencilRef);
 		});
 
-		EnforceRenderTargets(commandList);
+		EnforceRenderTargets(commandList, true);
 	}
 }
 
@@ -702,7 +707,8 @@ int DX12Renderer::StartSurfaceSettings(const DX12Rendering::eSurfaceVariant vari
 		});
 	}
 
-	if (!DX12_ActivatePipelineState(variantState, material, commandList)) {
+	DX12Rendering::PipelineStateObjectEntry* psoEntry;
+	if (!DX12_ActivatePipelineState(variantState, material, commandList, &psoEntry)) {
 		// We cant draw the object, so return.
 		return -1;
 	}
@@ -725,7 +731,7 @@ int DX12Renderer::StartSurfaceSettings(const DX12Rendering::eSurfaceVariant vari
 		commandList->SetDescriptorHeaps(2, heaps);
 	});
 
-	EnforceRenderTargets(&commandList);
+	EnforceRenderTargets(&commandList, psoEntry->useDepthBuffer);
 
 	m_objectIndex = m_rootSignature->RequestNewObjectIndex();
 
@@ -757,7 +763,7 @@ bool DX12Renderer::EndSurfaceSettings(void* surfaceConstants,  size_t surfaceCon
 		m_rootSignature->SetConstantBufferView(m_objectIndex, DX12Rendering::eRenderRootSignatureEntry::eSurfaceCBV, buffer);
 	}
 
-	if (surfaceConstants == nullptr)
+	if (true)
 	{
 		// TODO: Remove these textues all together. For now we assume that the surfaceConstants mean that were using a constant buffer to define our structures.
 		// Copy the Textures
@@ -787,6 +793,94 @@ bool DX12Renderer::EndSurfaceSettings(void* surfaceConstants,  size_t surfaceCon
 
 bool DX12Renderer::IsScissorWindowValid() {
 	return m_scissorRect.right > m_scissorRect.left && m_scissorRect.bottom > m_scissorRect.top;
+}
+
+DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Rendering::Commands::FenceValue waitFence)
+{
+	const UINT width = m_hiZDepthConstants.width;
+	const UINT height = m_hiZDepthConstants.height;
+
+	struct GenerateMipInput {
+		UINT srcMipLevel;
+		UINT numMipLevels;
+		UINT srcDimension; // Width and Height are even or odd. Defined above
+		UINT pad0;
+
+		float texalSize[2]; // 1.0 / Mip0 
+	};
+
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+	DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::HIZ_DEPTH); // We should have Mip 0 applied already;
+
+	// TODO: Validate size
+
+	GenerateMipInput mipConstants;
+	mipConstants.srcMipLevel = 0;
+	mipConstants.numMipLevels = depthTexture->textureView.Texture2D.MipLevels;
+	mipConstants.srcDimension = ((height % 2) << 1) & (width % 2); // bit 0 = width is odd, bit 1 = height is odd
+	mipConstants.texalSize[0] = 1.0f / static_cast<float>(width);
+	mipConstants.texalSize[1] = 1.0f / static_cast<float>(height);
+
+	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
+	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::GenerateHiZBuffer");
+
+	commandList->AddPreFenceWait(waitFence);
+
+	ID3D12PipelineState* pipelineState = m_hiZShader.Get();
+	assert(pipelineState != nullptr);
+
+	const UINT objectIndex = m_computeRootSignature->RequestNewObjectIndex();
+
+	// Create constants
+	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
+
+	{
+		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(GenerateMipInput));
+		resourceManager.FillConstantBuffer(buffer, &mipConstants);
+
+		m_computeRootSignature->SetConstantBufferView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eSurfaceCBV, buffer);
+	}
+
+	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, commandList);
+
+	m_computeRootSignature->SetTextureRegisterIndex(objectIndex, 0, depthTexture, commandList);
+
+	for (int i = 0; i < mipConstants.numMipLevels; ++i)
+	{
+		D3D12_UNORDERED_ACCESS_VIEW_DESC descriptor = {};
+		descriptor.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+		descriptor.Format = DXGI_FORMAT_R32_FLOAT;
+		descriptor.Texture2D.MipSlice = i;
+
+		m_computeRootSignature->SetUnorderedAccessView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture1SRV + i, depthTexture, descriptor);
+	}
+
+	commandList->AddCommandAction([width, height, &depthTexture](ID3D12GraphicsCommandList4* commandList)
+	{
+		D3D12_RESOURCE_BARRIER uavBarrier;
+		uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+		uavBarrier.UAV.pResource = depthTexture->resource.Get();
+		uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+
+		commandList->ResourceBarrier(1, &uavBarrier);
+
+		commandList->Dispatch(width, height, 1);
+
+		commandList->ResourceBarrier(1, &uavBarrier);
+	});
+
+	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_COMMON, commandList);
+
+
+	return commandList->AddPostFenceSignal();
+}
+
+void DX12Renderer::UpdateHiZConstants(UINT width, UINT height, UINT mips, UINT textureIndex)
+{
+	m_hiZDepthConstants.width = width;
+	m_hiZDepthConstants.height = height;
+	m_hiZDepthConstants.mips = mips;
+	m_hiZDepthConstants.textureIndex = textureIndex;
 }
 
 void DX12Renderer::PresentBackbuffer() {
@@ -974,6 +1068,8 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 		// Resize surfaces
 		{
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth)->Resize(width, height);
+
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Diffuse)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular)->Resize(width, height);
 
@@ -1570,7 +1666,7 @@ void DX12Renderer::ResetRenderTargets()
 	m_activeRenderTargets = 1; 
 }
 
-void DX12Renderer::EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList)
+void DX12Renderer::EnforceRenderTargets(DX12Rendering::Commands::CommandList* commandList, const bool attachDepthBuffer)
 {
 	assert(commandList != nullptr);
 
@@ -1579,7 +1675,7 @@ void DX12Renderer::EnforceRenderTargets(DX12Rendering::Commands::CommandList* co
 		UINT totalRenderTargets = 0;
 		const DX12Rendering::RenderSurface** renderTargets = GetCurrentRenderTargets(totalRenderTargets);
 
-		const DX12Rendering::RenderSurface* depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
+		DX12Rendering::RenderSurface* depthStencil = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil);
 
 		std::vector<D3D12_CPU_DESCRIPTOR_HANDLE> renderRtvs;
 		renderRtvs.reserve(totalRenderTargets);
@@ -1588,7 +1684,9 @@ void DX12Renderer::EnforceRenderTargets(DX12Rendering::Commands::CommandList* co
 			renderRtvs.push_back(renderTargets[index]->GetRtv());
 		}
 
-		commandList->OMSetRenderTargets(totalRenderTargets, renderRtvs.data(), FALSE, &(depthStencil->GetDsv()));
+		commandList->OMSetRenderTargets(totalRenderTargets, renderRtvs.data(), FALSE, 
+			attachDepthBuffer ? &(depthStencil->GetDsv()) : nullptr
+		);
 	});
 }
 
