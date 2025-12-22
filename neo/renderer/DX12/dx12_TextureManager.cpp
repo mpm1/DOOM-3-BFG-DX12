@@ -100,21 +100,6 @@ namespace DX12Rendering
 			textureDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
 			break;
 
-		case eGlobalTexture::POSITION:
-			name = "position";
-			textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-			break;
-
-		case eGlobalTexture::WORLD_NORMALS:
-			name = "world_normals";
-			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			break;
-
-		case eGlobalTexture::ALBEDO:
-			name = "albedo";
-			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			break;
-
 		case eGlobalTexture::SPECULAR_COLOR:
 			name = "specular_color";
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -125,26 +110,9 @@ namespace DX12Rendering
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 			break;
 
-		case eGlobalTexture::REFLECTION_VECTOR:
-			name = "reflection_vector";
-			textureDesc.Format = DXGI_FORMAT_R10G10B10A2_UNORM;
-			break;
-
-		case eGlobalTexture::REFLECTIONS:
-			name = "reflections";
-			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			break;
-
 		case eGlobalTexture::LAST_FRAME_UNTOUCHED:
 			name = "lastRenderedFrameNoFX";
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			break;
-
-		case eGlobalTexture::HIZ_DEPTH:
-			name = "HeirarchicalDepth";
-			textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
-			textureDesc.MipLevels = 5;
-			textureDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 			break;
 
 		case eGlobalTexture::RAYTRACED_DIFFUSE:
@@ -334,7 +302,7 @@ namespace DX12Rendering
 		HeapDescriptorManager* heapManager = GetDescriptorManager();
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-		auto defaultTexture = GetGlobalTexture(eGlobalTexture::ALBEDO); // TODO: Change to a default mangenta for debugging
+		auto defaultTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->GetAsTexture(); // TODO: Change to a default mangenta for debugging
 
 		{
 			// Setup the texture

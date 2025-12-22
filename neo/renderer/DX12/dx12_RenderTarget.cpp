@@ -352,7 +352,7 @@ namespace DX12Rendering
 		{
 			D3D12_CLEAR_VALUE clearValue = {}; // Set to unknown.
 
-			m_surfaces.emplace_back(L"HiZBuffer", DXGI_FORMAT_R32_FLOAT, eRenderSurface::HiZDepth, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
+			m_surfaces.emplace_back(L"HiZBuffer", DXGI_FORMAT_R32_FLOAT, eRenderSurface::HiZDepth, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue, 4);
 
 			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
 			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
@@ -370,6 +370,7 @@ namespace DX12Rendering
 			m_surfaces.emplace_back(L"Global Illumination", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::GlobalIllumination, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 
 			m_surfaces.emplace_back(L"ReflectionVector", DXGI_FORMAT_R10G10B10A2_UNORM, eRenderSurface::ReflectionVector, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"SharpReflections", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::SharpReflections, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"Reflections", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Reflections, RENDER_SURFACE_FLAG_NONE, clearValue);
 
 			m_surfaces.emplace_back(L"RenderTarget1", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget1, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);
@@ -388,7 +389,6 @@ namespace DX12Rendering
 	RenderSurface* GetSurface(eRenderSurface surface)
 	{
 		assert(surface >= 0 && surface < eRenderSurface::Count);
-		auto loc = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
 
 		return &m_surfaces.at(surface);
 	}

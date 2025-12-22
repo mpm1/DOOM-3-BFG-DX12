@@ -159,11 +159,12 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	float3 reflectionVector = normalize(reflect(-pointToEye, normal));
 
 	float viewAmount = dot3(-pointToEye, reflectionVector);
-	result.vector = float4(reflectionVector * 0.5 + 0.5, 1.0);
+	result.vector = float4(0.0, 0.0, 0.0, 0.0);
 	result.color = float4(0.0, 0.0, 0.0, 0.0);
 
 	if(viewAmount > angularCutoff)
 	{
+		result.vector = float4(reflectionVector * 0.5 + 0.5, 1.0);
 		float roughness, baseReflection, metalness;
 
 		{

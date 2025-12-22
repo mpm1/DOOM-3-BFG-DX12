@@ -81,11 +81,11 @@ namespace DX12Rendering {
 			assert(textureManager);
 
 			//Update the resources
-			m_constantBuffer.positionTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::POSITION)->GetTextureIndex();
+			m_constantBuffer.positionTextureIndex = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->GetAsTexture()->GetTextureIndex();
 			m_constantBuffer.flatNormalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_NORMALS)->GetTextureIndex();
 			m_constantBuffer.flatTangentIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_FLAT_TANGENT)->GetTextureIndex();
-			m_constantBuffer.normalIndex = textureManager->GetGlobalTexture(eGlobalTexture::WORLD_NORMALS)->GetTextureIndex();
-			m_constantBuffer.diffuseTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::ALBEDO)->GetTextureIndex();
+			m_constantBuffer.normalIndex = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Normal)->GetAsTexture()->GetTextureIndex();
+			m_constantBuffer.diffuseTextureIndex = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->GetAsTexture()->GetTextureIndex();
 			m_constantBuffer.specularTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::SPECULAR_COLOR)->GetTextureIndex();
 			m_constantBuffer.materialTextureIndex = textureManager->GetGlobalTexture(eGlobalTexture::MATERIAL_PROPERTIES)->GetTextureIndex();
 

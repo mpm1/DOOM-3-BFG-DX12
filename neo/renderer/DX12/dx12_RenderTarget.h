@@ -40,6 +40,7 @@ namespace DX12Rendering {
 
 		// Reflections
 		ReflectionVector, // Vector representing the angle of direct reflection
+		SharpReflections, // Renderer representing 0% Roughness reflections
 		Reflections,
 
 		// Final Result
@@ -72,6 +73,7 @@ namespace DX12Rendering {
 		eRenderSurface::GlobalIllumination,
 
 		eRenderSurface::ReflectionVector,
+		eRenderSurface::SharpReflections,
 		eRenderSurface::Reflections,
 
 		eRenderSurface::RenderTarget1,

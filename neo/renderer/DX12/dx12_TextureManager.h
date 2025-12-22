@@ -12,24 +12,17 @@ namespace DX12Rendering
 	enum eGlobalTexture
 	{
 		DEPTH_TEXTURE,
-		POSITION,
-		ALBEDO,
 		SPECULAR_COLOR,
 		MATERIAL_PROPERTIES, // r = Roughness, g = Metallic, b = occlusion? (not implemented)
-		WORLD_NORMALS,
 		WORLD_FLAT_NORMALS,
 		WORLD_FLAT_TANGENT,
 		RAYTRACED_SHADOWMAP,
-
-		REFLECTION_VECTOR, // r = U, g = V, g = Contribution
-		REFLECTIONS,
 
 		RAYTRACED_DIFFUSE,
 		RAYTRACED_SPECULAR,
 		RAYTRACED_GLI,
 
 		LAST_FRAME_UNTOUCHED,
-		HIZ_DEPTH,
 
 		TEXTURE_COUNT
 	};

@@ -810,7 +810,7 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 	};
 
 	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
-	DX12Rendering::TextureBuffer* depthTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::HIZ_DEPTH); // We should have Mip 0 applied already;
+	DX12Rendering::TextureBuffer* depthTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth)->GetAsTexture(); // We should have Mip 0 applied already;
 
 	// TODO: Validate size
 
@@ -820,9 +820,10 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 	mipConstants.srcDimension = ((height % 2) << 1) & (width % 2); // bit 0 = width is odd, bit 1 = height is odd
 	mipConstants.texalSize[0] = 1.0f / static_cast<float>(width);
 	mipConstants.texalSize[1] = 1.0f / static_cast<float>(height);
-
-	auto commandList = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE)->RequestNewCommandList();
-	DX12Rendering::Commands::CommandListCycleBlock cycleBlock(commandList, "DX12Renderer::GenerateHiZBuffer");
+	
+	DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
+	DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "DX12Renderer::GenerateHiZBuffer");
+	auto commandList = commandManager->RequestNewCommandList();
 
 	commandList->AddPreFenceWait(waitFence);
 
@@ -841,38 +842,54 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 		m_computeRootSignature->SetConstantBufferView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eSurfaceCBV, buffer);
 	}
 
-	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS | D3D12_RESOURCE_STATE_NON_PIXEL_SHADER_RESOURCE, commandList);
+	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
 
-	m_computeRootSignature->SetTextureRegisterIndex(objectIndex, 0, depthTexture, commandList);
-
-	for (int i = 0; i < mipConstants.numMipLevels; ++i)
+	for (int i = mipConstants.srcMipLevel; i < (mipConstants.srcMipLevel + mipConstants.numMipLevels); ++i)
 	{
 		D3D12_UNORDERED_ACCESS_VIEW_DESC descriptor = {};
 		descriptor.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 		descriptor.Format = DXGI_FORMAT_R32_FLOAT;
 		descriptor.Texture2D.MipSlice = i;
 
-		m_computeRootSignature->SetUnorderedAccessView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture1SRV + i, depthTexture, descriptor);
+		m_computeRootSignature->SetUnorderedAccessView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture0SRV + i, depthTexture, descriptor);
 	}
+
+	m_computeRootSignature->SetRootDescriptorTable(objectIndex, commandList);
+	commandList->CommandSetPipelineState(pipelineState);
 
 	commandList->AddCommandAction([width, height, &depthTexture](ID3D12GraphicsCommandList4* commandList)
 	{
+		// The total sections of length 8 needed to equal the width and height.
+		const UINT denominator = 8;
+		UINT widthBy8 = width / denominator;
+		UINT heightBy8 = height / denominator;
+		
+		if ((width % denominator) > 0)
+		{
+			++widthBy8;
+		}
+
+		if ((height % denominator) > 0)
+		{
+			++heightBy8;
+		}
+
 		D3D12_RESOURCE_BARRIER uavBarrier;
 		uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
 		uavBarrier.UAV.pResource = depthTexture->resource.Get();
 		uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
 
-		commandList->ResourceBarrier(1, &uavBarrier);
-
-		commandList->Dispatch(width, height, 1);
+		commandList->Dispatch( widthBy8, heightBy8, 1);
 
 		commandList->ResourceBarrier(1, &uavBarrier);
 	});
 
 	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_COMMON, commandList);
 
+	DX12Rendering::Commands::FenceValue resultFence = commandList->AddPostFenceSignal();
+	commandList->Close();
 
-	return commandList->AddPostFenceSignal();
+	return resultFence;
 }
 
 void DX12Renderer::UpdateHiZConstants(UINT width, UINT height, UINT mips, UINT textureIndex)
@@ -1085,6 +1102,7 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::GlobalIllumination)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::ReflectionVector)->Resize(width, height);
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::SharpReflections)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Reflections)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::RenderTarget1)->Resize(width, height);
