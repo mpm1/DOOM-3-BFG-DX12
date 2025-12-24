@@ -17,40 +17,7 @@ static int activePipelineState = 0;
 
 D3D12_GRAPHICS_PIPELINE_STATE_DESC pipelineDescriptors[128] = {};
 
-typedef GUID PSOKey;
-struct PSOKeyComparator
-{
-	bool operator()(const PSOKey& a, const PSOKey& b) const
-	{
-		return memcmp(&a, &b, sizeof(PSOKey)) < 0; // This is specifically a less than comparator for the std::map
-	}
-};
-
-struct PipelineStateObjectEntry
-{
-	const PSOKey handle;
-	bool isValid;
-	ComPtr<ID3D12PipelineState> pipelineState;
-
-	PipelineStateObjectEntry(const PSOKey handle) :
-		handle(handle),
-		isValid(false),
-		pipelineState(nullptr)
-	{
-
-	}
-
-	~PipelineStateObjectEntry()
-	{
-		if (pipelineState != nullptr)
-		{
-			pipelineState->Release();
-			pipelineState = nullptr;
-		}
-	}
-};
-
-typedef std::map<PSOKey, PipelineStateObjectEntry, PSOKeyComparator> PSOMap;
+typedef std::map<DX12Rendering::PSOKey, DX12Rendering::PipelineStateObjectEntry, DX12Rendering::PSOKeyComparator> PSOMap;
 
 PSOMap shaderMap;
 
@@ -81,6 +48,12 @@ D3D12_DEPTH_STENCIL_DESC CalculateDepthStencilMode(const uint64 stateBits) {
 	// Check if we should enable the depth mask
 	if (stateBits & GLS_DEPTHMASK) {
 		dsDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+
+		if ((stateBits & GLS_DEPTHFUNC_BITS) == GLS_DEPTHFUNC_ALWAYS)
+		{
+			// If we are not writing to the depth buffer, and we're always passing, then there's no point of adding it to the PSO.
+			dsDesc.DepthEnable = false;
+		}
 	}
 	else {
 		dsDesc.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
@@ -94,6 +67,7 @@ D3D12_DEPTH_STENCIL_DESC CalculateDepthStencilMode(const uint64 stateBits) {
 		case GLS_DEPTHFUNC_GREATER:	dsDesc.DepthFunc = D3D12_COMPARISON_FUNC_GREATER_EQUAL; break;
 		default:					dsDesc.DepthFunc = D3D12_COMPARISON_FUNC_NEVER;
 	}
+
 
 	// Calculate the stencil
 	if (stateBits & (GLS_STENCIL_FUNC_BITS | GLS_STENCIL_OP_BITS)) {
@@ -298,6 +272,10 @@ void DX12_ApplyPSOVariant(D3D12_GRAPHICS_PIPELINE_STATE_DESC& psoDesc, const DX1
 		psoDesc.DepthStencilState.BackFace.StencilPassOp = D3D12_STENCIL_OP_INCR_SAT;
 		break;
 
+	case DX12Rendering::VARIANT_DEPTH_COPY:
+		psoDesc.RTVFormats[0] = DXGI_FORMAT_R32_FLOAT;
+		break;
+
 	default:
 		break;
 	}
@@ -312,7 +290,7 @@ void FillPolygonOffset(D3D12_GRAPHICS_PIPELINE_STATE_DESC& psoDesc, uint64 state
 	}
 }
 
-PSOKey GetPSOHandle(const int parentState, const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, const glstate_t state)
+DX12Rendering::PSOKey GetPSOHandle(const int parentState, const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, const glstate_t state)
 {
 	byte data[512] = {};
 	int length = 0;
@@ -343,20 +321,20 @@ PSOKey GetPSOHandle(const int parentState, const DX12Rendering::eSurfaceVariant 
 		length += maxCopy;
 	}
 
-	PSOKey key;
+	DX12Rendering::PSOKey key;
 
 	MurmurHash3_x64_128(data, length, 0, &key);
 
 	return key;
 }
 
-void LoadStagePipelineState(const int parentState, const idMaterial* material, const DX12Rendering::eSurfaceVariant variant, glstate_t state, DX12Rendering::Commands::CommandList& commandList) {
+DX12Rendering::PipelineStateObjectEntry* LoadStagePipelineState(const int parentState, const idMaterial* material, const DX12Rendering::eSurfaceVariant variant, glstate_t state, DX12Rendering::Commands::CommandList& commandList) {
 	// Combine the glStateBits with teh faceCulling and parentState index values.
 	// We do not need the stecil ref value as this will be set through the command list. This gives us 8 useable bits.
-	PSOKey shaderIndex = GetPSOHandle(parentState, variant, material, state);
+	DX12Rendering::PSOKey shaderIndex = GetPSOHandle(parentState, variant, material, state);
 
 	auto psoMapEntry = shaderMap.find(shaderIndex);
-	PipelineStateObjectEntry* psoEntry;
+	DX12Rendering::PipelineStateObjectEntry* psoEntry;
 
 	if (psoMapEntry == shaderMap.end())
 	{
@@ -397,6 +375,18 @@ void LoadStagePipelineState(const int parentState, const idMaterial* material, c
 		psoDesc.BlendState = CalculateBlendMode(state.glStateBits);
 		psoDesc.DepthStencilState = CalculateDepthStencilMode(state.glStateBits);
 
+		if (psoDesc.DepthStencilState.DepthEnable || psoDesc.DepthStencilState.StencilEnable)
+		{
+			psoDesc.DSVFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+			psoEntry->useDepthBuffer = true;
+		}
+		else
+		{
+			psoDesc.DSVFormat = DXGI_FORMAT_UNKNOWN;
+			psoEntry->useDepthBuffer = false;
+		}
+		
+
 		FillPolygonOffset(psoDesc, state.glStateBits);
 
 		DX12_ApplyPSOVariant(psoDesc, variant);
@@ -419,15 +409,19 @@ void LoadStagePipelineState(const int parentState, const idMaterial* material, c
 	}
 	
 	dxRenderer.SetActivePipelineState(psoEntry->pipelineState.Get(), commandList);
+
+	return psoEntry;
 }
 
-bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList) {
+bool DX12_ActivatePipelineState(const DX12Rendering::eSurfaceVariant variant, const idMaterial* material, DX12Rendering::Commands::CommandList& commandList, DX12Rendering::PipelineStateObjectEntry** outputPsoEntry) {
 	if (activePipelineState < 0)
 	{
+		outputPsoEntry = nullptr;
+
 		return false;
 	}
 
-	LoadStagePipelineState(activePipelineState, material, variant, backEnd.glState, commandList);
+	*outputPsoEntry = LoadStagePipelineState(activePipelineState, material, variant, backEnd.glState, commandList);
 
 	return true;
 }

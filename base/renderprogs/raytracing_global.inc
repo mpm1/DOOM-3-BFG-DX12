@@ -283,27 +283,12 @@ void GeneralBRDF(
     // Diffuse using the Lambertian Model (we already used L dot N for the light Color)
     diffuseContribution = lightColor * (diffuseColor * NdotL * (1.0 - fresnelFactor)) / distribution;
 
-    // Useing Cook-Torrance BRDF for specular reflection
-    float NdotH = max(dot3(surfaceNormal, halfVector), 0.0);
-
-    float alpha = roughness * roughness;
-    float k = alpha / 2.0;
-
-    float a2 = alpha * alpha;
-    float D = a2 / (distribution * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
-
-    float NdotV = max(dot(surfaceNormal, viewVector), 0.0);
-    float G1 = NdotV / max(NdotV * (1 - k) + k, 0.0000001);
-    float G2 = NdotL / max(NdotL * (1 - k) + k, 0.0000001);
-    float G = G1 * G2; // Smith's shadowing-masking function
-
-    if(G <= 0.0)
-    {
-        specularContribution = float3(0.0f, 0.0f, 0.0f);
-        return;  
-    }
-
-    specularContribution = lightColor * specularColor * ((D * G * fresnelFactor) / (4.0 * NdotL * NdotV));
+    // Using Cook-Torrance BRDF for specular reflection
+    specularContribution = lightColor * specularColor * 
+        calculateCookTorranceSpecularRefectivity(
+            fresnelFactor, viewVector,
+            surfaceNormal, halfVector,
+            distribution, NdotL, roughness);
 }
 
 // Calculates the amount of specular and diffuse light hitting a surface.

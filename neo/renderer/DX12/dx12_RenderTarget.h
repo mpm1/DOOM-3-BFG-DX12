@@ -18,6 +18,7 @@ namespace DX12Rendering {
 	enum eRenderSurface
 	{
 		DepthStencil = 0,
+		HiZDepth,
 
 		// Even though this uses forward rendering, will separate into separate resources. We may use this later to handle denoising on our raytracing.
 		Diffuse,
@@ -36,6 +37,11 @@ namespace DX12Rendering {
 		// RayTracing
 		RaytraceShadowMask, // Each bit is a light mask
 		GlobalIllumination, // The expected global illumination result for the image.
+
+		// Reflections
+		ReflectionVector, // Vector representing the angle of direct reflection
+		SharpReflections, // Renderer representing 0% Roughness reflections
+		Reflections,
 
 		// Final Result
 		RenderTarget1,
@@ -60,10 +66,15 @@ namespace DX12Rendering {
 		eRenderSurface::Reflectivity,
 		eRenderSurface::MaterialProperties,
 
+		eRenderSurface::HiZDepth,
 		eRenderSurface::Diffuse,
 		eRenderSurface::Specular,
 		eRenderSurface::RaytraceShadowMask,
 		eRenderSurface::GlobalIllumination,
+
+		eRenderSurface::ReflectionVector,
+		eRenderSurface::SharpReflections,
+		eRenderSurface::Reflections,
 
 		eRenderSurface::RenderTarget1,
 		eRenderSurface::RenderTarget2,
@@ -74,7 +85,7 @@ namespace DX12Rendering {
 	public:
 		const eRenderSurface surfaceId;
 
-		RenderSurface(const LPCWSTR name, const DXGI_FORMAT format, const eRenderSurface surfaceId, const RENDER_SURFACE_FLAGS flags, const D3D12_CLEAR_VALUE clearValue);
+		RenderSurface(const LPCWSTR name, const DXGI_FORMAT format, const eRenderSurface surfaceId, const RENDER_SURFACE_FLAGS flags, const D3D12_CLEAR_VALUE clearValue, const UINT mipLevels = 1);
 		~RenderSurface();
 
 		bool Resize(UINT width, UINT height);
@@ -91,17 +102,35 @@ namespace DX12Rendering {
 
 		bool CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager);
 
+		const UINT GetWidth() { return m_width; }
+		const UINT GetHeight() { return m_height; }
+
+		TextureBuffer* GetAsTexture();
+
+		const bool IsInRenderState() {
+			return (GetResourceState() & (D3D12_RESOURCE_STATE_RENDER_TARGET | D3D12_RESOURCE_STATE_DEPTH_WRITE)) != 0;
+		}
+
+		const D3D12_RESOURCE_STATES GetResourceState() override;
+		void SetResourceState(D3D12_RESOURCE_STATES state) override;
+
 	private:
 		const DXGI_FORMAT m_format;
 		const RENDER_SURFACE_FLAGS m_flags;
 		UINT m_width;
 		UINT m_height;
+		UINT m_mipLevels;
 		D3D12_CLEAR_VALUE m_clearValue;
 
 		D3D12_CPU_DESCRIPTOR_HANDLE m_dsv;
 		D3D12_CPU_DESCRIPTOR_HANDLE m_rtv;
 
 		D3D12_GPU_DESCRIPTOR_HANDLE m_rtv_gpu;
+		D3D12_RESOURCE_DESC m_resourceDesc;
+
+		TextureBuffer* m_texture; // A texture representation of the surface
+
+		void Destroy(); // Cleans out child texture information. Needed before destroying or resizing.
 
 		void CreateDepthStencilView();
 		void CreateRenderTargetView();

@@ -1,0 +1,18 @@
+#include "global.inc"
+
+uniform Texture2D<float4> samp0 : register(t0); // Original Depth buffer
+
+struct PS_IN {
+	float4 position : SV_POSITION;
+	float2 texcoord0 : TEXCOORD0_centroid;
+};
+
+struct PS_OUT {
+	float depth : SV_TARGET0;
+};
+
+void main( PS_IN fragment, out PS_OUT result ) {
+	float2 tCoords = fragment.texcoord0;
+
+	result.depth = samp0.Sample(pointSampler, tCoords).r;
+}

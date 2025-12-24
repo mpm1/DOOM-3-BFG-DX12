@@ -12,11 +12,8 @@ namespace DX12Rendering
 	enum eGlobalTexture
 	{
 		DEPTH_TEXTURE,
-		POSITION,
-		ALBEDO,
 		SPECULAR_COLOR,
 		MATERIAL_PROPERTIES, // r = Roughness, g = Metallic, b = occlusion? (not implemented)
-		WORLD_NORMALS,
 		WORLD_FLAT_NORMALS,
 		WORLD_FLAT_TANGENT,
 		RAYTRACED_SHADOWMAP,
@@ -24,6 +21,8 @@ namespace DX12Rendering
 		RAYTRACED_DIFFUSE,
 		RAYTRACED_SPECULAR,
 		RAYTRACED_GLI,
+
+		LAST_FRAME_UNTOUCHED,
 
 		TEXTURE_COUNT
 	};
@@ -50,6 +49,7 @@ namespace DX12Rendering
 		}
 
 		bool Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc, D3D12_RESOURCE_STATES resourceState);
+		bool AttachToResource(const DX12Rendering::Resource* resource, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, D3D12_SHADER_RESOURCE_VIEW_DESC& srcDes);
 
 		const bool IsReady() { return Exists(); }
 
@@ -116,6 +116,8 @@ namespace DX12Rendering
 		/// <param name="index">Index to store the texture in the system. A value less than 1 will append the texture to the end.</param>
 		TextureBuffer* AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index = -1);
 
+		TextureBuffer* GenerateFromExistingResource(const DX12Rendering::Resource* resource, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc);
+
 		void FreeTextureBuffer(TextureBuffer* buffer);
 		void SetTextureContent(TextureBuffer* buffer, const UINT resourceIndex, const UINT mipLevel, const UINT bytesPerRow, const size_t imageSize, const void* image);
 
@@ -151,6 +153,8 @@ namespace DX12Rendering
 		std::vector<std::unique_ptr<byte[]>> m_tempImages;
 
 		void SetTextureToDefault(UINT textureIndex);
+
+		int StoreTextureEntry(TextureBuffer* buffer, int index);
 
 		TextureBuffer* GetTextureBuffer(const UINT index) { return m_textures[index]; }
 

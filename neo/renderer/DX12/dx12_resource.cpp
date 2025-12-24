@@ -27,7 +27,7 @@ namespace DX12Rendering {
 			resource->SetName(GetName());
 		}
 
-		m_resourceState = initState;
+		SetResourceState(initState);
 		state = Ready;
 		return resource.Get();
 	}
@@ -43,15 +43,17 @@ namespace DX12Rendering {
 
 	bool Resource::TryTransition(const D3D12_RESOURCE_STATES toTransition, D3D12_RESOURCE_BARRIER* resourceBarrier)
 	{
+		D3D12_RESOURCE_STATES currentState = GetResourceState();
+
 		if (!Exists() || // No resource to tansition on.
-			m_resourceState == toTransition || // No state change to transition to.
+			currentState == toTransition || // No state change to transition to.
 			resourceBarrier == nullptr) // No place to store the barrier.
 		{
 			return false;
 		}
 
-		*resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(resource.Get(), m_resourceState, toTransition);
-		m_resourceState = toTransition;
+		*resourceBarrier = CD3DX12_RESOURCE_BARRIER::Transition(resource.Get(), currentState, toTransition);
+		SetResourceState(toTransition);
 
 		return true;
 	}

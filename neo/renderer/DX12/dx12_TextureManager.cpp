@@ -7,6 +7,23 @@
 
 namespace DX12Rendering
 {
+	bool TextureBuffer::AttachToResource(const DX12Rendering::Resource* resource, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, D3D12_SHADER_RESOURCE_VIEW_DESC& srcDesc)
+	{
+		if (resource->state != Ready)
+		{
+			return false;
+		}
+
+		m_textureDesc = textureDesc;
+		m_samplerDesc = samplerDesc;
+		textureView = srcDesc;
+
+		this->resource = resource->resource;
+		this->state = Ready;
+
+		return true;
+	}
+
 	bool TextureBuffer::Build(D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, D3D12_SHADER_RESOURCE_VIEW_DESC srcDesc, D3D12_RESOURCE_STATES resourceState)
 	{
 		Release();
@@ -83,21 +100,6 @@ namespace DX12Rendering
 			textureDesc.Format = DXGI_FORMAT_R24_UNORM_X8_TYPELESS;
 			break;
 
-		case eGlobalTexture::POSITION:
-			name = "position";
-			textureDesc.Format = DXGI_FORMAT_R32G32B32A32_FLOAT;
-			break;
-
-		case eGlobalTexture::WORLD_NORMALS:
-			name = "world_normals";
-			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			break;
-
-		case eGlobalTexture::ALBEDO:
-			name = "albedo";
-			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			break;
-
 		case eGlobalTexture::SPECULAR_COLOR:
 			name = "specular_color";
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -105,6 +107,11 @@ namespace DX12Rendering
 
 		case eGlobalTexture::MATERIAL_PROPERTIES:
 			name = "material_properties";
+			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			break;
+
+		case eGlobalTexture::LAST_FRAME_UNTOUCHED:
+			name = "lastRenderedFrameNoFX";
 			textureDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
 			break;
 
@@ -295,7 +302,7 @@ namespace DX12Rendering
 		HeapDescriptorManager* heapManager = GetDescriptorManager();
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
-		auto defaultTexture = GetGlobalTexture(eGlobalTexture::ALBEDO); // TODO: Change to a default mangenta for debugging
+		auto defaultTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->GetAsTexture(); // TODO: Change to a default mangenta for debugging
 
 		{
 			// Setup the texture
@@ -410,10 +417,70 @@ namespace DX12Rendering
 		return m_tempImages.back().get();
 	}
 
-	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index)
+	int TextureManager::StoreTextureEntry(TextureBuffer* buffer, int index)
 	{
+		// Setup the heap index data
+		assert(index < (int)m_textures.size());
+
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 
+		if (index < 0)
+		{
+			// Find the first free index. If none exists keep the index at -1
+			for (int i = 0; i < m_textures.size(); ++i)
+			{
+				if (m_textures[i] == nullptr)
+				{
+					index = i;
+					break;
+				}
+			}
+		}
+
+		if (index < 0)
+		{
+			m_textures.push_back(buffer);
+			index = m_textures.size() - 1;
+		}
+		else
+		{
+			m_textures[index] = buffer;
+		}
+
+		buffer->m_heapIndex = index;
+
+		if (index < BINDLESS_TEXTURE_COUNT)
+		{
+			HeapDescriptorManager* heapManager = GetDescriptorManager();
+
+			{
+				// Setup the texture
+				D3D12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, index);
+
+				device->CreateShaderResourceView(buffer->resource.Get(), &buffer->textureView, textureHandle);
+			}
+		}
+
+		return index;
+	}
+
+	TextureBuffer* TextureManager::GenerateFromExistingResource(const DX12Rendering::Resource* resource, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, D3D12_SHADER_RESOURCE_VIEW_DESC& srvDesc)
+	{
+		// Create the buffer
+		TextureBuffer* buffer = new TextureBuffer(L"ResourceTexture");
+
+		if (buffer->AttachToResource(resource, textureDesc, samplerDesc, srvDesc))
+		{
+			StoreTextureEntry(buffer, -1);
+
+			return buffer;
+		}
+
+		return nullptr;
+	}
+
+	TextureBuffer* TextureManager::AllocTextureBuffer(const idStr* name, D3D12_RESOURCE_DESC& textureDesc, D3D12_SAMPLER_DESC& samplerDesc, const UINT shaderComponentMapping, D3D12_RESOURCE_STATES resourceState, int index)
+	{
 		// Create the name
 		wchar_t wname[256];
 		wsprintfW(wname, L"Texture: %hs", name->c_str());
@@ -430,45 +497,7 @@ namespace DX12Rendering
 
 		if (buffer->Build(textureDesc, samplerDesc, srvDesc, resourceState))
 		{
-			// Setup the heap index data
-			assert(index < (int)m_textures.size());
-
-			if (index < 0)
-			{
-				// Find the first free index. If none exists keep the index at -1
-				for (int i = 0; i < m_textures.size(); ++i)
-				{
-					if (m_textures[i] == nullptr)
-					{
-						index = i;
-						break;
-					}
-				}
-			}
-
-			if (index < 0)
-			{
-				m_textures.push_back(buffer);
-				index = m_textures.size() - 1;
-			}
-			else
-			{
-				m_textures[index] = buffer;
-			}
-
-			buffer->m_heapIndex = index;
-			
-			if (index < BINDLESS_TEXTURE_COUNT)
-			{
-				HeapDescriptorManager* heapManager = GetDescriptorManager();
-
-				{
-					// Setup the texture
-					D3D12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, index);
-
-					device->CreateShaderResourceView(buffer->resource.Get(), &buffer->textureView, textureHandle);
-				}
-			}
+			StoreTextureEntry(buffer, index);
 
 			return buffer;
 		}

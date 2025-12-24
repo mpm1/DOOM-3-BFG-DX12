@@ -1,0 +1,21 @@
+#include "global.inc"
+
+struct VS_IN {
+	float4 position : POSITION;
+	float2 texcoord : TEXCOORD0;
+	float4 normal : NORMAL;
+	float4 tangent : TANGENT;
+	float4 color : COLOR0;
+};
+
+struct VS_OUT {
+	float4 position : SV_POSITION;
+	float2 texcoord0 : TEXCOORD0_centroid;
+};
+
+void main( VS_IN vertex, out VS_OUT result ) {
+	result.position = vertex.position;
+
+	result.texcoord0.x =  vertex.texcoord.x;
+	result.texcoord0.y =  1.0 - vertex.texcoord.y; // Flip the y view
+}

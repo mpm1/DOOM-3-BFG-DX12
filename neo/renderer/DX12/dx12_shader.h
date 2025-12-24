@@ -7,6 +7,41 @@ namespace DX12Rendering {
 	using namespace DirectX;
 	using namespace Microsoft::WRL;
 
+	typedef GUID PSOKey;
+	struct PSOKeyComparator
+	{
+		bool operator()(const PSOKey& a, const PSOKey& b) const
+		{
+			return memcmp(&a, &b, sizeof(PSOKey)) < 0; // This is specifically a less than comparator for the std::map
+		}
+	};
+
+	struct PipelineStateObjectEntry
+	{
+		const PSOKey handle;
+		bool isValid;
+		ComPtr<ID3D12PipelineState> pipelineState;
+		bool useDepthBuffer;
+
+		PipelineStateObjectEntry(const PSOKey handle) :
+			handle(handle),
+			isValid(false),
+			pipelineState(nullptr),
+			useDepthBuffer(true)
+		{
+
+		}
+
+		~PipelineStateObjectEntry()
+		{
+			if (pipelineState != nullptr)
+			{
+				pipelineState->Release();
+				pipelineState = nullptr;
+			}
+		}
+	};
+
 	enum eShader {
 		VERTEX,
 		PIXEL,
@@ -17,6 +52,7 @@ namespace DX12Rendering {
 	enum class eComputeShaders : UINT 
 	{
 		COMPUTE_SKINNED_OFFSET = 0,
+		COMPUTE_HIZ_BUFFER,
 
 		COMPUTE_COUNT
 	};

@@ -8,7 +8,8 @@ struct builtinComputeShaders_t {
 	const char* name;
 	computeShader_t shader;
 } computeBuiltins[] = {
-	{ static_cast<UINT>(eComputeShaders::COMPUTE_SKINNED_OFFSET), "compute_skinned_offset",  computeShader_t("Compute Skinned Offset") }
+	{ static_cast<UINT>(eComputeShaders::COMPUTE_SKINNED_OFFSET), "compute_skinned_offset",  computeShader_t("Compute Skinned Offset") },
+	{ static_cast<UINT>(eComputeShaders::COMPUTE_HIZ_BUFFER), "hiz_compute",  computeShader_t("HiZ Buffer Generator") }
 };
 
 computeShader_t* DX12Rendering::GetComputeShader(eComputeShaders shader)

@@ -13,7 +13,7 @@ namespace
 
 namespace DX12Rendering
 {
-	RenderSurface::RenderSurface(const LPCWSTR name, const DXGI_FORMAT format, const eRenderSurface surfaceId, const RENDER_SURFACE_FLAGS flags, const D3D12_CLEAR_VALUE clearValue) :
+	RenderSurface::RenderSurface(const LPCWSTR name, const DXGI_FORMAT format, const eRenderSurface surfaceId, const RENDER_SURFACE_FLAGS flags, const D3D12_CLEAR_VALUE clearValue, const UINT mipLevels) :
 		Resource(name),
 		surfaceId(surfaceId),
 		m_width(0),
@@ -23,7 +23,9 @@ namespace DX12Rendering
 		m_flags(flags),
 		m_dsv({MAXSIZE_T}),
 		m_rtv({MAXSIZE_T}),
-		m_rtv_gpu({MAXSIZE_T})
+		m_rtv_gpu({MAXSIZE_T}),
+		m_mipLevels(mipLevels),
+		m_texture(nullptr)
 	{
 		ID3D12Device5* device = DX12Rendering::Device::GetDevice();
 		
@@ -59,6 +61,75 @@ namespace DX12Rendering
 
 	RenderSurface::~RenderSurface()
 	{
+		Destroy();
+	}
+
+	void RenderSurface::Destroy()
+	{
+		if (m_texture != nullptr)
+		{
+			DX12Rendering::GetTextureManager()->FreeTextureBuffer(m_texture);
+		}
+
+		Release();
+	}
+
+	const D3D12_RESOURCE_STATES RenderSurface::GetResourceState()
+	{
+		D3D12_RESOURCE_STATES state = Resource::GetResourceState();
+
+		if (m_texture != nullptr && m_texture->GetResourceState() != state)
+		{
+			RenderSurface::SetResourceState(m_texture->GetResourceState());
+
+			return Resource::GetResourceState();
+		}
+
+		return state;
+	}
+
+	void RenderSurface::SetResourceState(D3D12_RESOURCE_STATES state)
+	{
+		if (m_texture != nullptr && m_texture->GetResourceState() != state)
+		{
+			m_texture->SetResourceState(state);
+		}
+
+		Resource::SetResourceState(state);
+	}
+
+	TextureBuffer* RenderSurface::GetAsTexture()
+	{
+		if (m_texture != nullptr)
+		{
+			return m_texture;
+		}
+
+		DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+
+		D3D12_SAMPLER_DESC samplerDesc = {};
+		samplerDesc.Filter = D3D12_FILTER_MIN_MAG_MIP_POINT;
+		samplerDesc.MaxAnisotropy = 1;
+		samplerDesc.MaxLOD = static_cast<float>(m_mipLevels);
+		samplerDesc.BorderColor[3] = 0.0f; // Set alpha to 0.0
+		samplerDesc.AddressU = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplerDesc.AddressV = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplerDesc.AddressW = D3D12_TEXTURE_ADDRESS_MODE_CLAMP;
+		samplerDesc.ComparisonFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+
+		// Create the Shader Resource View
+		D3D12_SHADER_RESOURCE_VIEW_DESC srvDesc = {};
+		srvDesc.Format = m_resourceDesc.Format == DXGI_FORMAT_D24_UNORM_S8_UINT ? DXGI_FORMAT_R24_UNORM_X8_TYPELESS : m_resourceDesc.Format;
+		srvDesc.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+		srvDesc.ViewDimension =  D3D12_SRV_DIMENSION_TEXTURE2D;
+		srvDesc.Texture2D.MipLevels = m_resourceDesc.MipLevels;
+
+		TextureBuffer* buffer = textureManager->GenerateFromExistingResource(this, m_resourceDesc, samplerDesc, srvDesc);
+		m_texture = buffer;
+
+		m_texture->SetResourceState(Resource::GetResourceState());
+
+		return m_texture;
 	}
 
 	bool RenderSurface::AttachSwapchain(UINT index, IDXGISwapChain3& swapChain)
@@ -102,7 +173,7 @@ namespace DX12Rendering
 
 		bool resourceUpdated = false;
 
-		Release();
+		Destroy();
 
 		// Create the resource to draw raytraced shadows to.
 		D3D12_RESOURCE_DESC description = {};
@@ -113,7 +184,7 @@ namespace DX12Rendering
 		description.Width = width;
 		description.Height = height;
 		description.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-		description.MipLevels = 1;
+		description.MipLevels = m_mipLevels;
 		description.SampleDesc.Count = 1;
 
 		if (m_rtv.ptr != MAXSIZE_T)
@@ -130,6 +201,8 @@ namespace DX12Rendering
 		{
 			description.Flags |= D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
 		}
+
+		m_resourceDesc = description;
 
 		if (Allocate(description, D3D12_RESOURCE_STATE_COPY_SOURCE, kDefaultHeapProps, m_clearValue.Format == DXGI_FORMAT_UNKNOWN  ? nullptr : &m_clearValue) != nullptr)
 		{
@@ -279,6 +352,8 @@ namespace DX12Rendering
 		{
 			D3D12_CLEAR_VALUE clearValue = {}; // Set to unknown.
 
+			m_surfaces.emplace_back(L"HiZBuffer", DXGI_FORMAT_R32_FLOAT, eRenderSurface::HiZDepth, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue, 4);
+
 			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
 			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 			
@@ -293,6 +368,10 @@ namespace DX12Rendering
 
 			m_surfaces.emplace_back(L"RaytraceShadowMask", DXGI_FORMAT_R8G8B8A8_UINT, eRenderSurface::RaytraceShadowMask, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 			m_surfaces.emplace_back(L"Global Illumination", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::GlobalIllumination, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
+
+			m_surfaces.emplace_back(L"ReflectionVector", DXGI_FORMAT_R10G10B10A2_UNORM, eRenderSurface::ReflectionVector, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"SharpReflections", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::SharpReflections, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"Reflections", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Reflections, RENDER_SURFACE_FLAG_NONE, clearValue);
 
 			m_surfaces.emplace_back(L"RenderTarget1", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget1, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);
 			m_surfaces.emplace_back(L"RenderTarget2", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::RenderTarget2, RENDER_SURFACE_FLAG_SWAPCHAIN, clearValue);
@@ -310,7 +389,6 @@ namespace DX12Rendering
 	RenderSurface* GetSurface(eRenderSurface surface)
 	{
 		assert(surface >= 0 && surface < eRenderSurface::Count);
-		auto loc = m_rtvHeap->GetCPUDescriptorHandleForHeapStart();
 
 		return &m_surfaces.at(surface);
 	}

@@ -182,6 +182,9 @@ public:
 	void	BindShader_GBufferTransparentSkinned() { BindShader_Builtin(BUILTIN_GBUFFER_TRANSPARENT_SKINNED); }
 
 	void	BindShader_GBufferCombinedResult() { BindShader_Builtin(BUILTIN_GBUFFER_COMBINE); }
+	void	BindShader_ScreenSpaceReflection() { BindShader_Builtin(BUILTIN_SCREEN_SPACE_REFLECTIONS); }
+	void	BindShader_Reflection() { BindShader_Builtin(BUILTIN_REFLECTIONS); }
+	void	BindShader_HiZCopy() { BindShader_Builtin(BUILTIN_HIZCOPY); }
 
 	void	BindShader_BlendLight() { BindShader_Builtin( BUILTIN_BLENDLIGHT ); }
 	void	BindShader_Fog() { BindShader_Builtin( BUILTIN_FOG ); }
@@ -261,6 +264,9 @@ protected:
 		BUILTIN_GBUFFER_TRANSPARENT_SKINNED,
 
 		BUILTIN_GBUFFER_COMBINE,
+		BUILTIN_SCREEN_SPACE_REFLECTIONS,
+		BUILTIN_REFLECTIONS,
+		BUILTIN_HIZCOPY,
 
 		BUILTIN_BLENDLIGHT,
 		BUILTIN_FOG,
