@@ -1506,7 +1506,9 @@ int WINAPI WinMain( HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLin
 	idStr::Copynz( sys_cmdline, lpCmdLine, sizeof( sys_cmdline ) );
 
 	// done before Com/Sys_Init since we need this for error output
+#if !defined(DEBUG_NSIGHT)
 	Sys_CreateConsole();
+#endif
 
 	// no abort/retry/fail errors
 	SetErrorMode( SEM_FAILCRITICALERRORS );

@@ -181,7 +181,7 @@
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <AdditionalIncludeDirectories Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
       <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12</PreprocessorDefinitions>
-      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WIN32;_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12;DEBUG_PIX</PreprocessorDefinitions>
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">WIN32;_INLINEDEBUG;%(PreprocessorDefinitions);USE_DX12;DEBUG_PIX;DEBUG_NSIGHT</PreprocessorDefinitions>
       <UndefinePreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">_USE_32BIT_TIME_T;%(UndefinePreprocessorDefinitions)</UndefinePreprocessorDefinitions>
       <LanguageStandard Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">stdcpp14</LanguageStandard>
       <ExpandAttributedSource Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExpandAttributedSource>
@@ -1724,7 +1724,10 @@
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Release|x64'">$(OutDir)/hlsl/%(Filename).vcso</ObjectFileOutput>
     </FxCompile>
-    <None Include="..\base\renderprogs\hiz_depth.inc" />
+    <None Include="..\base\renderprogs\hiz_depth.inc">
+      <FileType>Document</FileType>
+      <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Library</ShaderType>
+    </None>
     <None Include="..\base\renderprogs\interaction.inc" />
     <None Include="..\base\renderprogs\interactionAmbient_skinned.pixel" />
     <None Include="..\base\renderprogs\interactionAmbient_skinned.vertex" />
@@ -1845,6 +1848,7 @@
       <FileType>Document</FileType>
       <ShaderType Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">Pixel</ShaderType>
       <ObjectFileOutput Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">$(OutDir)/hlsl/%(Filename).pcso</ObjectFileOutput>
+      <EnableDebuggingInformation Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">true</EnableDebuggingInformation>
     </FxCompile>
     <FxCompile Include="..\base\renderprogs\screenspaceReflection.vertex">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>

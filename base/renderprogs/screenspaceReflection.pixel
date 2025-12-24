@@ -27,9 +27,7 @@ float3 GetUVCoordinates(in float4 worldCoord)
 	fragCoord.w = dot4( worldCoord, sceneConstants.rpMVPmatrixW );
 
 	fragCoord.xyz /= fragCoord.w;
-	fragCoord.xy = fragCoord.xy * 0.5 + 0.5;
-
-	fragCoord.z = (fragCoord.z * 0.5) + 0.5;
+	fragCoord.xy = (fragCoord.xy * 0.5) + 0.5;
 
 	return fragCoord.xyz;
 }
@@ -71,7 +69,7 @@ float4 ScreenSpaceTraceRay(in float3 startFrag, in float3 endFrag, in float reso
 	float viewDistance = startFrag.z;
 	float depth = thickness;
 
-	float2 frag = startFrag.xy + float2(0.5, 0.5); // Start in the middle of the fragment.
+	float2 frag = startFrag.xy;
 	float2 uv = frag * sceneConstants.rpWindowCoord.xy;
 	uv.y = 1.0 - uv.y;
 
@@ -143,28 +141,27 @@ float4 ScreenSpaceTraceRay(in float3 startFrag, in float3 endFrag, in float reso
 
 void main( PS_IN fragment, out PS_OUT result ) {
 	// TODO: move these properties into a constant buffer
-	float maxDistance = 10.0;
+	float maxDistance = 1.0;
 	float resolution = 0.3;
 	int steps = 5;
 	float thickness = 0.001;
 	float roughnessCutoff = 0.8; // Anything higher will not do screen space reflections
-	float angularCutoff = 0.001; // Cutoff in which the angle is too pointed at the camera.
+	float angularCutoff = 0.0; // Cutoff in which the angle is too pointed at the camera.
 
 	float2 tCoords = fragment.texcoord0;
 
 	float3 worldPosition = samp3.Sample(pointSampler, tCoords).xyz;
 	float3 normal = normalize((samp1.Sample(pointSampler, tCoords).xyz * 2.0) - 1.0);
 	
-	float3 pointToEye = normalize(sceneConstants.rpGlobalEyePos.xyz - worldPosition);
-	float3 reflectionVector = normalize(reflect(-pointToEye, normal));
+	float3 eyeToPoint = normalize(worldPosition - sceneConstants.rpGlobalEyePos.xyz);
+	float3 reflectionVector = normalize(reflect(eyeToPoint, normal));
 
-	float viewAmount = dot3(-pointToEye, reflectionVector);
-	result.vector = float4(0.0, 0.0, 0.0, 0.0);
+	float viewAmount = dot3(eyeToPoint, reflectionVector);
+	result.vector = float4(reflectionVector * 0.5 + 0.5, 1.0);
 	result.color = float4(0.0, 0.0, 0.0, 0.0);
 
 	if(viewAmount > angularCutoff)
 	{
-		result.vector = float4(reflectionVector * 0.5 + 0.5, 1.0);
 		float roughness, baseReflection, metalness;
 
 		{
@@ -178,21 +175,17 @@ void main( PS_IN fragment, out PS_OUT result ) {
 
 		if(roughness < roughnessCutoff)
 		{
-			Texture2D<float4> depthTexture = GetBindlessTexture4f(depthConstants.textureIndex);
-
-			float3 startUV = float3(tCoords, depthTexture.Sample(pointSampler, tCoords).r);
-			startUV.y = 1.0 - startUV.y;
+			float3 startUV = GetUVCoordinates(float4(worldPosition, 1.0));
 
 			float4 endPosition = float4(worldPosition + (reflectionVector * maxDistance), 1.0);
 			float3 uvVector = normalize(GetUVCoordinates(endPosition) - startUV);
-
-			//float3 startFrag = GetFragCoordinates(float4(worldPosition, 1.0));
-			//float3 endFrag = GetFragCoordinates(endPosition);
 
 			float4 screenSpaceIntersection = FindIntersectingDepthPoint(startUV, uvVector, resolution, steps, thickness); //ScreenSpaceTraceRay(startFrag, endFrag, resolution, steps, thickness);
 
 			result.color.rgb = samp0.Sample(baseSampler, screenSpaceIntersection.xy).rgb;
 			result.color.w = screenSpaceIntersection.w; 
+
+			//result.color = screenSpaceIntersection;
 		}
 	}
 }

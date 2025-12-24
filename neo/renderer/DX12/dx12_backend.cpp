@@ -2945,6 +2945,14 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 	int screenWidth = renderSystem->GetWidth();
 	int screenHeight = renderSystem->GetHeight();
 
+	// window coord to 0.0 to 1.0 conversion
+	float windowCoordParm[4];
+	windowCoordParm[0] = 1.0f / screenWidth;
+	windowCoordParm[1] = 1.0f / screenHeight;
+	windowCoordParm[2] = 0.0f;
+	windowCoordParm[3] = 1.0f;
+	SetFragmentParm(RENDERPARM_WINDOWCOORD, windowCoordParm); // rpWindowCoord
+
 	// set the window clipping
 	GL_Viewport(0, 0, screenWidth, screenHeight);
 	GL_Scissor(0, 0, screenWidth, screenHeight);

@@ -144,17 +144,17 @@ void ExtractMaterialProperties(
 	out float metalness
 )
 {
-	roughness = materialProperties.x;
-	metalness = materialProperties.y;
+	roughness = saturate(materialProperties.x);
+	metalness = saturate(materialProperties.y);
 
 	// Approximate the base reflectivity from the specular color.
-	baseReflection = specularColor * materialProperties.z;
+	baseReflection = saturate(specularColor * materialProperties.z);
 }
 
 // Lighting Helpers
 inline float3 CalculateFresnel(in float3 baseReflectivity, in float3 viewVector, in float3 halfVector)
 {
-	return baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - dot3(viewVector, halfVector), 5.0);
+	return baseReflectivity + (float3(1.0, 1.0, 1.0) - baseReflectivity) * pow(1.0 - saturate(dot3(viewVector, halfVector)), 5.0);
 }
 
 // Used for calculating specular reflections
