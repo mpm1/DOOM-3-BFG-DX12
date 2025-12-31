@@ -352,7 +352,7 @@ namespace DX12Rendering
 		{
 			D3D12_CLEAR_VALUE clearValue = {}; // Set to unknown.
 
-			m_surfaces.emplace_back(L"HiZBuffer", DXGI_FORMAT_R32_FLOAT, eRenderSurface::HiZDepth, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue, 4);
+			m_surfaces.emplace_back(L"HiZBuffer", DXGI_FORMAT_R32_FLOAT, eRenderSurface::HiZDepth, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue, 8);
 
 			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
 			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);

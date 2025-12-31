@@ -278,13 +278,14 @@ void GeneralBRDF(
     out float3 diffuseContribution,
     out float3 specularContribution)
 {
-    float3 fresnelFactor = CalculateFresnel(baseReflectivity, viewVector, halfVector);
+    float3 fresnelFactor = saturate(CalculateFresnel(baseReflectivity, viewVector, halfVector));
+    float3 lightIntensity = lightColor * NdotL;
 
     // Diffuse using the Lambertian Model (we already used L dot N for the light Color)
-    diffuseContribution = lightColor * (diffuseColor * NdotL * (1.0 - fresnelFactor)) / distribution;
+    diffuseContribution = lightIntensity  * (1.0 - fresnelFactor) * (diffuseColor / distribution);
 
     // Using Cook-Torrance BRDF for specular reflection
-    specularContribution = lightColor * specularColor * 
+    specularContribution = lightIntensity * specularColor *
         calculateCookTorranceSpecularRefectivity(
             fresnelFactor, viewVector,
             surfaceNormal, halfVector,

@@ -2945,14 +2945,6 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 	int screenWidth = renderSystem->GetWidth();
 	int screenHeight = renderSystem->GetHeight();
 
-	// window coord to 0.0 to 1.0 conversion
-	float windowCoordParm[4];
-	windowCoordParm[0] = 1.0f / screenWidth;
-	windowCoordParm[1] = 1.0f / screenHeight;
-	windowCoordParm[2] = 0.0f;
-	windowCoordParm[3] = 1.0f;
-	SetFragmentParm(RENDERPARM_WINDOWCOORD, windowCoordParm); // rpWindowCoord
-
 	// set the window clipping
 	GL_Viewport(0, 0, screenWidth, screenHeight);
 	GL_Scissor(0, 0, screenWidth, screenHeight);
@@ -3019,7 +3011,7 @@ const DX12Rendering::Commands::FenceValue RB_RenderReflections(DX12Rendering::Co
 
 	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 
-	GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
+	GL_State(GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
 	GL_Cull(CT_TWO_SIDED);
 
 	int screenWidth = renderSystem->GetWidth();
@@ -4047,7 +4039,6 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			DX12Rendering::eRenderSurface::Reflectivity,
 			DX12Rendering::eRenderSurface::MaterialProperties,
 			DX12Rendering::eRenderSurface::ReflectionVector,
-			DX12Rendering::eRenderSurface::Reflections,
 			DX12Rendering::eRenderSurface::SharpReflections,
 		};
 
@@ -4082,6 +4073,14 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		parm[2] = backEnd.viewDef->renderView.vieworg[2];
 		parm[3] = 1.0f;
 		SetVertexParm(RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
+
+		// Setup the basis for random numbers
+		float timer = backEnd.viewDef->renderView.time[0] * 0.001f;
+		parm[0] = timer;
+		parm[1] = backEnd.viewDef->renderView.time[1] * 0.001f;
+		parm[2] = cosf(timer);
+		parm[3] = timer / 1.61803;
+		SetFragmentParm(RENDERPARAM_RANDOM_TIMER, parm); // rpRandomTimer
 
 		if (raytracedEnabled)
 		{			

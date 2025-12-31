@@ -108,6 +108,8 @@ struct SceneConstants {
 
 	float4 rpMaterialProperties;
 
+	float4 rpRandomTimer; // Used to seed random functinos.
+
 	// Not yet setup
 	float4 rpPrevMVPmatrixX;
 	float4 rpPrevMVPmatrixY;

@@ -120,6 +120,8 @@ enum renderParm_t {
 
 	RENDERPARAM_MATERIAL_PROPERTIES, // x = Roughness, y = Metallic, z = unused, w = unused
 
+	RENDERPARAM_RANDOM_TIMER,
+
 	RENDERPARM_TOTAL,
 	RENDERPARM_USER = 128,
 };

@@ -154,7 +154,7 @@ void ExtractMaterialProperties(
 // Lighting Helpers
 inline float3 CalculateFresnel(in float3 baseReflectivity, in float3 viewVector, in float3 halfVector)
 {
-	return baseReflectivity + (float3(1.0, 1.0, 1.0) - baseReflectivity) * pow(1.0 - saturate(dot3(viewVector, halfVector)), 5.0);
+	return baseReflectivity + ((1.0 - baseReflectivity) * pow(1.0 - max(dot3(viewVector, halfVector), 0), 5.0));
 }
 
 // Used for calculating specular reflections
@@ -173,17 +173,13 @@ float3 calculateCookTorranceSpecularRefectivity(
     float k = alpha / 2.0;
 
 	float a2 = alpha * alpha;
-    float D = a2 / (distribution * pow(NdotH * NdotH * (a2 - 1.0) + 1.0, 2.0)); // DGGX Trowbridge-Reitz distribution
+    float D = a2 / max(distribution * pow(pow(NdotH, 2.0) * (a2 - 1.0) + 1.0, 2.0), EPSILON); // DGGX Trowbridge-Reitz distribution
 
-	float NdotV = max(dot(surfaceNormal, viewVector), 0.0);
-    float G1 = NdotV / max(NdotV * (1 - k) + k, 0.0000001);
-    float G2 = NdotL / max(NdotL * (1 - k) + k, 0.0000001);
+	float NdotV = max(dot3(surfaceNormal, viewVector), 0.0);
+
+    float G1 = NdotV / max(NdotV * (1 - k) + k, EPSILON);
+    float G2 = NdotL / max(NdotL * (1 - k) + k, EPSILON);
     float G = G1 * G2; // Smith's shadowing-masking function
-
-	if(G <= 0.0)
-    {
-        return float3(0.0f, 0.0f, 0.0f);
-    }
 
 	return (D * G * fresnelFactor) / (4.0 * NdotL * NdotV);
 }

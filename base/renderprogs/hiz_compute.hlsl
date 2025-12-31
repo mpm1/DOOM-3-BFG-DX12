@@ -71,7 +71,7 @@ void main(uint2 GTid : SV_GroupThreadID, uint3 DTid : SV_DispatchThreadID)
     
     depthShared[GTid.x][GTid.y] = srcDepth;
         
-    const uint maxCount = min(mipConstants.numMipLevels - mipConstants.srcMipLevel, 3);
+    const uint maxCount = max(mipConstants.numMipLevels - 1, 3);
     uint div = 1;
     uint checkId = 0x01;
     

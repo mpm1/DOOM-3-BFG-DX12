@@ -82,20 +82,22 @@ void main( PS_IN fragment, out PS_OUT result )
 
 	float3 worldToEye = normalize(sceneConstants.rpGlobalEyePos.xyz - worldPosition);
 
-	float4 outputColor = float4(0.0, 0.0, 0.0, 0.75);
+	float4 outputColor = float4(0.0, 0.0, 0.0, 0.5);
 	float3 reflectionVector = normalize((samp5.Sample(pointSampler, tCoords).xyz - 0.5) * 2.0);
-
-	outputColor.rgb = CalulateImpact(tCoords, reflectionVector, normal, worldToEye, baseReflection, roughness, metalness);
 
 	// Eventually sample multiple points based on the roughness
 	const float PI2 = 2.0 * PI;
-	const uint maxItteration = 6;
+	const uint maxItteration = 4;
 	const float incrementor = PI2 / 1.61803; // Divide by the golden ratio
-	const float radius = 2.66;
-	float delta = 0; // TODO: Set this to a random frame starting point.
+	const float3 randomValue = rand3(sceneConstants.rpRandomTimer.xyz + reflectionVector.xyz);
+	float radius = roughness * 5.0 * randomValue[0]; 
+	float delta = randomValue[1];
+	float outputWeight = float(maxItteration); // TODO: find better weiht clculations.
 
 	for(uint i = 0; i < maxItteration; ++i)
 	{
+		radius = roughness * 32.0 * rand(float2(randomValue[0], radius)); 
+
 		delta += incrementor;
 		if(delta > PI2) { delta -= PI2; }
 
@@ -107,7 +109,10 @@ void main( PS_IN fragment, out PS_OUT result )
 		outputColor.rgb += CalulateImpact(tCoords2, reflectionVector2, normal, worldToEye, baseReflection, roughness, metalness);
 	}
 
-	outputColor.rgb /= float(maxItteration + 1);
+	if(outputWeight > 0.0)
+	{
+		outputColor.rgb /= outputWeight;
+	}
 
 	result.color = outputColor;
 }

@@ -797,6 +797,8 @@ bool DX12Renderer::IsScissorWindowValid() {
 
 DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Rendering::Commands::FenceValue waitFence)
 {
+	const UINT maxMipPerItteration = 4; // 1 to sample from and 3 to calculate.
+
 	const UINT width = m_hiZDepthConstants.width;
 	const UINT height = m_hiZDepthConstants.height;
 
@@ -813,13 +815,6 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 	DX12Rendering::TextureBuffer* depthTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth)->GetAsTexture(); // We should have Mip 0 applied already;
 
 	// TODO: Validate size
-
-	GenerateMipInput mipConstants;
-	mipConstants.srcMipLevel = 0;
-	mipConstants.numMipLevels = depthTexture->textureView.Texture2D.MipLevels;
-	mipConstants.srcDimension = ((height % 2) << 1) & (width % 2); // bit 0 = width is odd, bit 1 = height is odd
-	mipConstants.texalSize[0] = 1.0f / static_cast<float>(width);
-	mipConstants.texalSize[1] = 1.0f / static_cast<float>(height);
 	
 	DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
 	DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "DX12Renderer::GenerateHiZBuffer");
@@ -830,59 +825,72 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 	ID3D12PipelineState* pipelineState = m_hiZShader.Get();
 	assert(pipelineState != nullptr);
 
-	const UINT objectIndex = m_computeRootSignature->RequestNewObjectIndex();
-
-	// Create constants
-	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
-
-	{
-		DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(GenerateMipInput));
-		resourceManager.FillConstantBuffer(buffer, &mipConstants);
-
-		m_computeRootSignature->SetConstantBufferView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eSurfaceCBV, buffer);
-	}
-
-	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
-
-	for (int i = mipConstants.srcMipLevel; i < (mipConstants.srcMipLevel + mipConstants.numMipLevels); ++i)
-	{
-		D3D12_UNORDERED_ACCESS_VIEW_DESC descriptor = {};
-		descriptor.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
-		descriptor.Format = DXGI_FORMAT_R32_FLOAT;
-		descriptor.Texture2D.MipSlice = i;
-
-		m_computeRootSignature->SetUnorderedAccessView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture0SRV + i, depthTexture, descriptor);
-	}
-
-	m_computeRootSignature->SetRootDescriptorTable(objectIndex, commandList);
 	commandList->CommandSetPipelineState(pipelineState);
 
-	commandList->AddCommandAction([width, height, &depthTexture](ID3D12GraphicsCommandList4* commandList)
+	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
+	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
+
+	for (UINT startIndex = 0; startIndex < depthTexture->textureView.Texture2D.MipLevels; startIndex += (maxMipPerItteration - 1))
 	{
-		// The total sections of length 8 needed to equal the width and height.
-		const UINT denominator = 8;
-		UINT widthBy8 = width / denominator;
-		UINT heightBy8 = height / denominator;
-		
-		if ((width % denominator) > 0)
+		const UINT evalWidth = width >> startIndex;
+		const UINT evalHeight = height >> startIndex;
+
+		GenerateMipInput mipConstants;
+		mipConstants.srcMipLevel = startIndex;
+		mipConstants.numMipLevels = Min(depthTexture->textureView.Texture2D.MipLevels - startIndex, maxMipPerItteration);
+		mipConstants.srcDimension = ((evalHeight % 2) << 1) & (evalWidth % 2); // bit 0 = width is odd, bit 1 = height is odd
+		mipConstants.texalSize[0] = 1.0f / static_cast<float>(evalWidth);
+		mipConstants.texalSize[1] = 1.0f / static_cast<float>(evalHeight);
+
+		const UINT objectIndex = m_computeRootSignature->RequestNewObjectIndex();
+		m_computeRootSignature->SetRootDescriptorTable(objectIndex, commandList);
+
+		// Create constants
+
 		{
-			++widthBy8;
+			DX12Rendering::ConstantBuffer buffer = resourceManager.RequestTemporyConstantBuffer(sizeof(GenerateMipInput));
+			resourceManager.FillConstantBuffer(buffer, &mipConstants);
+
+			m_computeRootSignature->SetConstantBufferView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eSurfaceCBV, buffer);
 		}
 
-		if ((height % denominator) > 0)
+		for (int i = 0; i < mipConstants.numMipLevels; ++i)
 		{
-			++heightBy8;
+			D3D12_UNORDERED_ACCESS_VIEW_DESC descriptor = {};
+			descriptor.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
+			descriptor.Format = DXGI_FORMAT_R32_FLOAT;
+			descriptor.Texture2D.MipSlice = mipConstants.srcMipLevel + i;
+
+			m_computeRootSignature->SetUnorderedAccessView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture0SRV + i, depthTexture, descriptor);
 		}
 
-		D3D12_RESOURCE_BARRIER uavBarrier;
-		uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
-		uavBarrier.UAV.pResource = depthTexture->resource.Get();
-		uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+		commandList->AddCommandAction([evalWidth, evalHeight, &depthTexture](ID3D12GraphicsCommandList4* commandList)
+		{
+			// The total sections of length 8 needed to equal the width and height.
+			constexpr UINT denominator = 8;
+			UINT widthBy8 = evalWidth / denominator;
+			UINT heightBy8 = evalHeight / denominator;
 
-		commandList->Dispatch( widthBy8, heightBy8, 1);
+			if ((evalWidth % denominator) > 0)
+			{
+				++widthBy8;
+			}
 
-		commandList->ResourceBarrier(1, &uavBarrier);
-	});
+			if ((evalHeight % denominator) > 0)
+			{
+				++heightBy8;
+			}
+
+			D3D12_RESOURCE_BARRIER uavBarrier;
+			uavBarrier.Type = D3D12_RESOURCE_BARRIER_TYPE_UAV;
+			uavBarrier.UAV.pResource = depthTexture->resource.Get();
+			uavBarrier.Flags = D3D12_RESOURCE_BARRIER_FLAG_NONE;
+
+			commandList->Dispatch(widthBy8, heightBy8, 1);
+
+			commandList->ResourceBarrier(1, &uavBarrier);
+		});
+	}
 
 	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_COMMON, commandList);
 
