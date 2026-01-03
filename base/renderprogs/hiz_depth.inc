@@ -60,7 +60,7 @@ float4 FindIntersectingDepthPoint(in float3 startUV, in float3 uvVector, in floa
 	const float fragMult = startFrag.z * endFrag.z;
 	float3 deltaFrag = endFrag - startFrag;
 	bool useX = abs(deltaFrag.x) > abs(deltaFrag.y);
-	float delta = useX ? deltaFrag.x : deltaFrag.y;
+	float delta = useX ? abs(deltaFrag.x) : abs(deltaFrag.y);
 
 	float2 increment = deltaFrag.xy / max(delta * 0.5, EPSILON); // Only valid if Level starts at 1
 
@@ -95,7 +95,7 @@ float4 FindIntersectingDepthPoint(in float3 startUV, in float3 uvVector, in floa
 
 		uv.y = 1.0 - uv.y;
 
-		float2 currentFragDelta = frag - startFrag.xy;
+		float2 currentFragDelta = abs(frag - startFrag.xy);
 		search1 = (useX ? currentFragDelta.x : currentFragDelta.y) / max(delta, EPSILON);
 
 		viewDistance = fragMult / lerp(endFrag.z, startFrag.z, search1);
