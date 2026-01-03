@@ -4095,7 +4095,10 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 			dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_FOV, fov);
 
-			parm[3] = zNear;
+			parm[0] = backEnd.viewDef->renderView.vieworg[0];
+			parm[1] = backEnd.viewDef->renderView.vieworg[1];
+			parm[2] = backEnd.viewDef->renderView.vieworg[2];
+			parm[3] = 1.0f;
 			dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
 		}
 

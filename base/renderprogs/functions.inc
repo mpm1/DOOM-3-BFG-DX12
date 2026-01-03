@@ -154,32 +154,39 @@ void ExtractMaterialProperties(
 // Lighting Helpers
 inline float3 CalculateFresnel(in float3 baseReflectivity, in float3 viewVector, in float3 halfVector)
 {
-	return baseReflectivity + ((1.0 - baseReflectivity) * pow(1.0 - max(dot3(viewVector, halfVector), 0), 5.0));
+	return baseReflectivity + (1.0 - baseReflectivity) * pow(1.0 - saturate(dot3(viewVector, halfVector)), 5.0);
+}
+
+inline float GSchlickBeckman(in float k, in float3 normal, in float3 vector)
+{
+	float dotProduct = saturate(dot3(normal, vector));
+
+	float denominator = dotProduct * (1.0 - k) + k;
+
+	return dotProduct / max(denominator, EPSILON);
 }
 
 // Used for calculating specular reflections
 float3 calculateCookTorranceSpecularRefectivity(
 	in float3 fresnelFactor, 
 	in float3 viewVector,
+	in float3 lightVector,
 	in float3 surfaceNormal,
 	in float3 halfVector,
 	in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
-	in float NdotL,
 	in float roughness)
 {
-	float NdotH = max(dot3(surfaceNormal, halfVector), 0.0);
+	const float alpha = pow(roughness, 2.0);
 
-	float alpha = roughness * roughness;
-    float k = alpha / 2.0;
+	const float a2 = pow(alpha, 2.0);
+	const float NdotH = saturate(dot3(surfaceNormal, halfVector));
+    const float D = a2 / max(distribution * pow(pow(NdotH, 2.0) * (a2 - 1.0) + 1.0, 2.0), EPSILON); // DGGX Trowbridge-Reitz distribution
 
-	float a2 = alpha * alpha;
-    float D = a2 / max(distribution * pow(pow(NdotH, 2.0) * (a2 - 1.0) + 1.0, 2.0), EPSILON); // DGGX Trowbridge-Reitz distribution
+    const float k = alpha / 2.0;
+    const float G = GSchlickBeckman(k, surfaceNormal, viewVector) * GSchlickBeckman(k, surfaceNormal, lightVector); // Smith's shadowing-masking function
 
-	float NdotV = max(dot3(surfaceNormal, viewVector), 0.0);
+	const float VdotN = dot3(viewVector, surfaceNormal);
+	const float LdotN = dot3(lightVector, surfaceNormal);
 
-    float G1 = NdotV / max(NdotV * (1 - k) + k, EPSILON);
-    float G2 = NdotL / max(NdotL * (1 - k) + k, EPSILON);
-    float G = G1 * G2; // Smith's shadowing-masking function
-
-	return (D * G * fresnelFactor) / (4.0 * NdotL * NdotV);
+	return (D * G * fresnelFactor) / max(4.0 * LdotN * VdotN, EPSILON);
 }

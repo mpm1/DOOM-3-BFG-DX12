@@ -146,7 +146,7 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	int steps = 5;
 	float thickness = 0.001;
 	float roughnessCutoff = 0.8; // Anything higher will not do screen space reflections
-	float angularCutoff = 0.0; // Cutoff in which the angle is too pointed at the camera.
+	float angularCutoff = 0.01; // Cutoff in which the angle is too pointed at the camera.
 
 	float2 tCoords = fragment.texcoord0;
 
@@ -156,7 +156,7 @@ void main( PS_IN fragment, out PS_OUT result ) {
 	float3 eyeToPoint = normalize(worldPosition - sceneConstants.rpGlobalEyePos.xyz);
 	float3 reflectionVector = normalize(reflect(eyeToPoint, normal));
 
-	float viewAmount = dot3(eyeToPoint, reflectionVector);
+	float viewAmount = abs(dot3(eyeToPoint, reflectionVector));
 	result.vector = float4(reflectionVector * 0.5 + 0.5, 1.0);
 	result.color = float4(0.0, 0.0, 0.0, 0.0);
 
