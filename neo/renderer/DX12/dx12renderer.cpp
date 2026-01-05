@@ -17,6 +17,7 @@ extern idCVar r_useGli; // Use the global illumination system.
 
 idCVar r_useRayTraycing("r_useRayTraycing", "1", CVAR_RENDERER | CVAR_BOOL, "use the raytracing system for scene generation.");
 idCVar r_allLightsCastShadows("r_allLightsCastShadows", "0", CVAR_RENDERER | CVAR_BOOL, "force all lights to cast shadows in raytracing.");
+idCVar r_minReflectionMip("r_minReflectionMip", "0", CVAR_RENDERER | CVAR_INTEGER, "Defines the highest mip value used for reflections.");
 
 DX12Renderer dxRenderer;
 extern idCommon* common;
@@ -812,7 +813,7 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 	};
 
 	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
-	DX12Rendering::TextureBuffer* depthTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth)->GetAsTexture(); // We should have Mip 0 applied already;
+	DX12Rendering::TextureBuffer* depthTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth_Scratch)->GetAsTexture(); // We should have Mip 0 applied already;
 
 	// TODO: Validate size
 	
@@ -904,7 +905,10 @@ void DX12Renderer::UpdateHiZConstants(UINT width, UINT height, UINT mips, UINT t
 {
 	m_hiZDepthConstants.width = width;
 	m_hiZDepthConstants.height = height;
-	m_hiZDepthConstants.mips = mips;
+
+	m_hiZDepthConstants.startMip = r_minReflectionMip.GetInteger();
+	m_hiZDepthConstants.endMip = mips - m_hiZDepthConstants.startMip - 1;
+
 	m_hiZDepthConstants.textureIndex = textureIndex;
 }
 
@@ -1093,7 +1097,8 @@ bool DX12Renderer::SetScreenParams(UINT width, UINT height, int fullscreen)
 		// Resize surfaces
 		{
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->Resize(width, height);
-			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth)->Resize(width, height);
+			
+			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth_Scratch)->Resize(width, height);
 
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Diffuse)->Resize(width, height);
 			DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Specular)->Resize(width, height);

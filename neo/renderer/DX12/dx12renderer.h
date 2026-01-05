@@ -56,7 +56,9 @@ namespace DX12Rendering {
 	{
 		UINT width;
 		UINT height;
-		UINT mips;
+		UINT startMip;
+		UINT endMip;
+
 		UINT textureIndex;
 	};
 

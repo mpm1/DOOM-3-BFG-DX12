@@ -120,6 +120,12 @@ namespace DX12Rendering
 			textureDesc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;
 			break;
 
+		case eGlobalTexture::HIZDEPTH:
+			name = "HiZ Depth";
+			textureDesc.Format = DXGI_FORMAT_R32_FLOAT;
+			textureDesc.MipLevels = 8;
+			break;
+
 		case eGlobalTexture::RAYTRACED_SPECULAR:
 			name = "raytraced_specular";
 			textureDesc.Format = DXGI_FORMAT_R16G16B16A16_UNORM;

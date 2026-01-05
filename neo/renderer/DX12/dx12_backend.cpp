@@ -2867,7 +2867,7 @@ const DX12Rendering::Commands::FenceValue RB_CopyHiZBuffer(DX12Rendering::Comman
 {
 	constexpr UINT surfaceCount = 1;
 	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
-		DX12Rendering::eRenderSurface::HiZDepth
+		DX12Rendering::eRenderSurface::HiZDepth_Scratch
 	};
 
 	DX12Rendering::RenderPassBlock renderPassBlock("RB_CopyHiZBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
@@ -2917,12 +2917,28 @@ const DX12Rendering::Commands::FenceValue RB_GenerateHiZBuffer(DX12Rendering::Co
 {
 	waitFence = RB_CopyHiZBuffer(waitFence);
 
-	DX12Rendering::RenderSurface* depthStencilBuffer = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth);
-	DX12Rendering::TextureBuffer* highZTexture = depthStencilBuffer->GetAsTexture();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+	DX12Rendering::TextureBuffer* highZTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::HIZDEPTH);
 
-	dxRenderer.UpdateHiZConstants(depthStencilBuffer->GetWidth(), depthStencilBuffer->GetHeight(), highZTexture->textureView.Texture2D.MipLevels, highZTexture->GetTextureIndex());
+	DX12Rendering::RenderSurface* scratchBuffer = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth_Scratch);
+
+	dxRenderer.UpdateHiZConstants(scratchBuffer->GetWidth(), scratchBuffer->GetHeight(), highZTexture->textureView.Texture2D.MipLevels, highZTexture->GetTextureIndex());
 
 	waitFence = dxRenderer.GenerateHiZBuffer(waitFence);
+
+	// Copy the scratch buffer to the read buffer
+	// We do this to improve the read performance on the HiZ buffer
+	DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(waitFence);
+
+	for (int i = 0; i < highZTexture->textureView.Texture2D.MipLevels; ++i)
+	{
+		scratchBuffer->CopySurfaceToTexture(highZTexture, textureManager, i);
+	}
+
+	DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertExecutionBreak();
+
+	waitFence = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
+	DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();
 
 	return waitFence;
 }
@@ -2956,6 +2972,7 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 	auto material = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES);
 	auto position = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->GetAsTexture();
 	auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
+	auto depth = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::HIZDEPTH);
 
 	// Prepare the textures
 	{
@@ -2978,6 +2995,9 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 		GL_SelectTexture(4);
 		dxRenderer.SetTexture(specular);
 
+		GL_SelectTexture(5);
+		dxRenderer.SetTexture(depth);
+
 		commandList->Close();
 	}
 
@@ -2993,6 +3013,7 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES), D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(position, D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(depth, D3D12_RESOURCE_STATE_COMMON, commandList);
 
 		commandList->Close();
 	}

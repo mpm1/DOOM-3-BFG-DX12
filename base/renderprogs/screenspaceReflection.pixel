@@ -52,11 +52,9 @@ float3 GetFragCoordinates(in float4 worldCoord)
 void main( PS_IN fragment, out PS_OUT result ) {
 	// TODO: move these properties into a constant buffer
 	float maxDistance = 1.0;
-	float resolution = 0.3;
-	int steps = 5;
-	float thickness = 0.001;
-	float roughnessCutoff = 0.8; // Anything higher will not do screen space reflections
-	float angularCutoff = 0.01; // Cutoff in which the angle is too pointed at the camera.
+	float thickness = 0.0005;
+	float roughnessCutoff = 0.71; // Anything higher will not do screen space reflections
+	float angularCutoff = 0.1; // Cutoff in which the angle is too pointed at the camera.
 
 	float2 tCoords = fragment.texcoord0;
 
@@ -90,7 +88,7 @@ void main( PS_IN fragment, out PS_OUT result ) {
 			float4 endPosition = float4(worldPosition + (reflectionVector * maxDistance), 1.0);
 			float3 uvVector = normalize(GetUVCoordinates(endPosition) - startUV);
 
-			float4 screenSpaceIntersection = FindIntersectingDepthPoint(startUV, uvVector, resolution, steps, thickness); //ScreenSpaceTraceRay(startFrag, endFrag, resolution, steps, thickness);
+			float4 screenSpaceIntersection = FindIntersectingDepthPoint(startUV, uvVector, thickness); //ScreenSpaceTraceRay(startFrag, endFrag, resolution, steps, thickness);
 
 			result.color.rgb = samp0.Sample(baseSampler, screenSpaceIntersection.xy).rgb;
 			result.color.w = screenSpaceIntersection.w; 
