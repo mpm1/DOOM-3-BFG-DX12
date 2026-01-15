@@ -128,7 +128,10 @@ namespace DX12Rendering
 		TextureBuffer* buffer = textureManager->GenerateFromExistingResource(this, m_resourceDesc, samplerDesc, srvDesc);
 		m_texture = buffer;
 
-		m_texture->SetResourceState(Resource::GetResourceState());
+		if (m_texture != nullptr)
+		{
+			m_texture->SetResourceState(Resource::GetResourceState());
+		}
 
 		return m_texture;
 	}

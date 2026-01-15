@@ -2887,15 +2887,12 @@ const DX12Rendering::Commands::FenceValue RB_CopyHiZBuffer(DX12Rendering::Comman
 
 	auto depthTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->GetAsTexture();
 
+	renderPassBlock.GetCommandManager()->InsertFenceWait(waitFence);
+
 	// Prepare the textures
 	{
-		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
-		commandList->AddPreFenceWait(waitFence);
-
 		GL_SelectTexture(0);
 		dxRenderer.SetTexture(depthTexture);
-
-		commandList->Close();
 	}
 
 	// Draw

@@ -90,8 +90,11 @@ void main( PS_IN fragment, out PS_OUT result ) {
 
 			float4 screenSpaceIntersection = FindIntersectingDepthPoint(startUV, uvVector, thickness); //ScreenSpaceTraceRay(startFrag, endFrag, resolution, steps, thickness);
 
-			result.color.rgb = samp0.Sample(baseSampler, screenSpaceIntersection.xy).rgb;
-			result.color.w = screenSpaceIntersection.w; 
+			if(screenSpaceIntersection.w > 0.0)
+			{
+				result.color.rgb = samp0.Sample(baseSampler, screenSpaceIntersection.xy).rgb;
+				result.color.a = screenSpaceIntersection.w; 
+			}
 
 			//result.color = float4(uvVector.xy * 0.5 + 0.5, 0.0, screenSpaceIntersection.w);
 		}

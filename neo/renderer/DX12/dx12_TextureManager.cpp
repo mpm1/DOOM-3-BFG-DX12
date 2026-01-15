@@ -310,6 +310,7 @@ namespace DX12Rendering
 
 		auto defaultTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Albedo)->GetAsTexture(); // TODO: Change to a default mangenta for debugging
 
+		if(defaultTexture)
 		{
 			// Setup the texture
 			D3D12_CPU_DESCRIPTOR_HANDLE textureHandle = heapManager->GetCPUDescriptorHandle(eHeapDescriptorTextureEntries, textureIndex);

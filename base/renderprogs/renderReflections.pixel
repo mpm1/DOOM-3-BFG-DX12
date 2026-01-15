@@ -98,7 +98,7 @@ void main( PS_IN fragment, out PS_OUT result )
 
 	for(uint i = 0; i < maxItteration; ++i)
 	{
-		radius = roughness * 32.0 * rand(float2(randomValue[0], radius)); 
+		radius = roughness * 16.0 * rand(float2(randomValue[0], radius)); 
 
 		delta += incrementor;
 		if(delta > PI2) { delta -= PI2; }
@@ -114,7 +114,7 @@ void main( PS_IN fragment, out PS_OUT result )
 	if(outputWeight > 0.0)
 	{
 		outputColor /= outputWeight;// TODO: Calculate a better weight
-		outputColor.a = pow(outputColor.a, 2.0) + 0.5;
+		outputColor.a = saturate(pow(outputColor.a, 2.0) + 0.4);
 	}
 
 	result.color = outputColor;

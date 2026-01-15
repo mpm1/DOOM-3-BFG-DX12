@@ -354,7 +354,7 @@ namespace DX12Rendering {
 			if (signalFence)
 			{
 				auto device = DX12Rendering::Device::GetDevice();
-				m_fence.Signal(device, m_commandQueue.Get());
+				m_fence.Signal(device, m_commandQueue.Get(), nullptr);
 			}
 
 			// Clean up

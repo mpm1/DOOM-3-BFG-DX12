@@ -798,7 +798,7 @@ bool DX12Renderer::IsScissorWindowValid() {
 
 DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Rendering::Commands::FenceValue waitFence)
 {
-	const UINT maxMipPerItteration = 4; // 1 to sample from and 3 to calculate.
+	constexpr UINT maxMipPerItteration = 4; // 1 to sample from and 3 to calculate.
 
 	const UINT width = m_hiZDepthConstants.width;
 	const UINT height = m_hiZDepthConstants.height;
@@ -808,8 +808,6 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 		UINT numMipLevels;
 		UINT srcDimension; // Width and Height are even or odd. Defined above
 		UINT pad0;
-
-		float texalSize[2]; // 1.0 / Mip0 
 	};
 
 	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
@@ -819,9 +817,10 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 	
 	DX12Rendering::Commands::CommandManager* commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COMPUTE);
 	DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "DX12Renderer::GenerateHiZBuffer");
-	auto commandList = commandManager->RequestNewCommandList();
 
-	commandList->AddPreFenceWait(waitFence);
+	commandManager->InsertFenceWait(waitFence);
+
+	auto commandList = commandManager->RequestNewCommandList();
 
 	ID3D12PipelineState* pipelineState = m_hiZShader.Get();
 	assert(pipelineState != nullptr);
@@ -831,17 +830,31 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 	DX12Rendering::ResourceManager& resourceManager = *DX12Rendering::GetResourceManager();
 	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, commandList);
 
-	for (UINT startIndex = 0; startIndex < depthTexture->textureView.Texture2D.MipLevels; startIndex += (maxMipPerItteration - 1))
+	for (UINT startIndex = 0; startIndex < (depthTexture->textureView.Texture2D.MipLevels - 1);)
 	{
-		const UINT evalWidth = width >> startIndex;
-		const UINT evalHeight = height >> startIndex;
+		const UINT srcWidth = width >> startIndex;
+		const UINT srcHeight = height >> startIndex;
+
+		UINT dstWidth = srcWidth >> 1;
+		UINT dstHeight = srcHeight >> 1;
 
 		GenerateMipInput mipConstants;
 		mipConstants.srcMipLevel = startIndex;
-		mipConstants.numMipLevels = Min(depthTexture->textureView.Texture2D.MipLevels - startIndex, maxMipPerItteration);
-		mipConstants.srcDimension = ((evalHeight % 2) << 1) & (evalWidth % 2); // bit 0 = width is odd, bit 1 = height is odd
-		mipConstants.texalSize[0] = 1.0f / static_cast<float>(evalWidth);
-		mipConstants.texalSize[1] = 1.0f / static_cast<float>(evalHeight);
+		mipConstants.srcDimension = ((srcHeight & 0x01u) << 1) | (srcWidth & 0x01u); // bit 0 = width is odd, bit 1 = height is odd
+
+		DWORD mipCount;
+
+		// Calculates how many times we can devenly divide each dimension by two. We do this by counting the number of least segnificant zeros.
+		_BitScanForward(&mipCount,
+			(dstWidth == 1 ? dstHeight : dstWidth) |
+			(dstHeight == 1 ? dstWidth : dstHeight));
+
+		mipCount++; // Add one for our top generated mip value.
+
+		mipConstants.numMipLevels = Min(Min(static_cast<UINT>(mipCount + 1) /* Add another 1 here to include the src value */, maxMipPerItteration), depthTexture->textureView.Texture2D.MipLevels - startIndex);
+
+		dstWidth = Max(0x01u, dstWidth);
+		dstHeight = Max(0x01u, dstHeight);
 
 		const UINT objectIndex = m_computeRootSignature->RequestNewObjectIndex();
 		m_computeRootSignature->SetRootDescriptorTable(objectIndex, commandList);
@@ -861,23 +874,24 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 			descriptor.ViewDimension = D3D12_UAV_DIMENSION_TEXTURE2D;
 			descriptor.Format = DXGI_FORMAT_R32_FLOAT;
 			descriptor.Texture2D.MipSlice = mipConstants.srcMipLevel + i;
+			descriptor.Texture2D.PlaneSlice = 0;
 
 			m_computeRootSignature->SetUnorderedAccessView(objectIndex, DX12Rendering::eRenderRootSignatureEntry::eTesxture0SRV + i, depthTexture, descriptor);
 		}
 
-		commandList->AddCommandAction([evalWidth, evalHeight, &depthTexture](ID3D12GraphicsCommandList4* commandList)
+		commandList->AddCommandAction([width = srcWidth, height = srcHeight, &depthTexture](ID3D12GraphicsCommandList4* commandList)
 		{
 			// The total sections of length 8 needed to equal the width and height.
 			constexpr UINT denominator = 8;
-			UINT widthBy8 = evalWidth / denominator;
-			UINT heightBy8 = evalHeight / denominator;
+			UINT widthBy8 = width >> 3;
+			UINT heightBy8 = height >> 3;
 
-			if ((evalWidth % denominator) > 0)
+			if ((width & 0x03) > 0)
 			{
 				++widthBy8;
 			}
 
-			if ((evalHeight % denominator) > 0)
+			if ((height & 0x03) > 0)
 			{
 				++heightBy8;
 			}
@@ -891,6 +905,8 @@ DX12Rendering::Commands::FenceValue DX12Renderer::GenerateHiZBuffer(DX12Renderin
 
 			commandList->ResourceBarrier(1, &uavBarrier);
 		});
+
+		startIndex += mipCount;
 	}
 
 	textureManager->SetTextureState(depthTexture, D3D12_RESOURCE_STATE_COMMON, commandList);

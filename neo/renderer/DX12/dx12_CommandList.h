@@ -112,7 +112,7 @@ namespace DX12Rendering
 
 			const FenceValue Increment()
 			{
-				++m_value.value;
+				m_value.value++;
 
 				return m_value;
 			}
@@ -134,9 +134,11 @@ namespace DX12Rendering
 				return result;
 			}
 
-			const FenceValue Signal(ID3D12Device5* device, ID3D12CommandQueue* commandQueue)
+			const FenceValue Signal(ID3D12Device5* device, ID3D12CommandQueue* commandQueue, const FenceValue* value)
 			{
-				if (m_lastSignaledValue.value >= m_value.value)
+				const UINT checkValue = value == nullptr ? m_value.value : value->value;
+
+				if (m_lastSignaledValue.value >= checkValue)
 				{
 					// We've already signaled the expected value.
 					return m_lastSignaledValue;
@@ -147,9 +149,9 @@ namespace DX12Rendering
 					ThrowIfFailed(Allocate(device));
 				}
 				
-				ThrowIfFailed(commandQueue->Signal(m_fence.Get(), m_value.value));
+				ThrowIfFailed(commandQueue->Signal(m_fence.Get(), checkValue));
 
-				m_lastSignaledValue.value = m_value.value;
+				m_lastSignaledValue.value = checkValue;
 
 				return m_lastSignaledValue;
 			}
@@ -419,9 +421,9 @@ public:
 		DX12Rendering::Commands::Fence* fence = m_fence;
 		const DX12Rendering::Commands::FenceValue result = fence->Increment();
 
-		AddPostExecuteQueueAction([fence](ID3D12CommandQueue* commandQueue)
+		AddPostExecuteQueueAction([fence, result](ID3D12CommandQueue* commandQueue)
 		{
-			fence->Signal(DX12Rendering::Device::GetDevice(), commandQueue);
+			fence->Signal(DX12Rendering::Device::GetDevice(), commandQueue, &result);
 			// TODO: Modify so we only send the largest at the end of an execute queue.
 		});
 

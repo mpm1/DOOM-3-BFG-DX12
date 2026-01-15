@@ -82,10 +82,13 @@ float4 FindIntersectingDepthPoint(in float3 startUV, in float3 uvVector, in floa
 	lastUv.y = 1.0 - lastUv.y;
 
 	int hit = 0;
+	int samplesRemaining = 32;
 
 	[loop]
-	while(search1 <= 1.0)
+	while(search1 <= 1.0 && samplesRemaining > 0)
 	{
+		--samplesRemaining;
+
 		float2 frag = lastFrag + increment;
 		float2 uv = frag * sceneConstants.rpWindowCoord.xy;
 		
@@ -107,7 +110,7 @@ float4 FindIntersectingDepthPoint(in float3 startUV, in float3 uvVector, in floa
 
 		if(level > depthConstants.startMip)
 		{
-			if(depth < thickness)
+			if(depth > 0)
 			{
 				--level;
 				increment = deltaFrag.xy / max(delta / float(1 << level), EPSILON);
@@ -127,8 +130,8 @@ float4 FindIntersectingDepthPoint(in float3 startUV, in float3 uvVector, in floa
 		if(level < maxLevel)
 		{
 			++level;
+			increment = deltaFrag.xy / max(delta / float(1 << level), EPSILON);
 		}
-		increment = deltaFrag.xy / max(delta / float(1 << level), EPSILON);
 
 		search0 = search1;
 		lastUv = uv;
