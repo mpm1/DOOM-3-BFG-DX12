@@ -34,6 +34,7 @@ namespace DX12Rendering {
 		SpecularColor, // Specular color used for lighting.
 		Reflectivity, // The frenel reflectivity based on the normal, view angle, and material properties.
 		MaterialProperties, // R = Roughness, G = metallic, B = unused, A = unused
+		Velocity, // A R16G16 Image used to represent the velocity of the object in view space.
 
 		// RayTracing
 		RaytraceShadowMask, // Each bit is a light mask
@@ -66,6 +67,7 @@ namespace DX12Rendering {
 		eRenderSurface::SpecularColor,
 		eRenderSurface::Reflectivity,
 		eRenderSurface::MaterialProperties,
+		eRenderSurface::Velocity,
 
 		eRenderSurface::HiZDepth_Scratch,
 

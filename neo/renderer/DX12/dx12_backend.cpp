@@ -263,8 +263,9 @@ static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value)
 RB_SetMVP
 ================
 */
-void RB_SetMVP(const idRenderMatrix& mvp) {
-	SetVertexParms(RENDERPARM_MVPMATRIX_X, mvp[0], 4);
+void RB_SetMVP(const viewEntity_t* space) {
+	SetVertexParms(RENDERPARM_MVPMATRIX_X, space->mvp[0], 4);
+	SetVertexParms(RENDERPARM_PREV_MVPMATRIX_X, space->prevMvp[0], 4);
 }
 
 static const float zero[4] = { 0, 0, 0, 0 };
@@ -761,7 +762,7 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 
 		// change the matrix if needed
 		if (drawSurf->space != backEnd.currentSpace) {
-			RB_SetMVP(drawSurf->space->mvp);
+			RB_SetMVP(drawSurf->space);
 
 			backEnd.currentSpace = drawSurf->space;
 		}
@@ -1431,7 +1432,7 @@ static void RB_StencilShadowPass(const drawSurf_t* drawSurfs, const viewLight_t*
 
 		if (drawSurf->space != backEnd.currentSpace) {
 			// change the matrix
-			RB_SetMVP(drawSurf->space->mvp);
+			RB_SetMVP(drawSurf->space);
 
 			// set the local light position to allow the vertex program to project the shadow volume end cap to infinity
 			idVec4 localLight(0.0f);
@@ -1681,7 +1682,7 @@ static void RB_StencilSelectLight(const viewLight_t* vLight) {
 	//// set the matrix for deforming the 'zeroOneCubeModel' into the frustum to exactly cover the light volume
 	idRenderMatrix invProjectMVPMatrix;
 	idRenderMatrix::Multiply(backEnd.viewDef->worldSpace.mvp, vLight->inverseBaseLightProject, invProjectMVPMatrix);
-	RB_SetMVP(invProjectMVPMatrix);
+	SetVertexParms(RENDERPARM_MVPMATRIX_X, invProjectMVPMatrix[0], 4);
 
 	//// two-sided stencil test
 	const DX12Rendering::eSurfaceVariant variant = DX12Rendering::VARIANT_STENCIL_TWOSIDED;
@@ -1909,7 +1910,7 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 				}
 
 				// model-view-projection
-				RB_SetMVP(surf->space->mvp);
+				RB_SetMVP(surf->space);
 
 				// tranform the light/view origin into model local space
 				idVec4 localLightOrigin(0.0f);
@@ -2316,7 +2317,7 @@ static int RB_DrawShaderPasses(const drawSurf_t* const* const drawSurfs, const i
 
 			const viewEntity_t* space = backEnd.currentSpace;
 
-			RB_SetMVP(space->mvp);
+			RB_SetMVP(space);
 
 			// set eye position in local space
 			idVec4 localViewOrigin(1.0f);
@@ -2589,7 +2590,7 @@ static void RB_T_BasicFog(const drawSurf_t* drawSurfs, const idPlane fogPlanes[4
 		if (drawSurf->space != backEnd.currentSpace) {
 			idPlane localFogPlanes[4];
 			if (inverseBaseLightProject == NULL) {
-				RB_SetMVP(drawSurf->space->mvp);
+				RB_SetMVP(drawSurf->space);
 				for (int i = 0; i < 4; i++) {
 					R_GlobalPlaneToLocal(drawSurf->space->modelMatrix, fogPlanes[i], localFogPlanes[i]);
 				}
@@ -2597,7 +2598,7 @@ static void RB_T_BasicFog(const drawSurf_t* drawSurfs, const idPlane fogPlanes[4
 			else {
 				idRenderMatrix invProjectMVPMatrix;
 				idRenderMatrix::Multiply(backEnd.viewDef->worldSpace.mvp, *inverseBaseLightProject, invProjectMVPMatrix);
-				RB_SetMVP(invProjectMVPMatrix);
+				SetVertexParms(RENDERPARM_MVPMATRIX_X, invProjectMVPMatrix[0], 4);
 				for (int i = 0; i < 4; i++) {
 					inverseBaseLightProject->InverseTransformPlane(fogPlanes[i], localFogPlanes[i], false);
 				}
@@ -2746,7 +2747,7 @@ static void RB_T_BlendLight(const drawSurf_t* drawSurfs, const viewLight_t* vLig
 
 		if (drawSurf->space != backEnd.currentSpace) {
 			// change the matrix
-			RB_SetMVP(drawSurf->space->mvp);
+			RB_SetMVP(drawSurf->space);
 
 			// change the light projection matrix
 			idPlane	lightProjectInCurrentSpace[4];
@@ -3098,7 +3099,7 @@ const DX12Rendering::Commands::FenceValue RB_RenderReflections(DX12Rendering::Co
 DX12Rendering::Commands::FenceValue RB_DrawReflections(const viewDef_t* viewDef, DX12Rendering::Commands::FenceValue waitFence)
 {
 	// model-view-projection, used for calculating the ray marching direction.
-	RB_SetMVP(viewDef->worldSpace.mvp);
+	RB_SetMVP(&viewDef->worldSpace);
 
 	DX12Rendering::Commands::FenceValue reflectionFence = RB_DrawScreenSpaceReflections(waitFence);
 
@@ -3392,7 +3393,7 @@ public:
 
 			// set mvp matrix
 			if (surf->space != backEnd.currentSpace) {
-				RB_SetMVP(surf->space->mvp);
+				RB_SetMVP(surf->space);
 				backEnd.currentSpace = surf->space;
 			}
 
@@ -3627,7 +3628,7 @@ public:
 
 			// set mvp matrix
 			if (surf->space != backEnd.currentSpace) {
-				RB_SetMVP(surf->space->mvp);
+				RB_SetMVP(surf->space);
 				backEnd.currentSpace = surf->space;
 
 				// set the Normal Matrix (technically it's the transpose of the model matrix)
@@ -3859,7 +3860,7 @@ public:
 
 	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
 	{
-		constexpr UINT surfaceCount = 7;
+		constexpr UINT surfaceCount = 8;
 		const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 			DX12Rendering::eRenderSurface::FlatNormal,
 			DX12Rendering::eRenderSurface::FlatTangent,
@@ -3868,6 +3869,7 @@ public:
 			DX12Rendering::eRenderSurface::Albedo,
 			DX12Rendering::eRenderSurface::SpecularColor,
 			DX12Rendering::eRenderSurface::MaterialProperties,
+			DX12Rendering::eRenderSurface::Velocity,
 		};
 
 		DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
@@ -3912,7 +3914,7 @@ public:
 
 			// set mvp matrix
 			if (surf->space != backEnd.currentSpace) {
-				RB_SetMVP(surf->space->mvp);
+				RB_SetMVP(surf->space);
 				backEnd.currentSpace = surf->space;
 
 				// set the Normal Matrix (technically it's the transpose of the model matrix)
@@ -4055,6 +4057,7 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			DX12Rendering::eRenderSurface::Albedo,
 			DX12Rendering::eRenderSurface::SpecularColor,
 			DX12Rendering::eRenderSurface::Reflectivity,
+			DX12Rendering::eRenderSurface::Velocity,
 			DX12Rendering::eRenderSurface::MaterialProperties,
 			DX12Rendering::eRenderSurface::ReflectionVector,
 			DX12Rendering::eRenderSurface::SharpReflections,

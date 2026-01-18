@@ -88,7 +88,7 @@ void main( PS_IN fragment, out PS_OUT result ) {
 			float4 endPosition = float4(worldPosition + (reflectionVector * maxDistance), 1.0);
 			float3 uvVector = normalize(GetUVCoordinates(endPosition) - startUV);
 
-			float4 screenSpaceIntersection = FindIntersectingDepthPoint(startUV, uvVector, thickness); //ScreenSpaceTraceRay(startFrag, endFrag, resolution, steps, thickness);
+			float4 screenSpaceIntersection = FindIntersectingDepthPoint(startUV, uvVector, thickness);
 
 			if(screenSpaceIntersection.w > 0.0)
 			{
