@@ -2971,6 +2971,7 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 	auto position = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->GetAsTexture();
 	auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
 	auto depth = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::HIZDEPTH);
+	auto velocity = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Velocity)->GetAsTexture();
 
 	// Prepare the textures
 	{
@@ -2994,7 +2995,10 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 		dxRenderer.SetTexture(specular);
 
 		GL_SelectTexture(5);
-		dxRenderer.SetTexture(depth);
+		dxRenderer.SetTexture(velocity);
+
+		//GL_SelectTexture(6);
+		//dxRenderer.SetTexture(depth);
 
 		commandList->Close();
 	}
@@ -3012,6 +3016,7 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 		textureManager->SetTextureState(position, D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR), D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(depth, D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(velocity, D3D12_RESOURCE_STATE_COMMON, commandList);
 
 		commandList->Close();
 	}

@@ -6,6 +6,7 @@ uniform Texture2D<float4> samp1 : register(t1); // Normal Map
 uniform Texture2D<float4> samp2 : register(t2); // Material
 uniform Texture2D<float4> samp3 : register(t3); // World Coordinates
 uniform Texture2D<float4> samp4 : register(t4); // Specular properties
+uniform Texture2D<float2> samp5 : register(t5); // Velocity vector
 
 struct PS_IN {
 	float4 position : SV_POSITION;
@@ -92,7 +93,8 @@ void main( PS_IN fragment, out PS_OUT result ) {
 
 			if(screenSpaceIntersection.w > 0.0)
 			{
-				result.color.rgb = samp0.Sample(baseSampler, screenSpaceIntersection.xy).rgb;
+				float2 locationOffset = ((samp5.Sample(pointSampler, fragment.texcoord0) * 2.0) - 1.0);
+				result.color.rgb = samp0.Sample(baseSampler, screenSpaceIntersection.xy + locationOffset).rgb;
 				result.color.a = screenSpaceIntersection.w; 
 			}
 
