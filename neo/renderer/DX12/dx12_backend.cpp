@@ -263,8 +263,9 @@ static ID_INLINE void SetFragmentParm(renderParm_t rp, const float* value)
 RB_SetMVP
 ================
 */
-void RB_SetMVP(const idRenderMatrix& mvp) {
-	SetVertexParms(RENDERPARM_MVPMATRIX_X, mvp[0], 4);
+void RB_SetMVP(const viewEntity_t* space) {
+	SetVertexParms(RENDERPARM_MVPMATRIX_X, space->mvp[0], 4);
+	SetVertexParms(RENDERPARM_PREV_MVPMATRIX_X, space->prevMvp[0], 4);
 }
 
 static const float zero[4] = { 0, 0, 0, 0 };
@@ -761,7 +762,7 @@ static void RB_FillDepthBufferGeneric(const drawSurf_t* const* drawSurfs, int nu
 
 		// change the matrix if needed
 		if (drawSurf->space != backEnd.currentSpace) {
-			RB_SetMVP(drawSurf->space->mvp);
+			RB_SetMVP(drawSurf->space);
 
 			backEnd.currentSpace = drawSurf->space;
 		}
@@ -1431,7 +1432,7 @@ static void RB_StencilShadowPass(const drawSurf_t* drawSurfs, const viewLight_t*
 
 		if (drawSurf->space != backEnd.currentSpace) {
 			// change the matrix
-			RB_SetMVP(drawSurf->space->mvp);
+			RB_SetMVP(drawSurf->space);
 
 			// set the local light position to allow the vertex program to project the shadow volume end cap to infinity
 			idVec4 localLight(0.0f);
@@ -1681,7 +1682,7 @@ static void RB_StencilSelectLight(const viewLight_t* vLight) {
 	//// set the matrix for deforming the 'zeroOneCubeModel' into the frustum to exactly cover the light volume
 	idRenderMatrix invProjectMVPMatrix;
 	idRenderMatrix::Multiply(backEnd.viewDef->worldSpace.mvp, vLight->inverseBaseLightProject, invProjectMVPMatrix);
-	RB_SetMVP(invProjectMVPMatrix);
+	SetVertexParms(RENDERPARM_MVPMATRIX_X, invProjectMVPMatrix[0], 4);
 
 	//// two-sided stencil test
 	const DX12Rendering::eSurfaceVariant variant = DX12Rendering::VARIANT_STENCIL_TWOSIDED;
@@ -1909,7 +1910,7 @@ static void RB_RenderInteractions(const drawSurf_t* surfList, const viewLight_t*
 				}
 
 				// model-view-projection
-				RB_SetMVP(surf->space->mvp);
+				RB_SetMVP(surf->space);
 
 				// tranform the light/view origin into model local space
 				idVec4 localLightOrigin(0.0f);
@@ -2316,7 +2317,7 @@ static int RB_DrawShaderPasses(const drawSurf_t* const* const drawSurfs, const i
 
 			const viewEntity_t* space = backEnd.currentSpace;
 
-			RB_SetMVP(space->mvp);
+			RB_SetMVP(space);
 
 			// set eye position in local space
 			idVec4 localViewOrigin(1.0f);
@@ -2589,7 +2590,7 @@ static void RB_T_BasicFog(const drawSurf_t* drawSurfs, const idPlane fogPlanes[4
 		if (drawSurf->space != backEnd.currentSpace) {
 			idPlane localFogPlanes[4];
 			if (inverseBaseLightProject == NULL) {
-				RB_SetMVP(drawSurf->space->mvp);
+				RB_SetMVP(drawSurf->space);
 				for (int i = 0; i < 4; i++) {
 					R_GlobalPlaneToLocal(drawSurf->space->modelMatrix, fogPlanes[i], localFogPlanes[i]);
 				}
@@ -2597,7 +2598,7 @@ static void RB_T_BasicFog(const drawSurf_t* drawSurfs, const idPlane fogPlanes[4
 			else {
 				idRenderMatrix invProjectMVPMatrix;
 				idRenderMatrix::Multiply(backEnd.viewDef->worldSpace.mvp, *inverseBaseLightProject, invProjectMVPMatrix);
-				RB_SetMVP(invProjectMVPMatrix);
+				SetVertexParms(RENDERPARM_MVPMATRIX_X, invProjectMVPMatrix[0], 4);
 				for (int i = 0; i < 4; i++) {
 					inverseBaseLightProject->InverseTransformPlane(fogPlanes[i], localFogPlanes[i], false);
 				}
@@ -2746,7 +2747,7 @@ static void RB_T_BlendLight(const drawSurf_t* drawSurfs, const viewLight_t* vLig
 
 		if (drawSurf->space != backEnd.currentSpace) {
 			// change the matrix
-			RB_SetMVP(drawSurf->space->mvp);
+			RB_SetMVP(drawSurf->space);
 
 			// change the light projection matrix
 			idPlane	lightProjectInCurrentSpace[4];
@@ -2867,7 +2868,7 @@ const DX12Rendering::Commands::FenceValue RB_CopyHiZBuffer(DX12Rendering::Comman
 {
 	constexpr UINT surfaceCount = 1;
 	const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
-		DX12Rendering::eRenderSurface::HiZDepth
+		DX12Rendering::eRenderSurface::HiZDepth_Scratch
 	};
 
 	DX12Rendering::RenderPassBlock renderPassBlock("RB_CopyHiZBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
@@ -2887,15 +2888,12 @@ const DX12Rendering::Commands::FenceValue RB_CopyHiZBuffer(DX12Rendering::Comman
 
 	auto depthTexture = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::DepthStencil)->GetAsTexture();
 
+	renderPassBlock.GetCommandManager()->InsertFenceWait(waitFence);
+
 	// Prepare the textures
 	{
-		auto commandList = renderPassBlock.GetCommandManager()->RequestNewCommandList();
-		commandList->AddPreFenceWait(waitFence);
-
 		GL_SelectTexture(0);
 		dxRenderer.SetTexture(depthTexture);
-
-		commandList->Close();
 	}
 
 	// Draw
@@ -2917,12 +2915,28 @@ const DX12Rendering::Commands::FenceValue RB_GenerateHiZBuffer(DX12Rendering::Co
 {
 	waitFence = RB_CopyHiZBuffer(waitFence);
 
-	DX12Rendering::RenderSurface* depthStencilBuffer = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth);
-	DX12Rendering::TextureBuffer* highZTexture = depthStencilBuffer->GetAsTexture();
+	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
+	DX12Rendering::TextureBuffer* highZTexture = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::HIZDEPTH);
 
-	dxRenderer.UpdateHiZConstants(depthStencilBuffer->GetWidth(), depthStencilBuffer->GetHeight(), highZTexture->textureView.Texture2D.MipLevels, highZTexture->GetTextureIndex());
+	DX12Rendering::RenderSurface* scratchBuffer = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::HiZDepth_Scratch);
+
+	dxRenderer.UpdateHiZConstants(scratchBuffer->GetWidth(), scratchBuffer->GetHeight(), highZTexture->textureView.Texture2D.MipLevels, highZTexture->GetTextureIndex());
 
 	waitFence = dxRenderer.GenerateHiZBuffer(waitFence);
+
+	// Copy the scratch buffer to the read buffer
+	// We do this to improve the read performance on the HiZ buffer
+	DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceWait(waitFence);
+
+	for (int i = 0; i < highZTexture->textureView.Texture2D.MipLevels; ++i)
+	{
+		scratchBuffer->CopySurfaceToTexture(highZTexture, textureManager, i);
+	}
+
+	DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertExecutionBreak();
+
+	waitFence = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->InsertFenceSignal();
+	DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY)->Execute();
 
 	return waitFence;
 }
@@ -2945,14 +2959,6 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 	int screenWidth = renderSystem->GetWidth();
 	int screenHeight = renderSystem->GetHeight();
 
-	// window coord to 0.0 to 1.0 conversion
-	float windowCoordParm[4];
-	windowCoordParm[0] = 1.0f / screenWidth;
-	windowCoordParm[1] = 1.0f / screenHeight;
-	windowCoordParm[2] = 0.0f;
-	windowCoordParm[3] = 1.0f;
-	SetFragmentParm(RENDERPARM_WINDOWCOORD, windowCoordParm); // rpWindowCoord
-
 	// set the window clipping
 	GL_Viewport(0, 0, screenWidth, screenHeight);
 	GL_Scissor(0, 0, screenWidth, screenHeight);
@@ -2964,6 +2970,8 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 	auto material = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES);
 	auto position = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Position)->GetAsTexture();
 	auto specular = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR);
+	auto depth = textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::HIZDEPTH);
+	auto velocity = DX12Rendering::GetSurface(DX12Rendering::eRenderSurface::Velocity)->GetAsTexture();
 
 	// Prepare the textures
 	{
@@ -2986,6 +2994,12 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 		GL_SelectTexture(4);
 		dxRenderer.SetTexture(specular);
 
+		GL_SelectTexture(5);
+		dxRenderer.SetTexture(velocity);
+
+		//GL_SelectTexture(6);
+		//dxRenderer.SetTexture(depth);
+
 		commandList->Close();
 	}
 
@@ -3001,6 +3015,8 @@ const DX12Rendering::Commands::FenceValue RB_DrawScreenSpaceReflections(DX12Rend
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::MATERIAL_PROPERTIES), D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(position, D3D12_RESOURCE_STATE_COMMON, commandList);
 		textureManager->SetTextureState(textureManager->GetGlobalTexture(DX12Rendering::eGlobalTexture::SPECULAR_COLOR), D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(depth, D3D12_RESOURCE_STATE_COMMON, commandList);
+		textureManager->SetTextureState(velocity, D3D12_RESOURCE_STATE_COMMON, commandList);
 
 		commandList->Close();
 	}
@@ -3019,7 +3035,7 @@ const DX12Rendering::Commands::FenceValue RB_RenderReflections(DX12Rendering::Co
 
 	DX12Rendering::TextureManager* textureManager = DX12Rendering::GetTextureManager();
 
-	GL_State(GLS_SRCBLEND_ONE | GLS_DSTBLEND_ZERO | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
+	GL_State(GLS_SRCBLEND_SRC_ALPHA | GLS_DSTBLEND_ONE_MINUS_SRC_ALPHA | GLS_DEPTHMASK | GLS_DEPTHFUNC_ALWAYS);
 	GL_Cull(CT_TWO_SIDED);
 
 	int screenWidth = renderSystem->GetWidth();
@@ -3088,7 +3104,7 @@ const DX12Rendering::Commands::FenceValue RB_RenderReflections(DX12Rendering::Co
 DX12Rendering::Commands::FenceValue RB_DrawReflections(const viewDef_t* viewDef, DX12Rendering::Commands::FenceValue waitFence)
 {
 	// model-view-projection, used for calculating the ray marching direction.
-	RB_SetMVP(viewDef->worldSpace.mvp);
+	RB_SetMVP(&viewDef->worldSpace);
 
 	DX12Rendering::Commands::FenceValue reflectionFence = RB_DrawScreenSpaceReflections(waitFence);
 
@@ -3382,7 +3398,7 @@ public:
 
 			// set mvp matrix
 			if (surf->space != backEnd.currentSpace) {
-				RB_SetMVP(surf->space->mvp);
+				RB_SetMVP(surf->space);
 				backEnd.currentSpace = surf->space;
 			}
 
@@ -3617,7 +3633,7 @@ public:
 
 			// set mvp matrix
 			if (surf->space != backEnd.currentSpace) {
-				RB_SetMVP(surf->space->mvp);
+				RB_SetMVP(surf->space);
 				backEnd.currentSpace = surf->space;
 
 				// set the Normal Matrix (technically it's the transpose of the model matrix)
@@ -3849,7 +3865,7 @@ public:
 
 	virtual DX12Rendering::Commands::FenceValue Execute(const viewDef_t* viewDef, const bool raytracedEnabled) override
 	{
-		constexpr UINT surfaceCount = 7;
+		constexpr UINT surfaceCount = 8;
 		const DX12Rendering::eRenderSurface surfaces[surfaceCount] = {
 			DX12Rendering::eRenderSurface::FlatNormal,
 			DX12Rendering::eRenderSurface::FlatTangent,
@@ -3858,6 +3874,7 @@ public:
 			DX12Rendering::eRenderSurface::Albedo,
 			DX12Rendering::eRenderSurface::SpecularColor,
 			DX12Rendering::eRenderSurface::MaterialProperties,
+			DX12Rendering::eRenderSurface::Velocity,
 		};
 
 		DX12Rendering::RenderPassBlock renderPassBlock("RB_DrawGBuffer", DX12Rendering::Commands::DIRECT, surfaces, surfaceCount);
@@ -3902,7 +3919,7 @@ public:
 
 			// set mvp matrix
 			if (surf->space != backEnd.currentSpace) {
-				RB_SetMVP(surf->space->mvp);
+				RB_SetMVP(surf->space);
 				backEnd.currentSpace = surf->space;
 
 				// set the Normal Matrix (technically it's the transpose of the model matrix)
@@ -4045,9 +4062,9 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 			DX12Rendering::eRenderSurface::Albedo,
 			DX12Rendering::eRenderSurface::SpecularColor,
 			DX12Rendering::eRenderSurface::Reflectivity,
+			DX12Rendering::eRenderSurface::Velocity,
 			DX12Rendering::eRenderSurface::MaterialProperties,
 			DX12Rendering::eRenderSurface::ReflectionVector,
-			DX12Rendering::eRenderSurface::Reflections,
 			DX12Rendering::eRenderSurface::SharpReflections,
 		};
 
@@ -4083,6 +4100,14 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 		parm[3] = 1.0f;
 		SetVertexParm(RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
 
+		// Setup the basis for random numbers
+		float timer = backEnd.viewDef->renderView.time[0] * 0.001f;
+		parm[0] = timer;
+		parm[1] = backEnd.viewDef->renderView.time[1] * 0.001f;
+		parm[2] = cosf(timer);
+		parm[3] = timer / 1.61803;
+		SetFragmentParm(RENDERPARAM_RANDOM_TIMER, parm); // rpRandomTimer
+
 		if (raytracedEnabled)
 		{			
 			float fov[4]; // { xmin, ymin, xmax, ymax }
@@ -4096,7 +4121,10 @@ void RB_DrawViewInternal(const viewDef_t* viewDef, const int stereoEye) {
 
 			dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_FOV, fov);
 
-			parm[3] = zNear;
+			parm[0] = backEnd.viewDef->renderView.vieworg[0];
+			parm[1] = backEnd.viewDef->renderView.vieworg[1];
+			parm[2] = backEnd.viewDef->renderView.vieworg[2];
+			parm[3] = 1.0f;
 			dxRenderer.DXR_SetRenderParam(DX12Rendering::dxr_renderParm_t::RENDERPARM_GLOBALEYEPOS, parm); // rpGlobalEyePos
 		}
 

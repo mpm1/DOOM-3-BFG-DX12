@@ -4,7 +4,9 @@ struct HiZDepthConstants
 {
 	uint width;
 	uint height;
-	uint mips;
+	uint startMip;
+	uint endMip;
+
 	uint textureIndex;
 };
 ConstantBuffer<HiZDepthConstants> depthConstants : register(b2, space0); // Reusing the Surface Constants
@@ -39,7 +41,7 @@ float3 GetEndUV(in float3 startUV, in float3 uvVector)
 	return uvEnd;
 }
 
-float4 FindIntersectingDepthPoint(in float3 startUV, in float3 uvVector, in float resolution, in int steps, in float thickness)
+float4 FindIntersectingDepthPoint(in float3 startUV, in float3 uvVector, in float thickness)
 {
 	if(length(uvVector) == 0.0)
 	{
@@ -48,21 +50,21 @@ float4 FindIntersectingDepthPoint(in float3 startUV, in float3 uvVector, in floa
 
 	Texture2D<float4> depthTexture = GetBindlessTexture4f(depthConstants.textureIndex);
 
-	const uint maxLevel = depthConstants.mips - 1;
-	uint level = 1;
+	const uint maxLevel = depthConstants.endMip;
+	uint level = min(depthConstants.startMip + 1, maxLevel);
 	
 	// Find the UV end point
 	float3 endUV = GetEndUV(startUV, uvVector);
 
-	float3 startFrag = float3(startUV / sceneConstants.rpWindowCoord.xy, startUV.z);
+	float3 startFrag = float3(startUV.xy / sceneConstants.rpWindowCoord.xy, startUV.z);
 	float3 endFrag = float3(endUV.xy / sceneConstants.rpWindowCoord.xy, endUV.z);
 	
 	const float fragMult = startFrag.z * endFrag.z;
 	float3 deltaFrag = endFrag - startFrag;
-	float useX = abs(deltaFrag.x) > abs(deltaFrag.y) ? 1.0 : 0.0;
-	float delta = (lerp(deltaFrag.y, deltaFrag.x, useX));
+	bool useX = abs(deltaFrag.x) > abs(deltaFrag.y);
+	float delta = useX ? abs(deltaFrag.x) : abs(deltaFrag.y);
 
-	float2 increment = deltaFrag.xy / max(delta / pow(2.0, level), EPSILON);
+	float2 increment = deltaFrag.xy / max(delta / float(1 << level), EPSILON); // Only valid if Level starts at 1
 
 	if(length(increment) == 0)
 	{
@@ -80,87 +82,61 @@ float4 FindIntersectingDepthPoint(in float3 startUV, in float3 uvVector, in floa
 	lastUv.y = 1.0 - lastUv.y;
 
 	int hit = 0;
+	int samplesRemaining = 32;
 
-	while(search1 <= 1.0)
+	[loop]
+	while(search1 <= 1.0 && samplesRemaining > 0)
 	{
+		--samplesRemaining;
+
 		float2 frag = lastFrag + increment;
 		float2 uv = frag * sceneConstants.rpWindowCoord.xy;
 		
-		bool inRange = all(uv >= 0.0f) && all(uv <= 1.0f);
-		if (!inRange)
+		float evalValue = useX ? uv.x : uv.y;
+		if (evalValue < 0.0 || evalValue > 1.0)
 		{
-			if(level == 0)
-			{
-				break;
-			}
-
-			--level;
-			increment = deltaFrag.xy / max(delta / pow(2.0, level), EPSILON);
-			continue;
+			break;
 		}
 
 		uv.y = 1.0 - uv.y;
 
-		float2 deltaFragTraverse = (frag - startFrag.xy) / max(deltaFrag.xy, EPSILON);
-		search1 = lerp(deltaFragTraverse.y, deltaFragTraverse.x, useX);
+		float2 currentFragDelta = abs(frag - startFrag.xy);
+		search1 = (useX ? currentFragDelta.x : currentFragDelta.y) / max(delta, EPSILON);
 
 		viewDistance = fragMult / lerp(endFrag.z, startFrag.z, search1);
-		depth = viewDistance - depthTexture.SampleLevel(pointSampler, uv, level).r;
+		int3 sampleLocation = int3(uv * float2(depthConstants.width >> level, depthConstants.height >> level), level);
 
-		if(level > 0)
+		depth = viewDistance - depthTexture.Load(sampleLocation).r;//SampleLevel(pointSampler, uv, level).r;
+
+		if(level > depthConstants.startMip)
 		{
-			if(depth < thickness)
+			if(depth > 0)
 			{
 				--level;
-				increment = deltaFrag.xy / max(delta / pow(2.0, level), EPSILON);
+				increment = deltaFrag.xy / max(delta / float(1 << level), EPSILON);
 				continue;
 			}
 		}
-		else
+		else if(depth > 0 && depth < thickness)
 		{
-			if(depth > 0 && depth < thickness)
-			{
-				++hit;
+			++hit;
 
-				lastUv = uv;
-				lastFrag = frag;
+			lastUv = uv;
+			lastFrag = frag;
 
-				break;
-			}
+			break;
 		}
 
-		level = min(level + 1, maxLevel);
-		increment = deltaFrag.xy / max(delta / pow(2.0, level), EPSILON);
+		if(level < maxLevel)
+		{
+			++level;
+			increment = deltaFrag.xy / max(delta / float(1 << level), EPSILON);
+		}
 
 		search0 = search1;
 		lastUv = uv;
 		lastFrag = frag;
 	}
-
-	// Pinpoint the hit
-	/*steps *= hit; // If 0 we don't need to work any further.
-	search1 = search0 + ((search1 - search0) / 2.0);
-
-	for(int i = 0; i < steps; ++i)
-	{
-		float2 frag = lerp(startFrag.xy, endFrag.xy, search1);
-		float2 uv = frag * sceneConstants.rpWindowCoord.xy;
-		uv.y = 1.0 - uv.y;
-
-		viewDistance = fragMult / lerp(endFrag.z, startFrag.z, search1);
-		depth = viewDistance - depthTexture.SampleLevel(pointSampler, uv, 0).r;
-
-		if (depth > 0 && depth < thickness) {
-			hit = 2;
-			search1 = search0 + ((search1 - search0) / 2);
-		} else {
-			float temp = search1;
-			search1 = search1 + ((search1 - search0) / 2);
-			search0 = temp;
-		}
-
-		lastUv = uv;
-	}*/
 
 	if(hit != 1 || length(startFrag.xy - lastFrag.xy) < 4.0)
 	{

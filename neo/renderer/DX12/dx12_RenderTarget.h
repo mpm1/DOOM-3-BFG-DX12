@@ -18,7 +18,8 @@ namespace DX12Rendering {
 	enum eRenderSurface
 	{
 		DepthStencil = 0,
-		HiZDepth,
+
+		HiZDepth_Scratch, // Used to generate the HiZ buffer
 
 		// Even though this uses forward rendering, will separate into separate resources. We may use this later to handle denoising on our raytracing.
 		Diffuse,
@@ -33,6 +34,7 @@ namespace DX12Rendering {
 		SpecularColor, // Specular color used for lighting.
 		Reflectivity, // The frenel reflectivity based on the normal, view angle, and material properties.
 		MaterialProperties, // R = Roughness, G = metallic, B = unused, A = unused
+		Velocity, // A R16G16 Image used to represent the velocity of the object in view space.
 
 		// RayTracing
 		RaytraceShadowMask, // Each bit is a light mask
@@ -65,8 +67,10 @@ namespace DX12Rendering {
 		eRenderSurface::SpecularColor,
 		eRenderSurface::Reflectivity,
 		eRenderSurface::MaterialProperties,
+		eRenderSurface::Velocity,
 
-		eRenderSurface::HiZDepth,
+		eRenderSurface::HiZDepth_Scratch,
+
 		eRenderSurface::Diffuse,
 		eRenderSurface::Specular,
 		eRenderSurface::RaytraceShadowMask,
@@ -100,7 +104,7 @@ namespace DX12Rendering {
 
 		void RenderSurface::CreateUnorderedAccessView(D3D12_CPU_DESCRIPTOR_HANDLE& uavHeap);
 
-		bool CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager);
+		bool CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager, const int subResourceIndex = 0);
 
 		const UINT GetWidth() { return m_width; }
 		const UINT GetHeight() { return m_height; }

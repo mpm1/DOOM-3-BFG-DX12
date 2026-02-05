@@ -107,8 +107,6 @@ void HandlePointLight(
 	float metalness;
 	ExtractMaterialPropertiesFromGBuffer(screenUV, roughness, baseReflection, metalness);
 
-	float3 pointToCenter = normalize(light.center - worldPosition);
-
 	// We'll keep the lights as a point and only the shadows are affected by the light radius.
 	float3 lightPosition = light.center;
 	float3 lightVector = normalize(lightPosition - worldPosition);
@@ -119,7 +117,7 @@ void HandlePointLight(
 		pointToEye,
 		normal,
 		lightVector,
-		PI, // Since we divide by our count later, we can just use 1.0 here. Original algorithm calls for PI
+		PI,
 		baseReflection,
 		roughness,
 		diffuseResult,

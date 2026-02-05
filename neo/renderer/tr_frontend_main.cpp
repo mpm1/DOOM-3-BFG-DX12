@@ -357,8 +357,20 @@ void R_RenderView( viewDef_t *parms ) {
 
 	tr.viewDef = parms;
 
+	bool usePrevMVP = !parms->isSubview;
+	float prevMVP[16];
+	if (usePrevMVP)
+	{
+		memcpy(prevMVP, parms->worldSpace.prevModelViewMatrix, sizeof(parms->worldSpace.prevModelViewMatrix));
+		parms->worldSpace.skipMotionBlur = true;
+	}
+
 	// setup the matrix for world space to eye space
 	R_SetupViewMatrix( tr.viewDef );
+	if (usePrevMVP)
+	{
+		memcpy(parms->worldSpace.prevModelViewMatrix, prevMVP, sizeof(parms->worldSpace.prevModelViewMatrix));
+	}
 
 	// we need to set the projection matrix before doing
 	// portal-to-screen scissor calculations

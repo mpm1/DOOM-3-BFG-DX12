@@ -22,41 +22,43 @@ float3 calculateContribution(
 	in float3 normal, 
 	in float3 baseReflection, 
 	in float3 halfVector,
-	in float NdotL,
+	in float3 reflectionVector,
 	in float roughness, 
 	in float metalness)
 {
+	float NdotL = max(dot3(normal, reflectionVector), 0.0);
+
 	if(NdotL <= 0.0)
 	{
 		return float3(0, 0, 0);
 	}
+
 	float3 fresnelFactor = CalculateFresnel(baseReflection, worldToEye, halfVector);
 	float3 specularContribution = calculateCookTorranceSpecularRefectivity(
             fresnelFactor, worldToEye,
-            normal, halfVector,
-            PI, NdotL, roughness);
+            reflectionVector, normal, halfVector,
+            PI, roughness);
 
-	return specularContribution; 
+	return specularContribution * NdotL; 
 }
 
-float3 CalulateImpact(in float2 tCoords, in float3 reflectionVector, in float3 normal, in float3 worldToEye, in float3 baseReflection, in float roughness, in float metalness)
+float4 CalulateImpact(in float2 tCoords, in float3 reflectionVector, in float3 normal, in float3 worldToEye, in float3 baseReflection, in float roughness, in float metalness)
 {
-	float3 result = float3(0.0, 0.0, 0.0);
+	float4 result = float4(0.0, 0.0, 0.0, 0.0);
 
 	// Eventually sample multiple points based on the roughness
 	float4 color = samp0.Sample(baseSampler, tCoords);
 
 	if(color.w > 0.0)
 	{
-		float NdotL = max(dot3(normal, reflectionVector), 0.0);
-
 		// TODO: Calculate contribution
 		float3 contribution = calculateContribution(
 			worldToEye, normal, baseReflection, 
 			normalize(reflectionVector + worldToEye),
-			NdotL, roughness, metalness);
+			reflectionVector, roughness, metalness);
 
-		result = color.rgb * saturate(contribution) * NdotL * color.w;
+		result.rgb = color.rgb * saturate(contribution) * color.w;
+		result.a = color.w;
 	}
 
 	return result;
@@ -82,20 +84,22 @@ void main( PS_IN fragment, out PS_OUT result )
 
 	float3 worldToEye = normalize(sceneConstants.rpGlobalEyePos.xyz - worldPosition);
 
-	float4 outputColor = float4(0.0, 0.0, 0.0, 0.75);
+	float4 outputColor = float4(0.0, 0.0, 0.0, 0.0);
 	float3 reflectionVector = normalize((samp5.Sample(pointSampler, tCoords).xyz - 0.5) * 2.0);
-
-	outputColor.rgb = CalulateImpact(tCoords, reflectionVector, normal, worldToEye, baseReflection, roughness, metalness);
 
 	// Eventually sample multiple points based on the roughness
 	const float PI2 = 2.0 * PI;
-	const uint maxItteration = 6;
+	const uint maxItteration = 4;
 	const float incrementor = PI2 / 1.61803; // Divide by the golden ratio
-	const float radius = 2.66;
-	float delta = 0; // TODO: Set this to a random frame starting point.
+	const float3 randomValue = rand3(sceneConstants.rpRandomTimer.xyz + reflectionVector.xyz);
+	float radius = roughness * 5.0 * randomValue[0]; 
+	float delta = randomValue[1];
+	float outputWeight = float(maxItteration); // TODO: find better weiht clculations.
 
 	for(uint i = 0; i < maxItteration; ++i)
 	{
+		radius = roughness * 16.0 * rand(float2(randomValue[0], radius)); 
+
 		delta += incrementor;
 		if(delta > PI2) { delta -= PI2; }
 
@@ -104,10 +108,14 @@ void main( PS_IN fragment, out PS_OUT result )
 		float3 worldDifference = samp3.Sample(pointSampler, tCoords).xyz - worldPosition;
 		float3 reflectionVector2 = normalize(worldDifference + ((samp5.Sample(pointSampler, tCoords2).xyz - 0.5) * 2.0));
 			
-		outputColor.rgb += CalulateImpact(tCoords2, reflectionVector2, normal, worldToEye, baseReflection, roughness, metalness);
+		outputColor.rgba += CalulateImpact(tCoords2, reflectionVector2, normal, worldToEye, baseReflection, roughness, metalness);
 	}
 
-	outputColor.rgb /= float(maxItteration + 1);
+	if(outputWeight > 0.0)
+	{
+		outputColor /= outputWeight;// TODO: Calculate a better weight
+		outputColor.a = saturate(pow(outputColor.a, 2.0) + 0.4);
+	}
 
 	result.color = outputColor;
 }

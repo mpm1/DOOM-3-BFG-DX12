@@ -56,7 +56,9 @@ namespace DX12Rendering {
 	{
 		UINT width;
 		UINT height;
-		UINT mips;
+		UINT startMip;
+		UINT endMip;
+
 		UINT textureIndex;
 	};
 
@@ -202,7 +204,7 @@ private:
 	DX12Rendering::RenderRootSignature* m_rootSignature;
 	DX12Rendering::ComputeRootSignature* m_computeRootSignature;
 
-	XMFLOAT4 m_constantBuffer[58/* RENDERPARM_TOTAL */];
+	XMFLOAT4 m_constantBuffer[63/* RENDERPARM_TOTAL */];
 	UINT8* m_constantBufferGPUAddress[DX12_FRAME_COUNT];
 	ID3D12PipelineState* m_activePipelineState = nullptr;
 	UINT m_stencilRef = 0;

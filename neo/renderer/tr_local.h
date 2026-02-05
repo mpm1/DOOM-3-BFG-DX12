@@ -225,6 +225,8 @@ public:
 	renderEntity_t			parms;
 
 	float					modelMatrix[16];		// this is just a rearrangement of parms.axis and parms.origin
+	float					prevModelMatrix[16];	// The last recorded modelMatrix value when updating the scene. This will update after etting the view entities previous mvp.
+
 	idRenderMatrix			modelRenderMatrix;
 	idRenderMatrix			inverseBaseModelProject;// transforms the unit cube to exactly cover the model in world space
 
@@ -352,8 +354,10 @@ struct viewEntity_t {
 		
 	float					modelMatrix[16];		// local coords to global coords
 	float					modelViewMatrix[16];	// local coords to eye coords
+	float					prevModelViewMatrix[16]; // previous frames local coords to eye coords
 
 	idRenderMatrix			mvp;
+	idRenderMatrix			prevMvp; // Used for velocity tracing.
 
 	// parallelAddModels will build a chain of surfaces here that will need to
 	// be linked to the lights or added to the drawsurf list in a serial code section

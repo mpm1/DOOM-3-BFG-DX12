@@ -265,30 +265,31 @@ float StartDistanceFromSurface(in float3 worldPosition, in float3 eyePosition)
 // Light functions
 // General BRDF functions
 void GeneralBRDF(
-    in float3 lightColor,
+    in float3 lightIntensity,
     in float3 diffuseColor,
     in float3 specularColor,
-    in float NdotL,
+    in float3 lightVector,
     in float3 surfaceNormal,
     in float distribution, // The integral value over the surface for the light. This should usually be PI, but for our raytracing we'll set this to 1.0 and devide by the sample count later.'
     in float3 baseReflectivity, //TODO: Add this as a material property to the surface.
     in float roughness, //TODO: Add this as a material property to the surface.
     in float3 viewVector,
-    in float3 halfVector,
     out float3 diffuseContribution,
     out float3 specularContribution)
 {
+    float3 halfVector = normalize(viewVector + lightVector);
+
     float3 fresnelFactor = CalculateFresnel(baseReflectivity, viewVector, halfVector);
 
     // Diffuse using the Lambertian Model (we already used L dot N for the light Color)
-    diffuseContribution = lightColor * (diffuseColor * NdotL * (1.0 - fresnelFactor)) / distribution;
+    diffuseContribution = lightIntensity * (1.0 - fresnelFactor) * (diffuseColor / distribution);
 
     // Using Cook-Torrance BRDF for specular reflection
-    specularContribution = lightColor * specularColor * 
+    specularContribution = lightIntensity * specularColor *
         calculateCookTorranceSpecularRefectivity(
             fresnelFactor, viewVector,
-            surfaceNormal, halfVector,
-            distribution, NdotL, roughness);
+            lightVector, surfaceNormal, halfVector,
+            distribution, roughness);
 }
 
 // Calculates the amount of specular and diffuse light hitting a surface.
@@ -319,7 +320,7 @@ float CalcluateLightImpact(
 		return NdotL;
 	}
 
-    float3 lightColor = 
+    float3 lightColor = NdotL *
                 CalculateFalloff(light, float4(lightWorldPosition, 1.0)) *
 				CalculateProjection(light, float4(lightWorldPosition, 1.0));
 
@@ -335,13 +336,12 @@ float CalcluateLightImpact(
         lightColor,
         light.diffuseColor.rgb,
         light.specularColor.rgb,
-        NdotL,
+        lightVector,
         surfaceNormal,
         distribution,
         baseReflectivity, // Base reflectivity, we need to eventually adjust this per material.
         roughness, // Roughness, we need to eventually adjust this per material.
         viewVector, // View vector
-        normalize(lightVector + viewVector), // Half vector
         diffuseContribution,
         specularContribution
     );

@@ -847,6 +847,8 @@ void idRenderWorldLocal::RenderScene( const renderView_t *renderView ) {
 	parms->initialViewAreaOrigin = renderView->vieworg;
 	parms->renderWorld = this;
 
+	memcpy(parms->worldSpace.prevModelViewMatrix, prevModelViewMatrix, sizeof(parms->worldSpace.prevModelViewMatrix));
+
 	// see if the view needs to reverse the culling sense in mirrors
 	// or environment cube sides
 	idVec3	cross;
@@ -899,6 +901,9 @@ void idRenderWorldLocal::RenderScene( const renderView_t *renderView ) {
 
 	// prepare for any 2D drawing after this
 	tr.guiModel->Clear();
+
+	// Update the running model view matrix for use
+	memcpy(prevModelViewMatrix, parms->worldSpace.modelViewMatrix, sizeof(prevModelViewMatrix));
 }
 
 /*

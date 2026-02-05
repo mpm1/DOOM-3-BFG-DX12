@@ -496,6 +496,25 @@ void R_AddSingleModel( viewEntity_t * vEntity ) {
 		idRenderMatrix::ApplyModelDepthHack( vEntity->mvp, renderEntity->modelDepthHack );
 	}
 
+	// Update the previous mvp value. This will be used for velocity tracking
+	if (!viewDef->worldSpace.skipMotionBlur)
+	{
+		R_MatrixMultiply(entityDef->prevModelMatrix, viewDef->worldSpace.prevModelViewMatrix, vEntity->prevModelViewMatrix);
+
+		idRenderMatrix viewMat;
+		idRenderMatrix::Transpose(*(idRenderMatrix*)vEntity->prevModelViewMatrix, viewMat);
+		idRenderMatrix::Multiply(viewDef->projectionRenderMatrix, viewMat, vEntity->prevMvp);
+		if (renderEntity->weaponDepthHack) {
+			idRenderMatrix::ApplyDepthHack(vEntity->prevMvp);
+		}
+		if (renderEntity->modelDepthHack != 0.0f) {
+			idRenderMatrix::ApplyModelDepthHack(vEntity->prevMvp, renderEntity->modelDepthHack);
+		}
+
+		memcpy(entityDef->prevModelMatrix, entityDef->modelMatrix, sizeof(entityDef->prevModelMatrix));
+	}
+
+
 	// local light and view origins are used to determine if the view is definitely outside
 	// an extruded shadow volume, which means we can skip drawing the end caps
 	idVec3 localViewOrigin;

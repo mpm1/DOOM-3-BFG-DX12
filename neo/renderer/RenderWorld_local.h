@@ -174,6 +174,8 @@ public:
 	idBlockAlloc<areaReference_t, 1024> areaReferenceAllocator;
 	idBlockAlloc<idInteraction, 256>	interactionAllocator;
 
+	float				prevModelViewMatrix[16];
+
 #ifdef ID_PC
 	static const int MAX_DECAL_SURFACES = 32;
 #else

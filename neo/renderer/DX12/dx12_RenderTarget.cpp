@@ -69,6 +69,7 @@ namespace DX12Rendering
 		if (m_texture != nullptr)
 		{
 			DX12Rendering::GetTextureManager()->FreeTextureBuffer(m_texture);
+			m_texture = nullptr;
 		}
 
 		Release();
@@ -127,7 +128,10 @@ namespace DX12Rendering
 		TextureBuffer* buffer = textureManager->GenerateFromExistingResource(this, m_resourceDesc, samplerDesc, srvDesc);
 		m_texture = buffer;
 
-		m_texture->SetResourceState(Resource::GetResourceState());
+		if (m_texture != nullptr)
+		{
+			m_texture->SetResourceState(Resource::GetResourceState());
+		}
 
 		return m_texture;
 	}
@@ -204,6 +208,8 @@ namespace DX12Rendering
 
 		m_resourceDesc = description;
 
+
+
 		if (Allocate(description, D3D12_RESOURCE_STATE_COPY_SOURCE, kDefaultHeapProps, m_clearValue.Format == DXGI_FORMAT_UNKNOWN  ? nullptr : &m_clearValue) != nullptr)
 		{
 			resourceUpdated = true;
@@ -260,7 +266,7 @@ namespace DX12Rendering
 		device->CreateUnorderedAccessView(resource.Get(), nullptr, &uavDesc, uavHeap);
 	}
 
-	bool RenderSurface::CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager)
+	bool RenderSurface::CopySurfaceToTexture(DX12Rendering::TextureBuffer* texture, DX12Rendering::TextureManager* textureManager, const int subResourceIndex)
 	{
 		if (texture == nullptr)
 		{
@@ -272,8 +278,8 @@ namespace DX12Rendering
 		UINT sy = 0;
 		UINT rx = 0;
 		UINT ry = 0;
-		UINT width = this->m_width;
-		UINT height = this->m_height;
+		UINT width = this->m_width >> subResourceIndex;
+		UINT height = this->m_height >> subResourceIndex;
 
 		auto commandManager = DX12Rendering::Commands::GetCommandManager(DX12Rendering::Commands::COPY);
 		DX12Rendering::Commands::CommandManagerCycleBlock cycleBlock(commandManager, "RenderSurface::CopySurfaceToTexture");
@@ -295,8 +301,8 @@ namespace DX12Rendering
 				commandList->ResourceBarrier(1, &transition);
 			}
 
-			const CD3DX12_TEXTURE_COPY_LOCATION dst(texture->resource.Get());
-			const CD3DX12_TEXTURE_COPY_LOCATION src(resource.Get());
+			const CD3DX12_TEXTURE_COPY_LOCATION dst(texture->resource.Get(), subResourceIndex);
+			const CD3DX12_TEXTURE_COPY_LOCATION src(resource.Get(), subResourceIndex);
 			const CD3DX12_BOX srcBox(sx, sy, sx + width, sy + height);
 			commandList->CopyTextureRegion(&dst, rx, ry, 0, &src, &srcBox);
 
@@ -352,7 +358,7 @@ namespace DX12Rendering
 		{
 			D3D12_CLEAR_VALUE clearValue = {}; // Set to unknown.
 
-			m_surfaces.emplace_back(L"HiZBuffer", DXGI_FORMAT_R32_FLOAT, eRenderSurface::HiZDepth, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue, 4);
+			m_surfaces.emplace_back(L"HiZBufferScratch", DXGI_FORMAT_R32_FLOAT, eRenderSurface::HiZDepth_Scratch, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue, 8);
 
 			m_surfaces.emplace_back(L"Diffuse", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Diffuse, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);//Mark start here. We'll start seperating the diffuse and specular.
 			m_surfaces.emplace_back(L"Specular", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::Specular, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
@@ -365,6 +371,7 @@ namespace DX12Rendering
 			m_surfaces.emplace_back(L"SpecularColor", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::SpecularColor, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"Reflectivity", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::Reflectivity, RENDER_SURFACE_FLAG_NONE, clearValue);
 			m_surfaces.emplace_back(L"MaterialProperties", DXGI_FORMAT_R8G8B8A8_UNORM, eRenderSurface::MaterialProperties, RENDER_SURFACE_FLAG_NONE, clearValue);
+			m_surfaces.emplace_back(L"Velocity", DXGI_FORMAT_R16G16_UNORM, eRenderSurface::Velocity, RENDER_SURFACE_FLAG_NONE, clearValue);
 
 			m_surfaces.emplace_back(L"RaytraceShadowMask", DXGI_FORMAT_R8G8B8A8_UINT, eRenderSurface::RaytraceShadowMask, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);
 			m_surfaces.emplace_back(L"Global Illumination", DXGI_FORMAT_R16G16B16A16_UNORM, eRenderSurface::GlobalIllumination, RENDER_SURFACE_FLAG_ALLOW_UAV, clearValue);

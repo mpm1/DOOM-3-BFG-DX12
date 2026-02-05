@@ -40,8 +40,8 @@ struct VS_OUT {
 	float3 normal		: TEXCOORD3_centroid;
 	float3 tangent		: TEXCOORD4_centroid;
 	float3 binormal		: TEXCOORD5_centroid;
-	float4 viewPosition	: TEXCOORD6;
-	float4 lastPosition	: TEXCOORD7; // Position during the last frame.
+	float4 viewPosition	: TEXCOORD6_centroid;
+	float4 lastPosition	: TEXCOORD7_centroid; // Position during the last frame.
 };
 
 float3 applyNormalTransform(float3 inVector)
@@ -184,8 +184,8 @@ struct PS_IN {
 	half3 tangent	: TEXCOORD4_centroid; // Tangent
 	half3 binormal	: TEXCOORD5_centroid; // Binormal
 
-	float4 viewPosition : TEXCOORD6;
-	half4 lastPosition	: TEXCOORD7; // Position during the last frame.
+	float4 viewPosition : TEXCOORD6_centroid;
+	half4 lastPosition	: TEXCOORD7_centroid; // Position during the last frame.
 };
 
 struct PS_OUT {
@@ -199,22 +199,24 @@ struct PS_OUT {
 	half4 specularColor	: SV_TARGET5;
 	half4 materialProps	: SV_TARGET6;
 #ifdef WRITE_VELOCITY
-	float4 velocity		: SV_TARGET7;
+	float2 velocity		: SV_TARGET7;
 #endif
 };
 
 #ifdef WRITE_VELOCITY
-float4 CalculateVelocity(const float4 lastPosition, const float4 position)
+float2 CalculateVelocity(const float4 lastPosition, const float4 position)
 { 
-	//TODO: Our velocity buffer is broken and not writing the correct data
-	const float velocityScale = 8.0; // TODO: Pass in this value.
-	float3 pOld = lastPosition.xyz / lastPosition.w;
-	float3 pNew = position.xyz / position.w;
 
-	float2 velocity = (pNew - pOld) * velocityScale;
-	return float4(
-		(velocity / max(length(velocity), 1.0)) * 0.5 + 0.5,
-		1.0, 0);
+	float2 pOld = lastPosition.xy / lastPosition.w;
+	pOld.y = -pOld.y;
+	pOld.xy = (pOld * 0.5) + 0.5;
+
+	// Already normalized across the frame.
+	float2 pNew = vposToScreenPosTexCoord(position.xy);
+
+	float2 velocity = (pOld.xy - pNew.xy) * 0.5 + 0.5;
+
+	return velocity;
 }
 #endif
 
